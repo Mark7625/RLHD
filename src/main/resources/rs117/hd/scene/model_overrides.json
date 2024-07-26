@@ -1083,7 +1083,7 @@
       10041, 10832, 14309,
       16546, 16547, 16548, 19167,
       20845, 23639, 37967,
-      37968, 42842
+      37968, 42832, 42842
     ],
     "uvType": "BOX",
     "uvScale": 0.8,
@@ -1462,9 +1462,14 @@
     "objectIds": [
       8861, 8862, 8863, 8864, 8876
     ],
-    "uvType": "MODEL_XZ",
-    "uvOrientation": 55,
-    "uvScale": 0.75
+    "upwardsNormals": true,
+    "colorOverrides": [
+      {
+        "colors": "h == 8",
+        "baseMaterial": "DIRT_2",
+        "uvType": "WORLD_XZ"
+      }
+    ]
   },
   {
     "description": "GRASS",
@@ -1624,24 +1629,177 @@
     "castShadows": false
   },
   {
+    "description": "Farming Patch Grass without Dirt",
+    "baseMaterial": "GRAY_65",
+    "objectIds": [
+      7558,
+      7559,
+      7560,
+      7574,
+      7575,
+      7576,
+      7744,
+      7745,
+      7746,
+      7773,
+      7774,
+      7775,
+      7841,
+      7842,
+      7843,
+      7844,
+      7845,
+      7846,
+      8048,
+      8049,
+      8050,
+      8133,
+      8134,
+      8135,
+      8136,
+      8137,
+      8138,
+      8312,
+      8313,
+      8314,
+      8340,
+      8341,
+      8342,
+      8393,
+      8394,
+      8395,
+      9167,
+      9168,
+      9163,
+      9178,
+      9179,
+      9180,
+      9182,
+      9183,
+      9184,
+      9186,
+      9187,
+      9188,
+      9211,
+      9212,
+      9213,
+      9225,
+      9226,
+      9227,
+      9234,
+      9235,
+      9236,
+      10097,
+      10098,
+      10099,
+      10103,
+      30477,
+      30475,
+      30479,
+      30484,
+      30485,
+      30486,
+      33695,
+      33696,
+      33697,
+      33722,
+      33723,
+      33724,
+      33981,
+      33982,
+      33983,
+      34036,
+      34037,
+      34038,
+      34040,
+      34041,
+      34042,
+      34044,
+      34045,
+      34046,
+      34048,
+      34049,
+      34050,
+      34908,
+      34909,
+      34910
+    ],
+    "upwardsNormals": true
+  },
+  {
+    "description": "Farming Patch Grass with Dirt",
+    "baseMaterial": "GRAY_65",
+    "objectIds": [
+      8208,
+      8209,
+      8210,
+      8574,
+      8575,
+      8576,
+      8577,
+      8578,
+      8579,
+      9400,
+      9401,
+      9402,
+      15063,
+      15064,
+      15065
+    ],
+    "upwardsNormals": true,
+    "colorOverrides": [
+      {
+        "colors": "h == 8",
+        "baseMaterial": "DIRT_2",
+        "uvType": "WORLD_XZ"
+      }
+    ]
+  },
+  {
+    "description": "Farming Patch Grass with Dirt and Scarecrow",
+    "baseMaterial": "GRAY_65",
+    "objectIds": [
+      7916,
+      7917,
+      7918,
+      9338,
+      9339,
+      9340
+    ],
+    "upwardsNormals": true,
+    "colorOverrides": [
+      {
+        "colors": "h == 8",
+        "baseMaterial": "DIRT_2",
+        "uvType": "WORLD_XZ"
+      }
+    ]
+  },
+  {
     "description": "Kharidian Desert Grass",
     "baseMaterial": "GRAY_75",
     "objectIds": [ 3547, 3548, 3549 ],
     "areas": [ "KHARID_DESERT_REGION" ]
   },
   {
-    "description": "Short grass which shouldn't cast shadows and shouldn't inherit tile color",
+    "description": "Short grass with rock objects",
+    "baseMaterial": "GRAY_75",
+    "objectIds": [
+      17446,
+      17447,
+      17448,
+      17449
+    ],
+    "flatNormals": true,
+    "castShadows": false
+  },
+  {
+    "description": "Short grass with rock objects usually found around Farming Patches",
     "baseMaterial": "GRAY_75",
     "objectIds": [
       7129,
       7518,
       7519,
-      7520,
-      7521,
-      17446,
-      17447,
-      17448,
-      17449,
       34494,
       34495,
       34496,
@@ -1649,7 +1807,33 @@
       46412
     ],
     "flatNormals": true,
-    "castShadows": false
+    "castShadows": false,
+    "colorOverrides": [
+      {
+        "colors": "h == 7",
+        "baseMaterial": "ROCK_1_LIGHT",
+        "uvType": "BOX",
+        "uvScale": 0.6
+      }
+    ]
+  },
+  {
+    "description": "Short grass with rock objects Morytania Farming Patches",
+    "baseMaterial": "GRAY_75",
+    "objectIds": [
+      7520,
+      7521
+    ],
+    "flatNormals": true,
+    "castShadows": false,
+    "colorOverrides": [
+      {
+        "colors": "s == 5 || s == 7",
+        "baseMaterial": "ROCK_1_LIGHT",
+        "uvType": "BOX",
+        "uvScale": 0.6
+      }
+    ]
   },
   {
     "description": "Objects with Short grass which shouldn't cast shadows and shouldn't inherit tile color",
@@ -1825,10 +2009,32 @@
     "uvType": "MODEL_XZ"
   },
   {
-    "description": "VARROCK_FOUNTAIN_STATUE",
-    "baseMaterial": "GRUNGE_1",
+    "description": "Varrock Fountain Walls and Statue",
+    "baseMaterial": "STONE_NORMALED",
     "objectIds": [
-      7144
+      7144,
+      7145,
+      7146,
+      7147,
+      7148
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.75
+  },
+  {
+    "description": "Varrock Fountain Rocks with Water",
+    "baseMaterial": "STONE_NORMALED",
+    "objectIds": [
+      7143
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.75,
+    "colorOverrides": [
+      {
+        "colors": "h == 34",
+        "baseMaterial": "WATER_FOUNTAIN_FLAT",
+        "uvType": "BOX"
+      }
     ]
   },
   {
@@ -5628,7 +5834,8 @@
     "objectIds": [
       2097,
       4306,
-      6150
+      6150,
+      42825
     ],
     "uvType": "BOX",
     "uvScale": 1.1,
@@ -6422,6 +6629,49 @@
     ],
     "uvType": "WORLD_XZ",
     "uvScale": 0.85
+  },
+  {
+    "description": "Lumbridge Swamp Tree/Plant",
+    "baseMaterial": "BARK",
+    "objectIds": [
+      1369
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.85,
+    "uvOrientation": 256,
+    "colorOverrides": [
+      {
+        "colors": "h == 28",
+        "baseMaterial": "LEAF_VEINS",
+        "uvScale": 0.2,
+        "uvType": "MODEL_XZ"
+      }
+    ]
+  },
+  {
+    "description": "Lumbridge Swamp - Wooden Cart with Canopy",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [
+      5578
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "uvOrientationX": 355,
+    "colorOverrides": [
+      {
+        "colors": "h == 5",
+        "baseMaterial": "FINE_CARPET",
+        "uvScale": 0.5,
+        "uvType": "MODEL_XZ"
+      }
+    ]
+  },
+  {
+    "description": "Lumbridge Swamp - Fire with Pot",
+    "baseMaterial": "GRUNGE_3",
+    "objectIds": [
+      26577
+    ]
   },
   {
     "description": "Wyvern Shortcut",
@@ -9425,18 +9675,6 @@
     "uvType": "BOX"
   },
   {
-    "description": "Edgeville - Coffin",
-    "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS",
-    "objectIds": [
-      398,
-      3577,
-      28860,
-      39547
-    ],
-    "uvType": "BOX",
-    "uvScale": 0.5
-  },
-  {
     "description": "Wall Decoration - Rocks",
     "baseMaterial": "ROCK_1_LIGHT",
     "objectIds": [
@@ -9458,6 +9696,46 @@
     ],
     "uvType": "MODEL_XZ",
     "uvScale": 0.6
+  },
+  {
+    "description": "Wilderness - Slayer Cave - Entrance Stairs",
+    "baseMaterial": "STONE_NORMALED",
+    "objectIds": [
+      40388,
+      40390
+    ],
+    "uvType": "BOX"
+  },
+  {
+    "description": "Wilderness - Slayer Cave - Walls",
+    "baseMaterial": "ROCK_3",
+    "objectIds": [
+      31559,
+      39713,
+      39714,
+      39715,
+      40389,
+      40391,
+      40392,
+      53259
+    ],
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": "hsl == 2",
+        "baseMaterial": "NONE"
+      }
+    ]
+  },
+  {
+    "description": "Wilderness - Slayer Cave - Stalagmite",
+    "baseMaterial": "ROCK_1_LIGHT",
+    "objectIds": [
+      31569,
+      31570
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.32
   },
   {
     "description": "Chaos Altar",
@@ -11037,11 +11315,10 @@
   },
   {
     "description": "Jungle Tree Small",
-    "baseMaterial": "PLANT_GRUNGE_2",
+    "baseMaterial": "LEAF_VEINS",
     "objectIds": [
       2887,
       4818,
-      6578,
       51762,
       51763,
       51764,
@@ -11049,6 +11326,24 @@
       51853,
       53188,
       53189
+    ],
+    "uvType": "MODEL_XZ",
+    "uvScale": 0.25,
+    "uvOrientation": 256,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 5", "h == 4" ],
+        "baseMaterial": "BARK",
+        "uvScale": 0.75,
+        "uvType": "BOX"
+      }
+    ]
+  },
+  {
+    "description": "Jungle Tree Small - Leafy",
+    "baseMaterial": "PLANT_GRUNGE_2",
+    "objectIds": [
+      6578
     ],
     "uvType": "BOX",
     "uvScale": 0.4,
@@ -12626,6 +12921,7 @@
       39661,
       39662,
       39663,
+      39664,
       39665,
       39666,
       39667,
@@ -12639,6 +12935,16 @@
     "uvScale": 0.6
   },
   {
+    "description": "Wilderness - Slayer Cave - Entrance Wall Fix",
+    "baseMaterial": "ROCK_1",
+    "areas": [ "Wilderness - Slayer Cave - Entrance Wall Fix" ],
+    "objectIds": [
+      39671
+    ],
+    "uvType": "BOX",
+    "flatNormals": true
+  },
+  {
     "description": "Ferox Enclave - Ancient Altar",
     "baseMaterial": "GRUNGE_3",
     "objectIds": [
@@ -12647,13 +12953,30 @@
     "uvType": "BOX"
   },
   {
-    "description": "Ferox Enclave - Floating Debris and Camping Equipment",
+    "description": "Ferox Enclave - Floating Debris",
     "baseMaterial": "GRUNGE_3",
     "objectIds": [
       15817,
       26293,
-      39688,
       39689
+    ],
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ 38083, 38087 ],
+        "baseMaterial": "TRANSPARENT"
+      }
+    ]
+  },
+  {
+    "description": "Ferox Enclave - Misc Objects",
+    "baseMaterial": "GRUNGE_3",
+    "objectIds": [
+      2214,
+      2215,
+      2273,
+      14744,
+      39688
     ],
     "uvType": "BOX"
   },
@@ -13315,10 +13638,39 @@
     "baseMaterial": "WOOD_GRAIN_3",
     "objectIds": [
       14740,
+      15674,
       22278,
       22280
     ],
     "uvType": "BOX"
+  },
+  {
+    "description": "Object - Wooden - Barrel - with fish",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [
+      9520
+    ],
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ "s == 0" ],
+        "baseMaterial": "GRUNGE_1"
+      }
+    ]
+  },
+  {
+    "description": "Object - Wooden - Barrel - with coal",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [
+      2139
+    ],
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ "h == 42" ],
+        "baseMaterial": "GRUNGE_1"
+      }
+    ]
   },
   {
     "description": "Object - Dying Tree",
@@ -13705,14 +14057,28 @@
   },
   {
     "description": "Objects - Concrete - Bank Booth",
-    "textureMaterial": "HD_CONCRETE",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "materialOverrides": {
+      "WOODEN_SCREEN": {
+        "textureMaterial": "WOODEN_SCREEN"
+      }
+    },
     "objectIds": [
       10355,
-      10527
+      10527,
+      10528
     ],
     "uvType": "BOX",
     "retainVanillaUvs": false,
-    "uvScale": 0.65
+    "uvScale": 0.65,
+    "colorOverrides": [
+      {
+        "colors": [ 43060, 43082, 43084, 43110, 43120, 43125, 43099, 43123 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XZ",
+        "uvScale": 2
+      }
+    ]
   },
   {
     "description": "Objects - Concrete - Gravestone",
@@ -14367,11 +14733,287 @@
   },
   {
     "description": "Edgeville - Walls - Bank Front Windows - Tutorial Island Walls",
+    "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
     "objectIds": [
       1853,
       1854
     ],
-    "flatNormals": true
+    "uvType": "BOX",
+    "flatNormals": true,
+    "colorOverrides": [
+      {
+        "colors": "h == 34",
+        "baseMaterial": "NONE"
+      }
+    ]
+  },
+  {
+    "description": "Edgeville - Forge - Walls",
+    "baseMaterial": "STONE",
+    "objectIds": [
+      23748,
+      23750,
+      23751,
+      23752,
+      23753
+    ],
+    "uvType": "BOX"
+  },
+  {
+    "description": "Edgeville - Forge - Furnace",
+    "baseMaterial": "STONE",
+    "objectIds": [
+      16469
+    ],
+    "uvType": "BOX",
+    "uvOrientation": -256
+  },
+  {
+    "description": "Edgeville - Forge - Misc Objects",
+    "baseMaterial": "GRUNGE_3",
+    "objectIds": [
+      16470,
+      16471,
+      16472,
+      16476,
+      16512
+    ],
+    "uvType": "BOX"
+  },
+  {
+    "description": "Edgeville - Forge - Coal Piles",
+    "baseMaterial": "ROCK_5",
+    "objectIds": [
+      16474,
+      16475
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.5,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 5", 24, 29, 38, 48, 53, 26, 35, 42, 49, 54, 22, 28, 36, 46, 50 ],
+        "baseMaterial": "GRUNGE_3",
+        "uvType": "BOX"
+      }
+    ]
+  },
+  {
+    "description": "Edgeville - Coffin",
+    "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS",
+    "objectIds": [
+      398,
+      3577,
+      28860,
+      39547
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.5
+  },
+  {
+    "description": "Edgeville - Streak Board",
+    "baseMaterial": "GRAY_75",
+    "objectIds": [
+      37434
+    ]
+  },
+  {
+    "description": "Edgeville - Well",
+    "baseMaterial": "STONE",
+    "objectIds": [
+      884
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.4,
+    "colorOverrides": [
+      {
+        "colors": "h == 6",
+        "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
+        "uvType": "BOX",
+        "uvScale": 0.75
+      }
+    ]
+  },
+  {
+    "description": "Edgeville - Bank Door Hinges and Handles",
+    "baseMaterial": "GRUNGE_3",
+    "objectIds": [
+      1514,
+      1515
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.4
+  },
+  {
+    "description": "Tutorial Island - GIM Armour Crates",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [
+      42827,
+      42828
+    ],
+    "uvType": "BOX",
+    "uvOrientation": 512,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 0", "h == 37" ],
+        "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS"
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - The Node - Bank Chest",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [
+      42834
+    ],
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ "h == 8" ],
+        "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS"
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - The Node - Chest with Gold Trim",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [
+      2079
+    ],
+    "uvOrientation": 512,
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ "h == 8" ],
+        "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS"
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - The Node - Statue",
+    "baseMaterial": "STONE",
+    "objectIds": [
+      17458,
+      42822
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.66,
+    "colorOverrides": [
+      {
+        "colors": [ "s == 4", "s == 5", "h == 14" ],
+        "baseMaterial": "GRAY_90"
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - The Node - Portal",
+    "baseMaterial": "STONE",
+    "objectIds": [
+      42819,
+      42820
+    ],
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ "h == 14", "h == 37", "h == 3" ],
+        "baseMaterial": "GRAY_90"
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - The Node - Furnace",
+    "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS",
+    "objectIds": [
+      42824
+    ],
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ "h == 14", "h == 37", "h == 3" ],
+        "baseMaterial": "GRAY_90"
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - Hanging Tools",
+    "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS",
+    "objectIds": [
+      2192,
+      42830
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.3,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 7" ],
+        "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
+        "uvType": "BOX",
+        "uvScale": 0.3,
+        "uvOrientation": 512
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - Workbench",
+    "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
+    "objectIds": [
+      2279
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.3,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 0" ],
+        "baseMaterial": "METALLIC_1_LIGHT_SEMIGLOSS",
+        "uvType": "BOX",
+        "uvScale": 0.5
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - Drill",
+    "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
+    "objectIds": [
+      2281
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.3,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 0", "h == 5", "h == 10" ],
+        "baseMaterial": "GRUNGE_3"
+      }
+    ]
+  },
+  {
+    "description": "Tutorial Island - Shelves",
+    "baseMaterial": "GRUNGE_3",
+    "objectIds": [
+      3026,
+      3027,
+      3028,
+      4511,
+      5082,
+      41740
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.75
+  },
+  {
+    "description": "Tutorial Island - Varrock - Bed",
+    "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
+    "objectIds": [
+      7190
+    ],
+    "uvType": "BOX",
+    "uvScale": 0.75,
+    "colorOverrides": [
+      {
+        "colors": ["s == 0", "s == 1"],
+        "baseMaterial": "FINE_CARPET",
+        "uvType": "BOX",
+        "uvScale": 0.4
+      }
+    ]
   },
   {
     "description": "Karamja Volcano Entrance",
@@ -15211,7 +15853,7 @@
     "baseMaterial": "BARK",
     "objectIds": [
       4533, 4540, 8462, 8463,
-      8464, 8465, 8466,
+      8464, 8465, 8466, 8467,
       9734, 10820, 20806, 37969,
       37970, 42395, 42831, 51772
     ],
@@ -16755,7 +17397,6 @@
       26151,
       26152,
       26153,
-      26154,
       26155,
       26156,
       26157,
@@ -16778,7 +17419,16 @@
       27055
     ],
     "uvType": "BOX",
-    "uvScale": 0.6
+    "uvScale": 1.85
+  },
+  {
+    "description": "Abyss - Wall",
+    "baseMaterial": "ABYSSAL",
+    "objectIds": [
+      26154
+    ],
+    "uvType": "WORLD_XZ",
+    "uvScale": 1.85
   },
   {
     "description": "Abyss - Puddle",
@@ -17884,7 +18534,13 @@
       51668,
       51672
     ],
-    "uvType": "BOX"
+    "uvType": "BOX",
+    "colorOverrides": [
+      {
+        "colors": [ "h == 16" ],
+        "baseMaterial": "GRUNGE_3"
+      }
+    ]
   },
   {
     "description": "Hunter Guild Big Tree",
@@ -17900,17 +18556,12 @@
       51627,
       51628,
       51629,
-      51630,
       51631,
       51632,
-      51632,
       51633,
-      51634,
       51635,
-      51636,
       51637,
       51638,
-      51641,
       51646,
       51646,
       51647,
@@ -17926,6 +18577,57 @@
     ],
     "uvType": "BOX",
     "uvScale": 1.2
+  },
+  {
+    "description": "Hunter Guild Big Tree with Leaves",
+    "baseMaterial": "BARK",
+    "objectIds": [
+      51632,
+      51634,
+      51636
+    ],
+    "uvType": "BOX",
+    "uvScale": 1.2,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 16" ],
+        "baseMaterial": "GRUNGE_3"
+      }
+    ]
+  },
+  {
+    "description": "Hunter Guild Big Tree with Banners",
+    "baseMaterial": "BARK",
+    "objectIds": [
+      51630
+    ],
+    "uvType": "BOX",
+    "uvScale": 1.2,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 0", "h == 6", "h == 8", "h == 14" ],
+        "baseMaterial": "FINE_CARPET",
+        "uvType": "WORLD_XY",
+        "uvScale": 0.66
+      }
+    ]
+  },
+  {
+    "description": "Hunter Guild Big Tree with Carving",
+    "baseMaterial": "BARK",
+    "objectIds": [
+      51641
+    ],
+    "uvType": "BOX",
+    "uvScale": 1.2,
+    "colorOverrides": [
+      {
+        "colors": [ 5915 ],
+        "baseMaterial": "WOOD_GRAIN_DARK",
+        "uvType": "WORLD_XY",
+        "uvScale": 1.1
+      }
+    ]
   },
   {
     "description": "Hunter Guild Big Tree Rope",
@@ -18027,13 +18729,20 @@
     "uvScale": 0.4
   },
   {
-    "description": "Varlamore, Well, MODEL_YZ is used with intent",
-    "baseMaterial": "GRUNGE_2",
+    "description": "Varlamore - Well",
+    "baseMaterial": "STONE",
     "objectIds": [
       46805
     ],
-    "uvType": "MODEL_YZ",
-    "uvScale": 0.4
+    "uvType": "BOX",
+    "uvScale": 0.4,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 6" ],
+        "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
+        "uvType": "BOX"
+      }
+    ]
   },
   {
     "description": "Varlamore, 'Take-log' Roots in Hunter Guild Caverns",
@@ -18852,7 +19561,8 @@
     "baseMaterial": "GRUNGE_2",
     "objectIds": [
       51826,
-      51827
+      51827,
+      51828
     ],
     "uvType": "MODEL_XZ",
     "uvScale": 0.2
@@ -19035,7 +19745,7 @@
   {
     "description": "Wooden hat stand",
     "baseMaterial": "WOOD_GRAIN_3",
-    "objectIds": [ 12981 ],
+    "objectIds": [ 7166, 12981 ],
     "uvType": "BOX",
     "uvScale": 0.8,
     "uvOrientationX": 512,
@@ -19111,6 +19821,32 @@
     "hideVanillaShadows": true
   },
   {
+    "description": "Misthalin Mystery Boat",
+    "objectIds": [ 30108, 30109 ],
+    "baseMaterial": "WOOD_GRAIN_3",
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 37" ],
+        "baseMaterial": "TRANSPARENT"
+      }
+    ]
+  },
+  {
+    "description": "Misthalin Mystery Barrel of Rainwater",
+    "objectIds": [ 30123, 30124 ],
+    "baseMaterial": "WOOD_GRAIN_3",
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 37" ],
+        "baseMaterial": "GRAY_90"
+      }
+    ]
+  },
+  {
     "description": "Murder Mystery Wooden Double Doors",
     "objectIds": [ 1146, 11447, 30110, 30111 ],
     "baseMaterial": "WOOD_GRAIN_3",
@@ -19145,6 +19881,13 @@
     "baseMaterial": "WOOD_GRAIN_3",
     "uvType": "BOX",
     "uvScale": 0.7
+  },
+  {
+    "description": "Lumbridge - Restless Ghost - Coffin",
+    "objectIds": [ 2145, 15052, 15053 ],
+    "baseMaterial": "WOOD_GRAIN_2_SMOOTH",
+    "uvType": "BOX",
+    "uvScale": 0.88
   },
   {
     "description": "Lumbridge crypt stone block walls",
@@ -20588,5 +21331,765 @@
     "uvType": "BOX",
     "uvOrientation": 512,
     "uvScale": 0.8
+  },
+  {
+    "description": "Bankbooth with Glass Window - Lumbridge",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 18491 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 21549, 21594, 21630 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Shutters - Lumbridge",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 18492 ],
+    "uvType": "BOX",
+    "uvScale": 0.8
+  },
+  {
+    "description": "Bankbooth with Glass Window - Varrock",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 10583 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 43054, 43082, 43102, 43125 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Shutters - Corsair Cove",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 10585 ],
+    "uvType": "BOX",
+    "uvScale": 0.8
+  },
+  {
+    "description": "Bankbooth with Glass Window - Falador",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 24101 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 43054, 43082, 43102, 43125 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Glass Window - Seers",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 25808 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 21549, 21594, 21630 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Shutters - Seers",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 25809 ],
+    "uvType": "BOX",
+    "uvScale": 0.8
+  },
+  {
+    "description": "Bankbooth with Glass Window - Lunar Island",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 16700 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 43011, 43054, 43102 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Glass Window - Canifis",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 24347 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 43011, 43054, 43121 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Glass Window - Phasmatys",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 16642 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 21507, 21548, 21595 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Shutters - Phasmatys",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 16643 ],
+    "uvType": "BOX",
+    "uvScale": 0.8
+  },
+  {
+    "description": "Bankbooth with Glass Window - Nardah",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 10517 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 21535, 21576, 21630 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Shutters - Nardah",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 10518 ],
+    "uvType": "BOX",
+    "uvScale": 0.8
+  },
+  {
+    "description": "Bankbooth with Glass Window - Nardah",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 20325 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ 43025, 43068, 43116 ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Bankbooth with Glass Window - The Node",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "objectIds": [ 42837 ],
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": [ "h == 21" ],
+        "baseMaterial": "NONE",
+        "uvType": "WORLD_XY"
+      }
+    ]
+  },
+  {
+    "description": "Compost Bins",
+    "baseMaterial": "WOOD_GRAIN_3",
+    "uvOrientation": 512,
+    "uvType": "BOX",
+    "flatNormals": true,
+    "uvScale": 0.8,
+    "colorOverrides": [
+      {
+        "colors": "h == 8 && s == 4",
+        "baseMaterial": "GRUNGE_1",
+        "uvType": "WORLD_XZ",
+        "uvScale": 0.8
+      },
+      {
+        "colors": "h == 12 && s == 6",
+        "baseMaterial": "DIRT_1_SHINY",
+        "uvType": "WORLD_XZ",
+        "uvScale": 0.8
+      },
+      {
+        "colors": "h == 2 && s == 7",
+        "baseMaterial": "BLANK_GLOSS"
+      }
+    ],
+    "objectIds": [
+      3830,
+      3835,
+      3836,
+      3837,
+      3838,
+      3839,
+      3840,
+      3841,
+      3842,
+      3843,
+      3844,
+      3845,
+      3846,
+      3847,
+      3848,
+      3849,
+      3850,
+      3851,
+      3852,
+      3853,
+      3854,
+      7808,
+      7813,
+      19054,
+      19055,
+      19056,
+      19057,
+      19058,
+      19059,
+      19060,
+      19061,
+      19062,
+      19063,
+      19064,
+      19066,
+      19067,
+      19068,
+      19069,
+      19070,
+      19071,
+      19072,
+      19073,
+      19074,
+      19075,
+      19076,
+      19077,
+      19078,
+      19079,
+      19080,
+      19081,
+      19082,
+      19083,
+      19084,
+      19085,
+      19086,
+      19087,
+      19088,
+      19089,
+      19090,
+      19091,
+      19092,
+      19093,
+      19094,
+      19095,
+      19096,
+      19097,
+      19098,
+      19099,
+      19100,
+      19101,
+      19102,
+      19103,
+      19104,
+      19105,
+      19106,
+      19107,
+      19108,
+      19109,
+      19110,
+      19111,
+      20099,
+      20100,
+      20101,
+      20102,
+      20103,
+      20104,
+      20105,
+      20106,
+      20107,
+      20108,
+      20109,
+      20110,
+      20111,
+      20112,
+      20113,
+      20114,
+      20115,
+      20116,
+      20117,
+      20119,
+      20120,
+      20121,
+      20122,
+      20123,
+      20124,
+      20125,
+      20126,
+      20228,
+      20870,
+      20871,
+      20872,
+      20886,
+      20887,
+      20888,
+      20889,
+      20890,
+      20891,
+      20892,
+      20893,
+      20894,
+      20895,
+      20896,
+      20897,
+      20898,
+      20899,
+      20900,
+      20901,
+      20902,
+      20903,
+      20904,
+      20905,
+      20906,
+      20907,
+      20908,
+      20909,
+      20910,
+      20911,
+      20912,
+      20913,
+      20914,
+      20915,
+      20916,
+      20917,
+      20918,
+      20919,
+      20920,
+      20921,
+      20922,
+      20923,
+      20924,
+      21281,
+      21282,
+      21283,
+      21284,
+      21285,
+      21286,
+      21287,
+      21288,
+      21289,
+      21290,
+      21291,
+      21292,
+      21293,
+      21294,
+      21295,
+      21296,
+      21297,
+      21298,
+      21668,
+      21669,
+      21670,
+      21671,
+      21672,
+      21673,
+      21674,
+      21675,
+      21676,
+      21677,
+      21678,
+      21679,
+      21680,
+      21681,
+      21682,
+      21683,
+      21684,
+      21685,
+      21686,
+      21687,
+      21688,
+      21689,
+      21690,
+      21691,
+      21692,
+      21693,
+      21694,
+      21695,
+      30502,
+      30503,
+      30504,
+      30505,
+      30506,
+      30507,
+      30508,
+      30509,
+      30510,
+      30511,
+      30512,
+      30513,
+      30514,
+      30515,
+      30516,
+      31863,
+      31864,
+      31865,
+      31866,
+      31867,
+      31868,
+      31869,
+      31870,
+      31871,
+      31872,
+      31873,
+      31874,
+      31875,
+      31876,
+      31877,
+      33762,
+      33763,
+      33764,
+      33765,
+      33766,
+      33767,
+      33768,
+      33769,
+      33770,
+      33771,
+      33772,
+      33773,
+      33774,
+      33775,
+      33776,
+      33777,
+      33778,
+      33779,
+      33780,
+      33781,
+      33782,
+      33783,
+      33784,
+      33785,
+      33786,
+      33787,
+      33788,
+      33789,
+      33790,
+      33791,
+      33792,
+      33793,
+      33794,
+      33795,
+      33796,
+      33797,
+      33798,
+      33799,
+      33800,
+      33801,
+      33802,
+      33803,
+      33804,
+      33805,
+      33806,
+      33807,
+      33808,
+      33809,
+      33810,
+      33811,
+      33812,
+      33813,
+      33814,
+      33815,
+      33816,
+      33817,
+      33818,
+      33819,
+      33820,
+      33821,
+      33822,
+      33823,
+      33824,
+      33825,
+      33826,
+      33827,
+      33828,
+      33829,
+      33830,
+      33831,
+      33832,
+      33833,
+      33834,
+      33835,
+      33836,
+      33837,
+      33838,
+      33839,
+      33840,
+      33841,
+      33842,
+      33843,
+      33844,
+      33845,
+      33846,
+      33847,
+      33848,
+      33849,
+      33850,
+      33851,
+      33852,
+      33853,
+      33854,
+      33855,
+      33856,
+      33857,
+      33858,
+      33859,
+      33860,
+      33861,
+      33862,
+      33863,
+      33864,
+      33865,
+      33866,
+      33867,
+      33868,
+      33869,
+      33870,
+      33871,
+      33872,
+      33873,
+      33874,
+      33875,
+      33876,
+      33877,
+      33878,
+      33879,
+      33880,
+      33881,
+      33882,
+      33883,
+      33884,
+      33885,
+      33886,
+      33887,
+      33888,
+      33889,
+      33890,
+      33891,
+      33892,
+      33893,
+      33894,
+      33895,
+      33896,
+      33897,
+      33898,
+      33899,
+      33900,
+      33901,
+      33902,
+      33903,
+      33904,
+      33905,
+      33906,
+      33907,
+      33908,
+      33909,
+      33910,
+      33911,
+      33912,
+      33913,
+      33914,
+      33915,
+      33916,
+      33917,
+      33918,
+      33919,
+      33920,
+      33921,
+      33922,
+      33923,
+      33924,
+      33925,
+      33926,
+      33927,
+      33928,
+      33929,
+      33930,
+      33931,
+      33932,
+      33933,
+      33934,
+      33935,
+      33936,
+      33937,
+      33938,
+      33939,
+      33940,
+      33941,
+      33942,
+      33943,
+      33944,
+      33945,
+      33946,
+      33947,
+      33948,
+      33949,
+      33950,
+      33951,
+      33952,
+      33953,
+      33954,
+      33955,
+      33956,
+      33957,
+      33958,
+      33959,
+      33960,
+      33961,
+      33962,
+      33963,
+      33964,
+      33965,
+      33966,
+      33967,
+      33968,
+      33969,
+      33970,
+      33971,
+      33972,
+      33973,
+      33974,
+      33975,
+      33976,
+      33977,
+      33978,
+      41426
+    ]
+  },
+  {
+    "description": "Falador Flower patch with rocks",
+    "baseMaterial": "STONE_NORMALED",
+    "uvType": "BOX",
+    "uvScale": 0.8,
+    "uvOrientation": 69,
+    "colorOverrides": [
+      {
+        "colors": "h == 8 && s == 4",
+        "uvType": "WORLD_XZ",
+        "baseMaterial": "DIRT_1"
+      }
+    ],
+    "objectIds": [
+      24046,
+      24047
+    ]
+  },
+  {
+    "description": "Falador Flower patch",
+    "baseMaterial": "DIRT_1",
+    "uvType": "MODEL_XZ",
+    "objectIds": [
+      24048
+    ]
+  },
+  {
+    "description": "Lovakengj Walls",
+    "baseMaterial": "METALLIC_1_LIGHT_GLOSS",
+    "uvOrientation": 512,
+    "uvType": "BOX",
+    "uvScale": 0.6,
+    "objectIds": [
+      28484,
+      28485,
+      28486
+    ]
+  },
+  {
+    "description": "Lovakengj Doors",
+    "baseMaterial": "METALLIC_1_LIGHT_GLOSS",
+    "uvOrientation": 512,
+    "uvType": "BOX",
+    "uvScale": 0.6,
+    "objectIds": [
+      28479,
+      28480,
+      28481,
+      28482
+    ]
+  },
+  {
+    "description": "Lovakengj Walls with Rocks",
+    "baseMaterial": "METALLIC_1_LIGHT_GLOSS",
+    "uvOrientation": 512,
+    "uvType": "BOX",
+    "uvScale": 0.6,
+    "colorOverrides": [
+      {
+        "colors": "h == 0 && s == 0",
+        "baseMaterial": "ROCK_2",
+        "uvType": "BOX",
+        "uvScale": 0.7
+      }
+    ],
+    "objectIds": [
+      28474,
+      28475,
+      28476,
+      28477,
+      28478
+    ]
+  },
+  {
+    "description": "Lovakengj Walls with Rocks and Window",
+    "baseMaterial": "METALLIC_1_LIGHT_GLOSS",
+    "uvOrientation": 512,
+    "uvType": "BOX",
+    "uvScale": 0.6,
+    "colorOverrides": [
+      {
+        "colors": "h == 0 && s == 0",
+        "baseMaterial": "ROCK_2",
+        "uvType": "BOX",
+        "uvScale": 0.7
+      },
+      {
+        "colors": "h > 7",
+        "baseMaterial": "NONE"
+      }
+    ],
+    "objectIds": [
+      28483
+    ]
+  },
+  {
+    "description": "Lovakengj roofs",
+    "baseMaterial": "METALLIC_1_LIGHT_GLOSS",
+    "uvOrientation": 512,
+    "uvType": "BOX",
+    "uvScale": 0.6,
+    "objectIds": [
+      28487,
+      28488,
+      28489,
+      28490,
+      28491,
+      28492,
+      28493,
+      28494,
+      28495
+    ]
   }
 ]

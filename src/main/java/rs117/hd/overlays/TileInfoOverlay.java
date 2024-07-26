@@ -9,6 +9,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Polygon;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
@@ -62,14 +63,15 @@ import static net.runelite.api.Perspective.*;
 import static rs117.hd.HdPlugin.ORTHOGRAPHIC_ZOOM;
 import static rs117.hd.scene.SceneContext.SCENE_OFFSET;
 import static rs117.hd.scene.tile_overrides.TileOverride.OVERLAY_FLAG;
+import static rs117.hd.utils.HDUtils.HIDDEN_HSL;
 import static rs117.hd.utils.HDUtils.clamp;
 import static rs117.hd.utils.HDUtils.getSceneBaseExtended;
 
 @Slf4j
 @Singleton
 public class TileInfoOverlay extends Overlay implements MouseListener, MouseWheelListener {
-	private static final Font MONOSPACE_FONT = new Font("Monospaced", Font.PLAIN, 10);
-	private static final Color BACKDROP_COLOR = new Color(0, 0, 0, 200);
+	private static final Font MONOSPACE_FONT = new Font("Courier New", Font.PLAIN, 12);
+	private static final Color BACKDROP_COLOR = new Color(0, 0, 0, 100);
 	private static final Color TRANSPARENT_YELLOW_50 = new Color(255, 255, 0, 50);
 	private static final Color TRANSPARENT_YELLOW_100 = new Color(255, 255, 0, 100);
 	private static final Color TRANSPARENT_WHITE_100 = new Color(255, 255, 255, 100);
@@ -102,7 +104,6 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 	private boolean ctrlHeld;
 	private boolean ctrlToggled;
 	private boolean shiftHeld;
-	private float fontSize = 12;
 	private float zoom = 1;
 
 	private static final int MODE_TILE_INFO = 0;
@@ -238,7 +239,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 
 									if (secondTry == 0) {
 										var paint = tile.getSceneTilePaint();
-										if ((paint == null || paint.getNeColor() == 12345678) && tile.getSceneTileModel() == null)
+										if ((paint == null || paint.getNeColor() == HIDDEN_HSL) && tile.getSceneTileModel() == null)
 											continue;
 									}
 
@@ -468,7 +469,11 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 				overlay = replacement;
 			}
 			lines.add(String.format("Overlay: ID %d -> %s", overlayId, replacementPath));
-			lines.add("GroundMaterial: " + overlay.groundMaterial);
+			lines.add(String.format(
+				"GroundMaterial: %s -> %s",
+				overlay.groundMaterial,
+				overlay.groundMaterial.getRandomMaterial(worldPos)
+			));
 
 			int underlayId = scene.getUnderlayIds()[tileZ][tileExX][tileExY];
 			var underlay = tileOverrideManager.getOverrideBeforeReplacements(worldPos, underlayId);
@@ -481,16 +486,18 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 				underlay = replacement;
 			}
 			lines.add(String.format("Underlay: ID %d -> %s", underlayId, replacementPath));
-			lines.add("GroundMaterial: " + underlay.groundMaterial);
+			lines.add(String.format(
+				"GroundMaterial: %s -> %s",
+				underlay.groundMaterial,
+				underlay.groundMaterial.getRandomMaterial(worldPos)
+			));
 
 			if (tilePaint != null) {
 				polyColor = client.isKeyPressed(KeyCode.KC_ALT) ? Color.YELLOW : Color.CYAN;
 				lines.add("Tile type: Paint");
 				Material material = Material.fromVanillaTexture(tilePaint.getTexture());
 				lines.add(String.format("Material: %s (%d)", material.name(), tilePaint.getTexture()));
-				int[] hsl = new int[3];
-				HDUtils.getSouthWesternMostTileColor(hsl, tile);
-				lines.add(String.format("HSL: %s", Arrays.toString(hsl)));
+				lines.add(String.format("HSL: %s", hslString(tile)));
 
 				var override = tileOverrideManager.getOverride(scene, tile, worldPos, OVERLAY_FLAG | overlayId, underlayId);
 				lines.add("WaterType: " + proceduralGenerator.seasonalWaterType(override, tilePaint.getTexture()));
@@ -535,9 +542,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 					}
 				}
 
-				int[] hsl = new int[3];
-				HDUtils.getSouthWesternMostTileColor(hsl, tile);
-				lines.add(String.format("HSL: %s", Arrays.toString(hsl)));
+				lines.add(String.format("HSL: %s", hslString(tile)));
 			}
 		}
 
@@ -549,6 +554,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 				HDUtils.getBakedOrientation(groundObject.getConfig()),
 				getModelInfo(groundObject.getRenderable())
 			));
+			lines.add("Ground Type: " + HDUtils.getObjectType(groundObject.getConfig()));
 		}
 
 		WallObject wallObject = tile.getWallObject();
@@ -571,6 +577,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 					getModelInfo(wallObject.getRenderable2())
 				));
 			}
+			lines.add("Wall Type: " + HDUtils.getObjectType(wallObject.getConfig()));
 		}
 
 		GameObject[] gameObjects = tile.getGameObjects();
@@ -616,6 +623,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 				faceCount,
 				getModelInfo(renderable)
 			));
+			lines.add("Object Type: " + HDUtils.getObjectType(gameObject.getConfig()));
 		}
 
 		for (var npc : client.getTopLevelWorldView().npcs()) {
@@ -706,7 +714,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 			{
 				leftWidth = Math.max(leftWidth, fm.stringWidth(Text.removeTags(pair.getLeft())));
 				var rfm = fm;
-				if (pair.getRight().startsWith("\t"))
+				if (pair.getRight().contains("<tt>"))
 					rfm = g.getFontMetrics(MONOSPACE_FONT);
 				rightWidth = Math.max(rightWidth, rfm.stringWidth(Text.removeTags(pair.getRight())));
 			}
@@ -753,7 +761,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 			else
 			{
 				boolean indented = pair.getRight().startsWith("\t");
-				if (indented) {
+				if (pair.getRight().contains("<tt>")) {
 					g.setFont(MONOSPACE_FONT);
 					dropShadow = false;
 				}
@@ -763,7 +771,7 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 				y = rect.y + padding + offsetY;
 			}
 
-			drawString(g, line, x, y, dropShadow);
+			drawString(g, line, (int) x, (int) y, dropShadow);
 
 			g.setFont(f);
 		}
@@ -782,9 +790,6 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 	}
 
 	private String getModelInfo(Renderable renderable) {
-		if (mode != MODE_MODEL_INFO)
-			return "";
-
 		if (renderable == null)
 			return " null renderable";
 
@@ -792,35 +797,47 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 		if (model == null)
 			return " null model";
 
-		var colors =
-			Arrays.stream(model.getFaceColors1())
-				.distinct()
-				.sorted()
-				.mapToObj(hsl -> {
-					var rawhsl = ColorUtils.unpackRawHsl(hsl);
-					return String.format(
-						"<col=%s> %5d [%2d %1d %3d]</col>",
-						ColorUtils.srgbToHex(ColorUtils.packedHslToSrgb(hsl)),
-						hsl, rawhsl[0], rawhsl[1], rawhsl[2]
-					);
-				})
-				.toArray(String[]::new);
+		switch (mode) {
+			case MODE_TILE_INFO:
+				return "  " + (
+					renderable instanceof Model ?
+						"<col=#00ff00>static</col>" :
+						(renderable instanceof DynamicObject || renderable instanceof Actor) ? "<col=#ff0000>dynamic</col>" :
+							"<col=#ff0000>maybe dynamic</col>"
+				);
+			case MODE_MODEL_INFO:
+				var colors =
+					Arrays.stream(model.getFaceColors1())
+						.distinct()
+						.sorted()
+						.mapToObj(hsl -> {
+							var rawhsl = ColorUtils.unpackRawHsl(hsl);
+							return String.format(
+								"<col=%s>%5d [%2d %1d %3d] </col>",
+								ColorUtils.srgbToHex(ColorUtils.packedHslToSrgb(hsl)),
+								hsl, rawhsl[0], rawhsl[1], rawhsl[2]
+							);
+						})
+						.toArray(String[]::new);
 
 
-		int columns = clamp((int) Math.round(Math.sqrt(colors.length / 5f)), 3, 8);
-		int rows = (int) Math.ceil(colors.length / (float) columns);
+				int columns = clamp((int) Math.round(Math.sqrt(colors.length / 5f)), 3, 8);
+				int rows = (int) Math.ceil(colors.length / (float) columns);
 
-		StringBuilder str = new StringBuilder();
-		for (int i = 0; i < rows; i++) {
-			str.append("\n\t");
-			for (int j = 0; j < columns; j++) {
-				int idx = i * columns + j;
-				if (idx < colors.length)
-					str.append(colors[idx]);
-			}
+				StringBuilder str = new StringBuilder();
+				for (int i = 0; i < rows; i++) {
+					str.append("\n\t<tt>");
+					for (int j = 0; j < columns; j++) {
+						int idx = i * columns + j;
+						if (idx < colors.length)
+							str.append(colors[idx]);
+					}
+				}
+
+				return "\nFace colors: " + colors.length + str;
 		}
 
-		return "\nFace colors: " + colors.length + str;
+		return "";
 	}
 
 	public Polygon getCanvasTilePoly(@Nonnull Client client, Scene scene, Tile tile) {
@@ -858,8 +875,8 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 	}
 
 	private static int getHeight(Scene scene, int localX, int localY, int plane) {
-		int sceneExX = HDUtils.clamp(localX / LOCAL_TILE_SIZE + SCENE_OFFSET, 0, EXTENDED_SCENE_SIZE - 1);
-		int sceneExY = HDUtils.clamp(localY / LOCAL_TILE_SIZE + SCENE_OFFSET, 0, EXTENDED_SCENE_SIZE - 1);
+		int sceneExX = HDUtils.clamp((localX >> LOCAL_COORD_BITS) + SCENE_OFFSET, 0, EXTENDED_SCENE_SIZE - 1);
+		int sceneExY = HDUtils.clamp((localY >> LOCAL_COORD_BITS) + SCENE_OFFSET, 0, EXTENDED_SCENE_SIZE - 1);
 
 		int[][][] tileHeights = scene.getTileHeights();
 		int x = localX & (LOCAL_TILE_SIZE - 1);
@@ -911,24 +928,16 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 		return null;
 	}
 
-	private static String hslString(int color) {
-		if (color == 12345678)
+	private static String hslString(Tile tile) {
+		int[] hsl = new int[3];
+		int rawHsl = HDUtils.getSouthWesternMostTileColor(hsl, tile);
+		if (rawHsl == HIDDEN_HSL)
 			return "HIDDEN";
-		return color + " (" + (color >> 10 & 0x3F) + ", " + (color >> 7 & 7) + ", " + (color & 0x7F) + ")";
-	}
-
-	private void useZoomAwareFont(Graphics2D g, float scale) {
-		zoom = client.get3dZoom() / 1400.f;
-		if (zoom > 1.2f) {
-			fontSize = Math.min(16, 7 * zoom);
-		} else {
-			fontSize = Math.max(7.8f, 14 * (float) Math.sqrt(zoom));
-		}
-		g.setFont(FontManager.getDefaultFont().deriveFont(fontSize * scale));
+		return rawHsl + " " + Arrays.toString(hsl);
 	}
 
 	private void drawAllIds(Graphics2D g, SceneContext ctx) {
-		useZoomAwareFont(g, 1);
+		g.setFont(FontManager.getRunescapeSmallFont());
 		g.setColor(new Color(255, 255, 255, 127));
 
 		Tile[][][] tiles = ctx.scene.getExtendedTiles();
@@ -980,20 +989,27 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 		);
 		if (p == null)
 			return;
-		g.drawString(str, p[0], p[1] + line * fontSize);
+
+		var fm = g.getFontMetrics();
+		int w = fm.stringWidth(str);
+
+		drawString(g, str, p[0] - w / 2, p[1] + line * fm.getHeight(), true);
 	}
 
-	private void drawString(Graphics2D g2d, String str, float x, float y, boolean dropShadow) {
+	private void drawString(Graphics2D g2d, String str, int x, int y, boolean dropShadow) {
 		Color origColor = g2d.getColor();
 
+		setAntiAliasing(g2d, false);
+
+		String stripped = Text.removeTags(str);
 		if (dropShadow) {
 			g2d.setColor(Color.BLACK);
-			g2d.drawString(str, x + 1, y + 1);
+			g2d.drawString(stripped, x + 1, y + 1);
 			g2d.setColor(origColor);
 		}
 
 		if (!str.contains("<col=")) {
-			g2d.drawString(str, x, y);
+			g2d.drawString(stripped, x, y);
 			return;
 		}
 
@@ -1002,8 +1018,8 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 		var m = pattern.matcher(str);
 		int end = 0;
 		while (m.find()) {
-			if (m.start() < end) {
-				var s = str.substring(m.start(), end);
+			if (end < m.start()) {
+				var s = Text.removeTags(str.substring(end, m.start()));
 				g2d.setColor(origColor);
 				g2d.drawString(s, x, y);
 				x += fm.stringWidth(s);
@@ -1032,14 +1048,20 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 				continue;
 			}
 
+			var withBrackets = m.group(2);
+			var withoutBrackets = withBrackets.replaceAll("[\\[\\]]", " ");
+			var onlyBrackets = withBrackets.replaceAll("[^\\[\\]]", " ");
+
 			var c = new Color(r, g, b, a);
 			g2d.setColor(c);
-			int w = fm.stringWidth(m.group(2));
+			int w = fm.stringWidth(withoutBrackets);
 			int h = fm.getHeight();
-			g2d.fillRect(Math.round(x + 1), Math.round(y - fm.getAscent() + fm.getLeading() - 1), w + 2, h + 2);
+			g2d.fillRect(x - 2, y - fm.getAscent() + fm.getLeading() - 2, w + 4, h + 2);
 			g2d.setColor(getContrastColor(c));
-			g2d.drawString(m.group(2), x, y);
-			x += fm.stringWidth(m.group(2));
+			g2d.drawString(withoutBrackets, x, y);
+			g2d.drawString(onlyBrackets, x, y - 1);
+
+			x += fm.stringWidth(withoutBrackets);
 		}
 
 		g2d.setColor(origColor);
@@ -1123,18 +1145,72 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 		}
 
 		int scale = client.getScale();
-		float offsetX = client.getViewportXOffset() + client.getViewportWidth() / 2.f;
-		float offsetY = client.getViewportYOffset() + client.getViewportHeight() / 2.f;
 		ax *= scale;
 		ay *= scale;
 		bx *= scale;
 		by *= scale;
+
+		int w = client.getViewportWidth();
+		int h = client.getViewportHeight();
+
+		float offsetX = client.getViewportXOffset() + w / 2.f;
+		float offsetY = client.getViewportYOffset() + h / 2.f;
 		ax += offsetX;
 		ay += offsetY;
 		bx += offsetX;
 		by += offsetY;
 
-		g.drawLine((int) ax, (int) ay, (int) bx, (int) by);
+		float vx = bx - ax;
+		float vy = by - ay;
+
+		// a + v * t = edge
+		// t = (edge - a) / v
+		if (ax < 0) {
+			ay += -ax / vx * vy;
+			ax = 0;
+		} else if (ax > w) {
+			ay += (w - ax) / vx * vy;
+			ax = w;
+		}
+		if (ay < 0) {
+			ax += -ay / vy * vx;
+			ay = 0;
+		} else if (ay > h) {
+			ax += (h - ay) / vy * vx;
+			ay = h;
+		}
+
+		if (bx < 0) {
+			by += -bx / vx * vy;
+			bx = 0;
+		} else if (bx > w) {
+			by += (w - bx) / vx * vy;
+			bx = w;
+		}
+		if (by < 0) {
+			bx += -by / vy * vx;
+			by = 0;
+		} else if (by > h) {
+			bx += (h - by) / vy * vx;
+			by = h;
+		}
+
+		int fromX = Math.round(ax);
+		int fromY = Math.round(ay);
+		int toX = Math.round(bx);
+		int toY = Math.round(by);
+
+		if (fromX == toX && fromY == toY)
+			return;
+
+		g.drawLine(fromX, fromY, toX, toY);
+	}
+
+	private void setAntiAliasing(Graphics2D g, boolean state) {
+		g.setRenderingHint(
+			RenderingHints.KEY_TEXT_ANTIALIASING,
+			state ? RenderingHints.VALUE_TEXT_ANTIALIAS_ON : RenderingHints.VALUE_TEXT_ANTIALIAS_OFF
+		);
 	}
 
 	private AABB toLocalAabb(SceneContext ctx, AABB aabb) {
@@ -1220,6 +1296,8 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 	}
 
 	private void drawLocalAabb(Graphics2D g, AABB aabb) {
+		setAntiAliasing(g, true);
+
 		// Draw bottom rect
 		drawLine(g, aabb.minX, aabb.minY, aabb.minZ, aabb.minX, aabb.maxY, aabb.minZ);
 		drawLine(g, aabb.minX, aabb.maxY, aabb.minZ, aabb.maxX, aabb.maxY, aabb.minZ);
@@ -1288,9 +1366,9 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 
 	private void drawLoadingLines(Graphics2D g) {
 		g.setColor(Color.BLUE);
-		int off = 16 * LOCAL_TILE_SIZE;
-		int max = SCENE_SIZE * LOCAL_TILE_SIZE;
-		var localAabb = new AABB(off, off, max, max, client.getPlane());
+		int min = 16 * LOCAL_TILE_SIZE;
+		int max = (SCENE_SIZE - 16) * LOCAL_TILE_SIZE;
+		var localAabb = new AABB(min, min, max, max, 0);
 		drawLocalAabb(g, localAabb);
 	}
 
