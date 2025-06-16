@@ -18,6 +18,7 @@ import rs117.hd.HdPlugin;
 import rs117.hd.utils.FileWatcher;
 import rs117.hd.utils.GsonUtils;
 import rs117.hd.utils.Props;
+import rs117.hd.utils.ReplaceIds;
 import rs117.hd.utils.ResourcePath;
 
 import static rs117.hd.utils.ResourcePath.path;
@@ -63,6 +64,9 @@ public class GamevalManager {
 				GAMEVALS.replaceAll((k, v) -> gamevals.getOrDefault(k, Collections.emptyMap()));
 				GAMEVALS.get(ANIM_KEY).put("-1", -1); // Allow -1 for animations specifically
 				log.debug("Loaded gameval mappings");
+
+				new ReplaceIds(this).replaceIdsWithNames();
+
 			} catch (IOException ex) {
 				log.error("Failed to load gamevals:", ex);
 			}
@@ -76,7 +80,10 @@ public class GamevalManager {
 		clearGamevals();
 	}
 
-	private String getName(String key, int id) {
+	public String getName(String key, int id) {
+		if (key == "anims" && id == -1) {
+			return "-1";
+		}
 		return GAMEVALS
 			.get(key)
 			.entrySet()
