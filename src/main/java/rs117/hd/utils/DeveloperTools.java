@@ -29,7 +29,6 @@ public class DeveloperTools implements KeyListener {
 	private static final Keybind KEY_TOGGLE_LIGHT_GIZMO_OVERLAY = new Keybind(KeyEvent.VK_F6, InputEvent.CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_FREEZE_FRAME = new Keybind(KeyEvent.VK_ESCAPE, InputEvent.SHIFT_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_ORTHOGRAPHIC = new Keybind(KeyEvent.VK_TAB, InputEvent.SHIFT_DOWN_MASK);
-	private static final Keybind GAMEVAL_INSPECTOR = new Keybind(KeyEvent.VK_G, InputEvent.SHIFT_DOWN_MASK);
 
 	@Inject
 	private ClientThread clientThread;
@@ -54,9 +53,6 @@ public class DeveloperTools implements KeyListener {
 
 	@Inject
 	private LightGizmoOverlay lightGizmoOverlay;
-
-	@Inject
-	private GameValInspector gameValInspector;
 
 	private boolean keyBindingsEnabled = false;
 	private boolean tileInfoOverlayEnabled = false;
@@ -154,9 +150,6 @@ public class DeveloperTools implements KeyListener {
 			plugin.toggleFreezeFrame();
 		} else if (KEY_TOGGLE_ORTHOGRAPHIC.matches(e)) {
 			plugin.orthographicProjection = !plugin.orthographicProjection;
-		} else if (GAMEVAL_INSPECTOR.matches(e)) {
-			System.out.println("HEREE");
-			gameValInspector.open();
 		} else {
 			return;
 		}
