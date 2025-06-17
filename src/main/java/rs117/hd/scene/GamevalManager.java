@@ -40,7 +40,7 @@ public class GamevalManager {
 
 	private FileWatcher.UnregisterCallback fileWatcher;
 
-	private static final Map<String, Map<String, Integer>> GAMEVALS = new HashMap<>();
+	public static final Map<String, Map<String, Integer>> GAMEVALS = new HashMap<>();
 
 	static {
 		clearGamevals();
