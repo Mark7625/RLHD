@@ -55,6 +55,7 @@ import rs117.hd.HdPluginConfig;
 import rs117.hd.data.WaterType;
 import rs117.hd.data.materials.Material;
 import rs117.hd.scene.environments.SkyboxConfig;
+import rs117.hd.scene.environments.SkyboxEntry;
 import rs117.hd.utils.HDUtils;
 import rs117.hd.utils.Props;
 import rs117.hd.utils.ResourcePath;
@@ -398,7 +399,7 @@ public class TextureManager {
 	}
 
 	private void ensureSkyboxesAreLoaded() {
-		if(skyboxConfig == null || skyboxConfig.skyboxes.length == 0) {
+		if(skyboxConfig == null || skyboxConfig.skyboxes.isEmpty()) {
 			return;
 		}
 
@@ -411,7 +412,7 @@ public class TextureManager {
 		textureSkybox = glGenTextures();
 		glActiveTexture(TEXTURE_UNIT_SKYBOX);
 		glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, textureSkybox);
-		glTexStorage3D(GL_TEXTURE_CUBE_MAP_ARRAY, 1, GL_SRGB8_ALPHA8, skyboxConfig.resolution, skyboxConfig.resolution, skyboxConfig.skyboxes.length * 6);
+		glTexStorage3D(GL_TEXTURE_CUBE_MAP_ARRAY, 1, GL_SRGB8_ALPHA8, skyboxConfig.resolution, skyboxConfig.resolution, skyboxConfig.skyboxes.size() * 6);
 
 		glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -423,17 +424,16 @@ public class TextureManager {
 
 		log.debug("Skybox resolution: {}", skyboxConfig.resolution);
 
-		loadedSkyboxes = new String[skyboxConfig.skyboxes.length];
+		loadedSkyboxes = new String[skyboxConfig.skyboxes.size()];
 
 		int validSkyboxCount = 0;
 		String[] faceFileNames = {"px", "nx", "py", "ny", "pz", "nz"};
-		for(int skyboxIdx = 0; skyboxIdx < skyboxConfig.skyboxes.length; skyboxIdx++) {
-			String skyboxId = skyboxConfig.skyboxes[skyboxIdx];
+		for (SkyboxEntry skybox : skyboxConfig.skyboxes) {
 			BufferedImage[] faceImages = new BufferedImage[6];
 			StringBuilder loadedFaces = new StringBuilder();
 
 			// Try loading combined atlas first
-			BufferedImage atlasImage = loadTextureImage("skybox/" + skyboxId + "/skybox");
+			BufferedImage atlasImage = loadTextureImage("skybox/" + skybox.getName() + "/skybox");
 			boolean usedAtlas = false;
 
 			if (atlasImage != null) {
@@ -448,19 +448,19 @@ public class TextureManager {
 						faceImages[3] = atlasImage.getSubimage(faceSize, faceSize, faceSize, faceSize); // ny
 						usedAtlas = true;
 					} catch (RasterFormatException e) {
-						log.warn("Invalid atlas format for skybox: {}", skyboxId);
+						log.warn("Invalid atlas format for skybox: {}", skybox.getName());
 					}
 				} else {
 					log.warn(
 						"Unexpected skybox.png dimensions for skybox: {} ({}x{})",
-						skyboxId, atlasImage.getWidth(), atlasImage.getHeight()
+						skybox.getName(), atlasImage.getWidth(), atlasImage.getHeight()
 					);
 				}
 			}
 
 			if (!usedAtlas) {
 				for (int faceIdx = 0; faceIdx < 6; faceIdx++) {
-					faceImages[faceIdx] = loadTextureImage("skybox/" + skyboxId + "/" + faceFileNames[faceIdx]);
+					faceImages[faceIdx] = loadTextureImage("skybox/" + skybox.getName() + "/" + faceFileNames[faceIdx]);
 				}
 			}
 
@@ -485,12 +485,13 @@ public class TextureManager {
 			}
 
 			if (loadedFaces.length() == 0) {
-				log.debug("Skybox: {} failed to load any face texture", skyboxId);
+				log.debug("Skybox: {} failed to load any face texture", skybox.getName());
 			} else {
-				log.debug("Skybox: {} loaded faces [{}]", skyboxId, loadedFaces);
-				loadedSkyboxes[validSkyboxCount++] = skyboxId;
+				log.debug("Skybox: {} loaded faces [{}]", skybox.getName(), loadedFaces);
+				loadedSkyboxes[validSkyboxCount++] = skybox.getName();
 			}
 		}
+
 
 		log.debug("Loaded {} Skybox's", validSkyboxCount);
 		plugin.checkGLErrors();
