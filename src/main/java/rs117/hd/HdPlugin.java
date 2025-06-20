@@ -1542,9 +1542,7 @@ public class HdPlugin extends Plugin implements DrawCallbacks {
 		glActiveTexture(TEXTURE_UNIT_MINIMAP_MASK);
 		glBindTexture(GL_TEXTURE_2D, texMinimapMask);
 
-		int minimapMaskSprite = client.isResized() ?
-			SpriteID.RESIZEABLE_MODE_MINIMAP_ALPHA_MASK :
-			SpriteID.FIXED_MODE_MINIMAP_ALPHA_MASK;
+		int minimapMaskSprite = SpriteID.RESIZEABLE_MODE_MINIMAP_ALPHA_MASK;
 		BufferedImage image = spriteManager.getSprite(minimapMaskSprite, 0);
 		if (image == null)
 			throw new RuntimeException("Failed to get minimap mask sprite");
