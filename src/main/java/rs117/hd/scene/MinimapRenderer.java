@@ -20,7 +20,7 @@ import rs117.hd.utils.ColorUtils;
 
 import static net.runelite.api.Constants.*;
 import static net.runelite.api.Perspective.*;
-import static rs117.hd.scene.SceneUploader.SCENE_OFFSET;
+import static rs117.hd.scene.SceneContext.SCENE_OFFSET;
 import static rs117.hd.scene.tile_overrides.TileOverride.NONE;
 import static rs117.hd.scene.tile_overrides.TileOverride.OVERLAY_FLAG;
 import static rs117.hd.utils.HDUtils.clamp;
@@ -396,8 +396,8 @@ public class MinimapRenderer {
 		int baseX = scene.getBaseX();
 		int baseY = scene.getBaseY();
 
-		final int tileExX = tileX + SceneUploader.SCENE_OFFSET;
-		final int tileExY = tileY + SceneUploader.SCENE_OFFSET;
+		final int tileExX = tileX + SCENE_OFFSET;
+		final int tileExY = tileY + SCENE_OFFSET;
 
 		int[] worldPos = sceneContext.sceneToWorld(tileX, tileY, tileZ);
 		int overlayId = OVERLAY_FLAG | scene.getOverlayIds()[tileZ][tileExX][tileExY];
