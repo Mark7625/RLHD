@@ -40,6 +40,7 @@ import rs117.hd.config.FogDepthMode;
 import rs117.hd.config.MaxDynamicLights;
 import rs117.hd.config.MinimapStyle;
 import rs117.hd.config.Saturation;
+import rs117.hd.config.SeasonalHemisphere;
 import rs117.hd.config.SeasonalTheme;
 import rs117.hd.config.ShadingMode;
 import rs117.hd.config.ShadowDistance;
@@ -304,19 +305,54 @@ public interface HdPluginConfig extends Config
 		return Contrast.DEFAULT;
 	}
 
+	String KEY_BRIGHTNESS = "screenBrightness";
+	@Range(
+		min = 50,
+		max = 200
+	)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+		keyName = KEY_BRIGHTNESS,
+		name = "Brightness",
+		description =
+			"Controls the brightness of the game, excluding UI.<br>" +
+			"Adjust until the disk on the left is barely visible.",
+		position = 13,
+		section = generalSettings
+	)
+	default int brightness() {
+		return 100;
+	}
+
+	@ConfigItem(
+		keyName = "useLegacyBrightness",
+		name = "Enable Legacy Brightness",
+		description =
+			"Whether the legacy brightness option below should be applied.<br>" +
+			"We recommend leaving this disabled.",
+		position = 14,
+		section = generalSettings
+	)
+	default boolean useLegacyBrightness() {
+		return false;
+	}
+
 	@Range(
 		min = 1,
 		max = 50
 	)
 	@ConfigItem(
 		keyName = "brightness2",
-		name = "Brightness",
-		description = "Controls the brightness of environmental lighting.<br>" +
+		name = "Legacy Brightness",
+		description =
+			"Controls the strength of the sun and ambient lighting.<br>" +
 			"A brightness value of 20 is recommended.",
-		position = 13,
+		position = 15,
 		section = generalSettings
 	)
-	default int brightness() { return 20; }
+	default int legacyBrightness() {
+		return 20;
+	}
 
 
 	/*====== Lighting settings ======*/
@@ -515,6 +551,18 @@ public interface HdPluginConfig extends Config
 		return SeasonalTheme.AUTOMATIC;
 	}
 
+	String KEY_SEASONAL_HEMISPHERE = "seasonalHemisphere";
+	@ConfigItem(
+		keyName = KEY_SEASONAL_HEMISPHERE,
+		name = "Seasonal Hemisphere",
+		description = "Determines which hemisphere the 'Automatic' Seasonal Theme should consider.",
+		position = 1,
+		section = environmentSettings
+	)
+	default SeasonalHemisphere seasonalHemisphere() {
+		return SeasonalHemisphere.NORTHERN;
+	}
+
 	@ConfigItem(
 		keyName = "fogDepthMode",
 		name = "Fog Depth Mode",
@@ -522,7 +570,7 @@ public interface HdPluginConfig extends Config
 			"Determines how the fog amount is controlled.<br>" +
 			"'Dynamic' changes fog depth based on the area, while<br>" +
 			"'Static' respects the manually defined fog depth.",
-		position = 1,
+		position = 2,
 		section = environmentSettings
 	)
 	default FogDepthMode fogDepthMode()
@@ -539,7 +587,7 @@ public interface HdPluginConfig extends Config
 		description =
 			"Specify how far from the edge fog should reach.<br>" +
 			"This applies only when 'Fog Depth Mode' is set to 'Static'.",
-		position = 2,
+		position = 3,
 		section = environmentSettings
 	)
 	default int fogDepth()
@@ -551,7 +599,7 @@ public interface HdPluginConfig extends Config
 		keyName = "groundFog",
 		name = "Ground Fog",
 		description = "Enables a height-based fog effect that covers the ground in certain areas.",
-		position = 3,
+		position = 4,
 		section = environmentSettings
 	)
 	default boolean groundFog() {
@@ -567,7 +615,7 @@ public interface HdPluginConfig extends Config
 			"If set to 'RuneLite Skybox', the sky color from RuneLite's Skybox plugin will be used.<br>" +
 			"If set to 'Old School Black', the sky will be black and water will remain blue, but for any<br>" +
 			"other option, the water color will be influenced by the sky color.",
-		position = 4,
+		position = 5,
 		section = environmentSettings
 	)
 	default DefaultSkyColor defaultSkyColor()
@@ -579,7 +627,7 @@ public interface HdPluginConfig extends Config
 		keyName = "overrideSky",
 		name = "Override Sky Color",
 		description = "Forces the default sky color to be used in all environments.",
-		position = 5,
+		position = 6,
 		section = environmentSettings
 	)
 	default boolean overrideSky() {
@@ -591,7 +639,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_MODEL_TEXTURES,
 		name = "Model Textures",
 		description = "Adds textures to some models.",
-		position = 6,
+		position = 7,
 		section = environmentSettings
 	)
 	default boolean modelTextures() {
@@ -603,7 +651,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_GROUND_TEXTURES,
 		name = "Ground Textures",
 		description = "Adds textures to some ground tiles.",
-		position = 7,
+		position = 8,
 		section = environmentSettings
 	)
 	default boolean groundTextures()
@@ -616,7 +664,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_TEXTURE_RESOLUTION,
 		name = "Texture Resolution",
 		description = "Controls the resolution used for all in-game textures.",
-		position = 8,
+		position = 9,
 		section = environmentSettings
 	)
 	default TextureResolution textureResolution()
@@ -629,7 +677,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_GROUND_BLENDING,
 		name = "Ground Blending",
 		description = "Controls whether ground tiles should blend into each other, or have distinct edges.",
-		position = 9,
+		position = 10,
 		section = environmentSettings
 	)
 	default boolean groundBlending()
@@ -641,7 +689,7 @@ public interface HdPluginConfig extends Config
 		keyName = "underwaterCaustics",
 		name = "Underwater Caustics",
 		description = "Apply underwater lighting effects to imitate sunlight passing through waves on the surface.",
-		position = 10,
+		position = 11,
 		section = environmentSettings
 	)
 	default boolean underwaterCaustics()
@@ -654,7 +702,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_HD_TZHAAR_RESKIN,
 		name = "HD TzHaar Reskin",
 		description = "Recolors the TzHaar city of Mor Ul Rek to give it an appearance similar to that of its 2008 HD variant.",
-		position = 11,
+		position = 12,
 		section = environmentSettings
 	)
 	default boolean hdTzHaarReskin() {
@@ -924,6 +972,27 @@ public interface HdPluginConfig extends Config
 		return true;
 	}
 
+	String KEY_WIREFRAME = "wireframe";
+	@ConfigItem(
+		keyName = KEY_WIREFRAME,
+		name = "Wireframe",
+		description = "Show the edges of individual triangles in the scene.",
+		section = experimentalSettings
+	)
+	default boolean wireframe() {
+		return false;
+	}
+
+	String KEY_ASYNC_UI_COPY = "experimentalAsyncUICopy";
+	@ConfigItem(
+		keyName = KEY_ASYNC_UI_COPY,
+		name = "Perform UI copy asynchronously",
+		description = "Slightly improves performance by delaying the UI by one frame.",
+		section = experimentalSettings
+	)
+	default boolean asyncUICopy() {
+		return false;
+	}
 
 	/*====== Internal settings ======*/
 

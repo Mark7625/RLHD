@@ -23,6 +23,7 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 	private FrameTimer frameTimer;
 
 	private final ArrayDeque<FrameTimings> frames = new ArrayDeque<>();
+	private final StringBuilder sb = new StringBuilder();
 
 	@Inject
 	public FrameTimerOverlay(HdPlugin plugin) {
@@ -47,7 +48,7 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 	public void onFrameCompletion(FrameTimings timings) {
 		long now = System.nanoTime();
 		while (!frames.isEmpty()) {
-			if (now - frames.peekFirst().frameTimestamp < 3e9) // remove entries older than 3 seconds
+			if (now - frames.peekFirst().frameTimestamp < 10e9) // remove older entries
 				break;
 			frames.removeFirst();
 		}
@@ -56,6 +57,8 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 
 	@Override
 	public Dimension render(Graphics2D g) {
+		long time = System.nanoTime();
+
 		var timings = getAverageTimings();
 		if (timings.length != Timer.values().length) {
 			panelComponent.getChildren().add(TitleComponent.builder()
@@ -68,13 +71,10 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 				if (!t.isGpuTimer && t != Timer.DRAW_FRAME)
 					addTiming(t, timings);
 
-			long gpuTime = 0;
-			for (var t : Timer.values())
-				if (t.isGpuTimer)
-					gpuTime += timings[t.ordinal()];
+			long gpuTime = timings[Timer.RENDER_FRAME.ordinal()];
 			addTiming("GPU", gpuTime, true);
 			for (var t : Timer.values())
-				if (t.isGpuTimer)
+				if (t.isGpuTimer && t != Timer.RENDER_FRAME)
 					addTiming(t, timings);
 
 			panelComponent.getChildren().add(LineComponent.builder()
@@ -90,9 +90,16 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 				.rightFont(FontManager.getRunescapeBoldFont())
 				.right(String.format("%.1f FPS", 1 / (Math.max(cpuTime, gpuTime) / 1e9)))
 				.build());
+
+			panelComponent.getChildren().add(LineComponent.builder()
+				.left("Error compensation:")
+				.right(String.format("%d ns", frameTimer.errorCompensation))
+				.build());
 		}
 
-		return super.render(g);
+		var result = super.render(g);
+		frameTimer.cumulativeError += System.nanoTime() - time;
+		return result;
 	}
 
 	private long[] getAverageTimings() {
@@ -105,7 +112,7 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 				timers[i] += frame.timers[i];
 
 		for (int i = 0; i < timers.length; i++)
-			timers[i] /= frames.size();
+			timers[i] = Math.max(0, timers[i] / frames.size());
 
 		return timers;
 	}
@@ -119,12 +126,16 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 			return;
 
 		// Round timers to zero if they are less than a microsecond off
-		String formatted = nanos < 3e3 && nanos > -1e5 ? "~0 ms" : String.format("%.3f ms", nanos / 1e6);
+		String result = "~0 ms";
+		if (Math.abs(nanos) > 1e3) {
+			result = sb.append(Math.round(nanos / 1e3) / 1e3).append(" ms").toString();
+			sb.setLength(0);
+		}
 		var font = bold ? FontManager.getRunescapeBoldFont() : FontManager.getRunescapeFont();
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left(name + ":")
 			.leftFont(font)
-			.right(formatted)
+			.right(result)
 			.rightFont(font)
 			.build());
 	}

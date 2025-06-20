@@ -1,5 +1,7 @@
 package rs117.hd.scene.model_overrides;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.annotations.JsonAdapter;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -13,12 +15,14 @@ import rs117.hd.config.SeasonalTheme;
 import rs117.hd.config.VanillaShadowMode;
 import rs117.hd.data.materials.Material;
 import rs117.hd.data.materials.UvType;
+import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.areas.AABB;
-import rs117.hd.utils.GsonUtils;
 import rs117.hd.utils.Props;
 import rs117.hd.utils.Vector;
 
 import static net.runelite.api.Perspective.*;
+import static rs117.hd.utils.ExpressionParser.asExpression;
+import static rs117.hd.utils.ExpressionParser.parseExpression;
 
 @Slf4j
 @NoArgsConstructor
@@ -35,13 +39,13 @@ public class ModelOverride
 	public SeasonalTheme seasonalTheme;
 	@JsonAdapter(AABB.JsonAdapter.class)
 	public AABB[] areas = {};
-	@JsonAdapter(GsonUtils.IntegerSetAdapter.class)
+	@JsonAdapter(GamevalManager.NpcAdapter.class)
 	public Set<Integer> npcIds = EMPTY;
-	@JsonAdapter(GsonUtils.IntegerSetAdapter.class)
+	@JsonAdapter(GamevalManager.ObjectAdapter.class)
 	public Set<Integer> objectIds = EMPTY;
-	@JsonAdapter(GsonUtils.IntegerSetAdapter.class)
+	@JsonAdapter(GamevalManager.SpotanimAdapter.class)
 	public Set<Integer> projectileIds = EMPTY;
-	@JsonAdapter(GsonUtils.IntegerSetAdapter.class)
+	@JsonAdapter(GamevalManager.SpotanimAdapter.class)
 	public Set<Integer> graphicsObjectIds = EMPTY;
 
 	public Material baseMaterial = Material.NONE;
@@ -71,9 +75,18 @@ public class ModelOverride
 	public AABB[] hideInAreas = {};
 
 	public Map<Material, ModelOverride> materialOverrides;
+	public ModelOverride[] colorOverrides;
+
+	private JsonElement colors;
 
 	public transient boolean isDummy;
 	public transient Map<AABB, ModelOverride> areaOverrides;
+	public transient AhslPredicate ahslCondition;
+
+	@FunctionalInterface
+	public interface AhslPredicate {
+		boolean test(int ahsl);
+	}
 
 	public void normalize(VanillaShadowMode vanillaShadowMode) {
 		// Ensure there are no nulls in case of invalid configuration during development
@@ -119,6 +132,13 @@ public class ModelOverride
 				normalized.put(entry.getKey().resolveReplacements(), override);
 			}
 			materialOverrides = normalized;
+		}
+
+		if (colorOverrides != null) {
+			for (var override : colorOverrides) {
+				override.normalize(vanillaShadowMode);
+				override.ahslCondition = parseAhslConditions(override.colors);
+			}
 		}
 
 		if (uvOrientationX == 0)
@@ -172,14 +192,101 @@ public class ModelOverride
 			inheritTileColorType,
 			hideInAreas,
 			materialOverrides,
+			colorOverrides,
+			colors,
 			isDummy,
-			areaOverrides
+			areaOverrides,
+			ahslCondition
 		);
 	}
 
 	private ModelOverride(boolean isDummy) {
 		this();
 		this.isDummy = isDummy;
+	}
+
+	private AhslPredicate parseAhslConditions(JsonElement element) {
+		if (element == null)
+			return ahsl -> false;
+
+		JsonArray arr;
+		if (element.isJsonArray()) {
+			arr = element.getAsJsonArray();
+		} else {
+			arr = new JsonArray();
+			arr.add(element);
+		}
+
+		AhslPredicate combinedPredicate = null;
+
+		for (var el : arr) {
+			if (el.isJsonNull())
+				continue;
+			if (!el.isJsonPrimitive()) {
+				log.warn("Skipping unexpected HSL condition '{}' in override '{}'", el, description);
+				continue;
+			}
+
+			AhslPredicate condition;
+			var prim = el.getAsJsonPrimitive();
+			if (prim.isBoolean()) {
+				boolean bool = prim.getAsBoolean();
+				condition = ahsl -> bool;
+			} else if (prim.isNumber()) {
+				try {
+					int targetHsl = prim.getAsInt();
+					condition = ahsl -> ahsl == (targetHsl & 0xFFFF);
+				} catch (Exception ex) {
+					log.warn("Expected integer, but got {} in override '{}'", el, description);
+					continue;
+				}
+			} else if (prim.isString()) {
+				var expr = asExpression(parseExpression(prim.getAsString()));
+
+				if (Props.DEVELOPMENT) {
+					// Ensure all variables are defined
+					final Set<String> knownVariables = Set.of("a", "h", "s", "l", "hsl", "ahsl");
+					for (var variable : expr.variables)
+						if (!knownVariables.contains(variable))
+							throw new IllegalStateException(
+								"Expression '" + prim.getAsString() + "' contains unknown variable '" + variable + "'");
+				}
+
+				var predicate = expr.toPredicate();
+				condition = ahsl -> predicate.test(key -> {
+					switch (key) {
+						case "a":
+							return ahsl >>> 16 & 0xFF;
+						case "h":
+							return ahsl >>> 10 & 0x3F;
+						case "s":
+							return ahsl >>> 7 & 0x7;
+						case "l":
+							return ahsl & 0x7F;
+						case "ahsl":
+							return ahsl;
+						case "hsl":
+						default:
+							return ahsl & 0xFFFF;
+					}
+				});
+			} else {
+				log.warn("Skipping unexpected HSL condition primitive '{}' in override '{}'", el, description);
+				continue;
+			}
+
+			if (combinedPredicate == null) {
+				combinedPredicate = condition;
+			} else {
+				var prev = combinedPredicate;
+				combinedPredicate = ahsl -> prev.test(ahsl) || condition.test(ahsl);
+			}
+		}
+
+		if (combinedPredicate == null)
+			return ahsl -> false;
+
+		return combinedPredicate;
 	}
 
 	public void computeModelUvw(float[] out, int i, float x, float y, float z, int orientation) {

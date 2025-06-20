@@ -56,6 +56,7 @@ vec4 replaceTransparency(vec4 c) {
 #include utils/color_blindness.glsl
 #include utils/color_utils.glsl
 #include utils/minimap.glsl
+#include utils/gamma_calibration_ui.glsl
 
 #if SHADOW_MAP_OVERLAY
 uniform sampler2D shadowMap;
@@ -99,6 +100,8 @@ void main() {
 
     c = alphaBlend(c, alphaOverlay);
     c.rgb = colorBlindnessCompensation(c.rgb);
+
+    gammaCalibrationUi(c, TexCoord, targetDimensions);
 
     FragColor = c;
 }
