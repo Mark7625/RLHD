@@ -92,4 +92,25 @@ public class Environment {
 			return key;
 		return area.name;
 	}
+
+	public String formatName(String name) {
+		String[] parts = name.split("_");
+		StringBuilder result = new StringBuilder();
+
+		for (String part : parts) {
+			if (part.length() > 1) {
+				result.append(part.substring(0, 1).toUpperCase()).append(part.substring(1).toLowerCase());
+			} else {
+				result.append(part.toUpperCase());
+			}
+			result.append(" ");
+		}
+
+		return result.toString().trim();
+	}
+
+	public String name() {
+		return formatName(toString());
+	}
+
 }

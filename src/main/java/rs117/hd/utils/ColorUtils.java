@@ -408,6 +408,18 @@ public class ColorUtils {
 		return new float[] { H, S, L };
 	}
 
+	public static String linearToSrgbHex(float[] c) {
+		float[] color = linearToSrgb(c);
+		// Scale the float values (0.0 - 1.0) to int values (0 - 255)
+		int red = (int) (color[0] * 255);
+		int green = (int) (color[1] * 255);
+		int blue = (int) (color[2] * 255);
+
+		// Format and return the hexadecimal string
+		return String.format("#%02X%02X%02X", red, green, blue);
+	}
+
+
 	public static int srgbToPackedHsl(float[] srgb) {
 		return packHsl(srgbToHsl(srgb));
 	}

@@ -159,6 +159,7 @@ public class EnvironmentManager {
 	private boolean lightningEnabled = false;
 	private boolean forceNextTransition = false;
 
+	@Getter
 	private Environment[] environments;
 	private FileWatcher.UnregisterCallback fileWatcher;
 
@@ -487,5 +488,9 @@ public class EnvironmentManager {
 
 	public boolean isUnderwater() {
 		return currentEnvironment.isUnderwater;
+	}
+
+	public void forceEnvironment(Environment currentlySelectedEnvironment) {
+
 	}
 }

@@ -20,6 +20,7 @@ import rs117.hd.overlays.TileInfoOverlay;
 import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
+import rs117.hd.utils.tooling.ToolsFrame;
 
 @Slf4j
 public class DeveloperTools implements KeyListener {
@@ -30,6 +31,7 @@ public class DeveloperTools implements KeyListener {
 	private static final Keybind KEY_TOGGLE_LIGHT_GIZMO_OVERLAY = new Keybind(KeyEvent.VK_F6, InputEvent.CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_FREEZE_FRAME = new Keybind(KeyEvent.VK_ESCAPE, InputEvent.SHIFT_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_ORTHOGRAPHIC = new Keybind(KeyEvent.VK_TAB, InputEvent.SHIFT_DOWN_MASK);
+	private static final Keybind KEY_TOGGLE_EDITOR = new Keybind(KeyEvent.VK_E, InputEvent.SHIFT_DOWN_MASK);
 
 	@Inject
 	private ClientThread clientThread;
@@ -55,12 +57,16 @@ public class DeveloperTools implements KeyListener {
 	@Inject
 	private LightGizmoOverlay lightGizmoOverlay;
 
+	@Inject
+	private ToolsFrame environmentEditor;
+
 	private boolean keyBindingsEnabled = false;
 	private boolean tileInfoOverlayEnabled = false;
 	@Getter
 	private boolean frameTimingsOverlayEnabled = false;
 	private boolean shadowMapOverlayEnabled = false;
 	private boolean lightGizmoOverlayEnabled = false;
+	private boolean editorOverlayEnabled = false;
 
 	public void activate() {
 		// Listen for commands
@@ -79,6 +85,7 @@ public class DeveloperTools implements KeyListener {
 			frameTimerOverlay.setActive(frameTimingsOverlayEnabled);
 			shadowMapOverlay.setActive(shadowMapOverlayEnabled);
 			lightGizmoOverlay.setActive(lightGizmoOverlayEnabled);
+			environmentEditor.setState(editorOverlayEnabled);
 		});
 
 		// Check for any out of bounds areas
@@ -102,6 +109,7 @@ public class DeveloperTools implements KeyListener {
 		frameTimerOverlay.setActive(false);
 		shadowMapOverlay.setActive(false);
 		lightGizmoOverlay.setActive(false);
+		environmentEditor.setState(false);
 	}
 
 	@Subscribe
@@ -150,6 +158,8 @@ public class DeveloperTools implements KeyListener {
 			lightGizmoOverlay.setActive(lightGizmoOverlayEnabled = !lightGizmoOverlayEnabled);
 		} else if (KEY_TOGGLE_FREEZE_FRAME.matches(e)) {
 			plugin.toggleFreezeFrame();
+		} else if (KEY_TOGGLE_EDITOR.matches(e)) {
+			environmentEditor.setState(editorOverlayEnabled = !editorOverlayEnabled);
 		} else if (KEY_TOGGLE_ORTHOGRAPHIC.matches(e)) {
 			plugin.orthographicProjection = !plugin.orthographicProjection;
 		} else {
