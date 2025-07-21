@@ -4,8 +4,22 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.image.BufferedImage;
+import net.runelite.client.plugins.config.ConfigPlugin;
+import net.runelite.client.util.ImageUtil;
 
 public class CollapsiblePanel extends JPanel {
+    private static final ImageIcon SECTION_EXPAND_ICON;
+    private static final ImageIcon SECTION_RETRACT_ICON;
+
+    static {
+        BufferedImage sectionRetractIcon = ImageUtil.loadImageResource(ConfigPlugin.class, "/util/arrow_right.png");
+        sectionRetractIcon = ImageUtil.luminanceOffset(sectionRetractIcon, -121);
+        SECTION_EXPAND_ICON = new ImageIcon(sectionRetractIcon);
+        final BufferedImage sectionExpandIcon = ImageUtil.rotateImage(sectionRetractIcon, Math.PI / 2);
+        SECTION_RETRACT_ICON = new ImageIcon(sectionExpandIcon);
+    }
+
     private final JButton toggleButton;
     private final JPanel contentPanel;
     private boolean expanded = true;
@@ -14,7 +28,7 @@ public class CollapsiblePanel extends JPanel {
         setLayout(new BorderLayout());
         setOpaque(false);
 
-        toggleButton = new JButton("▼ " + title);
+        toggleButton = new JButton(title, SECTION_RETRACT_ICON);
         toggleButton.setFocusPainted(false);
         toggleButton.setContentAreaFilled(false);
         toggleButton.setBorderPainted(false);
@@ -47,7 +61,7 @@ public class CollapsiblePanel extends JPanel {
     public void setExpanded(boolean expand) {
         expanded = expand;
         contentPanel.setVisible(expanded);
-        toggleButton.setText((expanded ? "▼ " : "► ") + toggleButton.getText().substring(2));
+        toggleButton.setIcon(expanded ? SECTION_RETRACT_ICON : SECTION_EXPAND_ICON);
         revalidate();
         repaint();
     }

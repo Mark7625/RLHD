@@ -7,6 +7,7 @@ import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -34,7 +35,6 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.GameState;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.components.colorpicker.ColorPickerManager;
@@ -152,12 +152,6 @@ public class EnvironmentEditorPanel extends JPanel {
 		updateView(Environment.OVERWORLD);
 	}
 
-	@Override
-	public void removeNotify() {
-		super.removeNotify();
-		environmentManager.forceEnvironment(null);
-	}
-
 	/**
 	 * Clears and prepares the attribute panel for new content.
 	 */
@@ -215,7 +209,6 @@ public class EnvironmentEditorPanel extends JPanel {
 				section.addContent(row);
 			}
 			attributePanel.add(section);
-			attributePanel.add(Box.createVerticalStrut(8));
 		}
 		attributePanel.revalidate();
 		attributePanel.repaint();
@@ -268,11 +261,8 @@ public class EnvironmentEditorPanel extends JPanel {
 		DefaultMutableTreeNode node = new DefaultMutableTreeNode(label);
 		parent.add(node);
 
-		// Add all theme environments directly under the 'Themes' node
 		node.add(new DefaultMutableTreeNode(new NodeData(Environment.AUTUMN)));
 		node.add(new DefaultMutableTreeNode(new NodeData(Environment.WINTER)));
-		// Add more themes here if needed
-		// Do not rearrange nodes under 'Themes' to avoid further hierarchy
 	}
 
 	private void rearrangeNodes(DefaultMutableTreeNode parent) {
@@ -338,6 +328,7 @@ public class EnvironmentEditorPanel extends JPanel {
 		BiConsumer<Environment, Object> setter = EnvironmentPropertyRegistry.PROPERTIES.get(key).getSetter();
 		if (setter != null) {
 			setter.accept(targetEnvironment, value);
+			environmentManager.refreshEnvironmentValues(environment,true);
 		} else {
 			log.info("Key not found: {}", key);
 		}
