@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.Setter;
 import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.areas.Area;
+import rs117.hd.utils.GsonUtils;
 import rs117.hd.utils.GsonUtils.DegreesToRadians;
 import rs117.hd.utils.HDUtils;
 
@@ -14,6 +15,7 @@ import static rs117.hd.utils.ColorUtils.SrgbToLinearAdapter;
 import static rs117.hd.utils.ColorUtils.rgb;
 
 @Setter(value = AccessLevel.PRIVATE)
+@GsonUtils.ExcludeDefaults
 public class Environment {
 	public static final float[] DEFAULT_SUN_ANGLES = HDUtils.sunAngles(52, 235);
 	public static final Environment DEFAULT = new Environment()
@@ -100,4 +102,25 @@ public class Environment {
 			return key;
 		return area.name;
 	}
+
+	public String formatName(String name) {
+		String[] parts = name.split("_");
+		StringBuilder result = new StringBuilder();
+
+		for (String part : parts) {
+			if (part.length() > 1) {
+				result.append(part.substring(0, 1).toUpperCase()).append(part.substring(1).toLowerCase());
+			} else {
+				result.append(part.toUpperCase());
+			}
+			result.append(" ");
+		}
+
+		return result.toString().trim();
+	}
+
+	public String name() {
+		return formatName(toString());
+	}
+
 }

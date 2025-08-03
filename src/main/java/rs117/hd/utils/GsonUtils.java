@@ -136,8 +136,10 @@ public class GsonUtils {
 				return;
 			}
 
-			if (src instanceof Float)
-				out.value((float) src * RAD_TO_DEG);
+			if (src instanceof Float || src instanceof Double) {
+				out.value(((Number) src).floatValue() * RAD_TO_DEG);
+				return;
+			}
 
 			throw new IOException("Expected a float or float array. Got " + src);
 		}

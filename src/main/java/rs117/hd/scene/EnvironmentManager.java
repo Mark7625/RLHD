@@ -152,11 +152,15 @@ public class EnvironmentManager {
 	private boolean lightningEnabled = false;
 	private boolean forceNextTransition = false;
 
+	@Getter
 	private Environment[] environments;
 	private FileWatcher.UnregisterCallback fileWatcher;
 
 	@Nonnull
 	private Environment currentEnvironment = Environment.NONE;
+
+	@Getter
+	private Environment forcedEnvironment = null;
 
 	public void startUp() {
 		fileWatcher = ENVIRONMENTS_PATH.watch((path, first) -> {
@@ -232,7 +236,7 @@ public class EnvironmentManager {
 		boolean skipTransition = tileChange >= SKIP_TRANSITION_DISTANCE;
 		for (var environment : sceneContext.environments) {
 			if (environment.area.containsPoint(focalPoint)) {
-				changeEnvironment(environment, skipTransition);
+				changeEnvironment(forcedEnvironment == null ? environment :  forcedEnvironment, skipTransition);
 				break;
 			}
 		}
@@ -296,6 +300,10 @@ public class EnvironmentManager {
 			skipTransition = true;
 
 		log.debug("changing environment from {} to {} (instant: {})", currentEnvironment, newEnvironment, skipTransition);
+		refreshEnvironmentValues(newEnvironment,skipTransition);
+	}
+
+	public void refreshEnvironmentValues(Environment newEnvironment, boolean skipTransition) {
 		currentEnvironment = newEnvironment;
 		transitionComplete = false;
 		transitionStartTime = plugin.elapsedTime - (skipTransition ? TRANSITION_DURATION : 0);
@@ -477,5 +485,16 @@ public class EnvironmentManager {
 
 	public boolean isUnderwater() {
 		return currentEnvironment.isUnderwater;
+	}
+
+	public void forceEnvironment(Environment environment) {
+		this.forcedEnvironment = environment;
+		if (environment != null) {
+			changeEnvironment(environment, true);
+		}
+	}
+
+	public void clearForcedEnvironment() {
+		this.forcedEnvironment = null;
 	}
 }
