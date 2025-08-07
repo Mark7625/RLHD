@@ -24,6 +24,9 @@
  */
 package rs117.hd.utils.buffer;
 
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.opengl.*;
@@ -32,6 +35,7 @@ import rs117.hd.utils.HDUtils;
 
 import static org.lwjgl.opengl.GL33C.*;
 import static rs117.hd.HdPlugin.checkGLErrors;
+import static rs117.hd.utils.MathUtils.*;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -53,7 +57,7 @@ public class GLBuffer
 		// Initialize both GL and CL buffers to buffers of a single byte or more,
 		// to ensure that valid buffers are given to compute dispatches.
 		// This is particularly important on Apple M2 Max, where an uninitialized buffer leads to a crash
-		ensureCapacity(Math.max(1, initialCapacity));
+		ensureCapacity(max(1, initialCapacity));
 	}
 
 	public void destroy() {
@@ -70,36 +74,82 @@ public class GLBuffer
 	}
 
 	public void ensureCapacity(long byteOffset, long numBytes) {
-		long size = byteOffset + numBytes;
-		if (size <= this.size) {
+		numBytes += byteOffset;
+		if (numBytes <= size) {
 			glBindBuffer(target, id);
 			return;
 		}
 
-		size = HDUtils.ceilPow2(size);
-		if (log.isDebugEnabled() && size > 1e6)
-			log.debug("Resizing buffer '{}'\t{}", name, String.format("%.2f MB -> %.2f MB", this.size / 1e6, size / 1e6));
+		numBytes = HDUtils.ceilPow2(numBytes);
+		if (log.isDebugEnabled() && numBytes > 1e6)
+			log.debug("Resizing buffer '{}'\t{}", name, String.format("%.2f MB -> %.2f MB", size / 1e6, numBytes / 1e6));
 
 		if (byteOffset > 0) {
 			// Create a new buffer and copy the old data to it
 			int oldBuffer = id;
 			id = glGenBuffers();
 			glBindBuffer(target, id);
-			glBufferData(target, size, usage);
+			glBufferData(target, numBytes, usage);
 
 			glBindBuffer(GL_COPY_READ_BUFFER, oldBuffer);
 			glCopyBufferSubData(GL_COPY_READ_BUFFER, target, 0, 0, byteOffset);
 			glDeleteBuffers(oldBuffer);
 		} else {
 			glBindBuffer(target, id);
-			glBufferData(target, size, usage);
+			glBufferData(target, numBytes, usage);
 		}
 
-		this.size = size;
+		size = numBytes;
 
-		if (HdPlugin.GL_CAPS.OpenGL43 && log.isDebugEnabled()) {
+		if (log.isDebugEnabled() && HdPlugin.GL_CAPS.OpenGL43) {
 			GL43C.glObjectLabel(GL43C.GL_BUFFER, id, name);
 			checkGLErrors();
 		}
+	}
+
+	public void upload(ByteBuffer data) {
+		upload(data, 0);
+	}
+
+	public void upload(ByteBuffer data, long byteOffset) {
+		long numBytes = data.remaining();
+		ensureCapacity(byteOffset, numBytes);
+		glBufferSubData(target, byteOffset, data);
+	}
+
+	public void upload(IntBuffer data) {
+		upload(data, 0);
+	}
+
+	public void upload(IntBuffer data, long byteOffset) {
+		long numBytes = 4L * data.remaining();
+		ensureCapacity(byteOffset, numBytes);
+		glBufferSubData(target, byteOffset, data);
+	}
+
+	public void upload(FloatBuffer data) {
+		upload(data, 0);
+	}
+
+	public void upload(FloatBuffer data, long byteOffset) {
+		long numBytes = 4L * data.remaining();
+		ensureCapacity(byteOffset, numBytes);
+		glBufferSubData(target, byteOffset, data);
+	}
+
+	public void upload(GpuIntBuffer data) {
+		upload(data.getBuffer());
+	}
+
+	public void upload(GpuIntBuffer data, long byteOffset) {
+		upload(data.getBuffer(), byteOffset);
+	}
+
+	public void upload(GpuFloatBuffer data) {
+		upload(data.getBuffer());
+	}
+
+	public void upload(GpuFloatBuffer data, long byteOffset) {
+		upload(data.getBuffer(), byteOffset);
 	}
 }

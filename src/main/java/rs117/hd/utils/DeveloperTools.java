@@ -17,6 +17,7 @@ import rs117.hd.overlays.FrameTimerOverlay;
 import rs117.hd.overlays.LightGizmoOverlay;
 import rs117.hd.overlays.ShadowMapOverlay;
 import rs117.hd.overlays.TileInfoOverlay;
+import rs117.hd.overlays.TiledLightingOverlay;
 import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
@@ -29,9 +30,12 @@ public class DeveloperTools implements KeyListener {
 	private static final Keybind KEY_TOGGLE_FRAME_TIMINGS = new Keybind(KeyEvent.VK_F4, InputEvent.CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_SHADOW_MAP_OVERLAY = new Keybind(KeyEvent.VK_F5, InputEvent.CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_LIGHT_GIZMO_OVERLAY = new Keybind(KeyEvent.VK_F6, InputEvent.CTRL_DOWN_MASK);
+	private static final Keybind KEY_TOGGLE_TILED_LIGHTING_OVERLAY = new Keybind(KeyEvent.VK_F7, InputEvent.CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_FREEZE_FRAME = new Keybind(KeyEvent.VK_ESCAPE, InputEvent.SHIFT_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_ORTHOGRAPHIC = new Keybind(KeyEvent.VK_TAB, InputEvent.SHIFT_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_EDITOR = new Keybind(KeyEvent.VK_E, InputEvent.SHIFT_DOWN_MASK);
+	private static final Keybind KEY_TOGGLE_HIDE_UI = new Keybind(KeyEvent.VK_H, InputEvent.CTRL_DOWN_MASK);
+
 
 	@Inject
 	private ClientThread clientThread;
@@ -67,6 +71,12 @@ public class DeveloperTools implements KeyListener {
 	private boolean shadowMapOverlayEnabled = false;
 	private boolean lightGizmoOverlayEnabled = false;
 	private boolean editorOverlayEnabled = false;
+	private TiledLightingOverlay tiledLightingOverlay;
+
+	@Getter
+	private boolean hideUiEnabled;
+	private boolean tiledLightingOverlayEnabled;
+
 
 	public void activate() {
 		// Listen for commands
@@ -86,6 +96,7 @@ public class DeveloperTools implements KeyListener {
 			shadowMapOverlay.setActive(shadowMapOverlayEnabled);
 			lightGizmoOverlay.setActive(lightGizmoOverlayEnabled);
 			environmentEditor.setState(editorOverlayEnabled);
+			tiledLightingOverlay.setActive(tiledLightingOverlayEnabled);
 		});
 
 		// Check for any out of bounds areas
@@ -110,6 +121,8 @@ public class DeveloperTools implements KeyListener {
 		shadowMapOverlay.setActive(false);
 		lightGizmoOverlay.setActive(false);
 		environmentEditor.setState(false);
+		tiledLightingOverlay.setActive(false);
+		hideUiEnabled = false;
 	}
 
 	@Subscribe
@@ -127,6 +140,7 @@ public class DeveloperTools implements KeyListener {
 				tileInfoOverlay.setActive(tileInfoOverlayEnabled = !tileInfoOverlayEnabled);
 				break;
 			case "timers":
+			case "timings":
 				frameTimerOverlay.setActive(frameTimingsOverlayEnabled = !frameTimingsOverlayEnabled);
 				break;
 			case "shadowmap":
@@ -135,6 +149,11 @@ public class DeveloperTools implements KeyListener {
 			case "lights":
 				lightGizmoOverlay.setActive(lightGizmoOverlayEnabled = !lightGizmoOverlayEnabled);
 				break;
+			case "tiledlights":
+			case "tiledlighting":
+				tiledLightingOverlay.setActive(tiledLightingOverlayEnabled = !tiledLightingOverlayEnabled);
+				break;
+			case "keybinds":
 			case "keybindings":
 				keyBindingsEnabled = !keyBindingsEnabled;
 				if (keyBindingsEnabled) {
@@ -156,12 +175,16 @@ public class DeveloperTools implements KeyListener {
 			shadowMapOverlay.setActive(shadowMapOverlayEnabled = !shadowMapOverlayEnabled);
 		} else if (KEY_TOGGLE_LIGHT_GIZMO_OVERLAY.matches(e)) {
 			lightGizmoOverlay.setActive(lightGizmoOverlayEnabled = !lightGizmoOverlayEnabled);
+		} else if (KEY_TOGGLE_TILED_LIGHTING_OVERLAY.matches(e)) {
+			tiledLightingOverlay.setActive(tiledLightingOverlayEnabled = !tiledLightingOverlayEnabled);
 		} else if (KEY_TOGGLE_FREEZE_FRAME.matches(e)) {
 			plugin.toggleFreezeFrame();
 		} else if (KEY_TOGGLE_EDITOR.matches(e)) {
 			environmentEditor.setState(editorOverlayEnabled = !editorOverlayEnabled);
 		} else if (KEY_TOGGLE_ORTHOGRAPHIC.matches(e)) {
 			plugin.orthographicProjection = !plugin.orthographicProjection;
+		} else if (KEY_TOGGLE_HIDE_UI.matches(e)) {
+			hideUiEnabled = !hideUiEnabled;
 		} else {
 			return;
 		}

@@ -22,16 +22,14 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#include constants.cl
-#include common.cl
-#include vanilla_uvs.cl
+#include "constants.cl"
+#include "common.cl"
 
 int priority_map(int p, int distance, int _min10, int avg1, int avg2, int avg3);
 int count_prio_offset(__local struct shared_data *shared, int priority);
 void get_face(
   __local struct shared_data *shared,
-  __constant struct ComputeUniforms *uni,
+  __constant struct UBOCompute *uni,
   __global const struct VertexData *vb,
   uint localId,
   struct ModelInfo minfo,
@@ -44,7 +42,7 @@ void get_face(
 );
 void add_face_prio_distance(
   __local struct shared_data *shared,
-  __constant struct ComputeUniforms *uni,
+  __constant struct UBOCompute *uni,
   uint localId,
   struct ModelInfo minfo,
   struct VertexData thisrvA,
@@ -57,8 +55,27 @@ void add_face_prio_distance(
 int map_face_priority(__local struct shared_data *shared, uint localId, struct ModelInfo minfo, int thisPriority, int thisDistance, int *prio);
 void insert_face(__local struct shared_data *shared, uint localId, struct ModelInfo minfo, int adjPrio, int distance, int prioIdx);
 int tile_height(read_only image3d_t tileHeightMap, int z, int x, int y);
-void hillskew_vertex(read_only image3d_t tileHeightMap, float4 *v, int hillskew, int y, float height, int plane);
+void hillskew_vertex(read_only image3d_t tileHeightMap, float4 *v, int hillskew, int modelPosY, float modelHeight, int plane);
 void undoVanillaShading(struct VertexData *vertex, float3 unrotatedNormal);
+float3 applyCharacterDisplacement(
+    float3 characterPos,
+    float2 vertPos,
+    float height,
+    float strength,
+    float* offsetAccum
+);
+void applyWindDisplacement(
+    __constant struct UBOCompute *uni,
+    const struct ObjectWindSample windSample,
+    int vertexFlags,
+    float modelHeight,
+    float3 worldPos,
+    float3 vertA, float3 vertB, float3 vertC,
+    float3 normA, float3 normB, float3 normC,
+    float3* displacementA,
+    float3* displacementB,
+    float3* displacementC
+);
 void sort_and_insert(
   __local struct shared_data *shared,
   __global const struct UVData *uv,
@@ -66,7 +83,7 @@ void sort_and_insert(
   __global struct VertexData *vout,
   __global struct UVData *uvout,
   __global float4 *normalout,
-  __constant struct ComputeUniforms *uni,
+  __constant struct UBOCompute *uni,
   uint localId,
   struct ModelInfo minfo,
   int thisPriority,
@@ -136,7 +153,7 @@ int count_prio_offset(__local struct shared_data *shared, int priority) {
 
 void get_face(
   __local struct shared_data *shared,
-  __constant struct ComputeUniforms *uni,
+  __constant struct UBOCompute *uni,
   __global const struct VertexData *vb,
   uint localId,
   struct ModelInfo minfo,
@@ -191,7 +208,7 @@ void get_face(
 
 void add_face_prio_distance(
   __local struct shared_data *shared,
-  __constant struct ComputeUniforms *uni,
+  __constant struct UBOCompute *uni,
   uint localId,
   struct ModelInfo minfo,
   struct VertexData thisrvA,
@@ -272,25 +289,36 @@ int tile_height(read_only image3d_t tileHeightMap, int z, int x, int y) {
   return read_imagei(tileHeightMap, tileHeightSampler, coord).x << 3;
 }
 
-void hillskew_vertex(read_only image3d_t tileHeightMap, float4 *v, int hillskewMode, int y, float height, int plane) {
-    float heightFrac = fabs((*v).y - y) / height;
+void hillskew_vertex(read_only image3d_t tileHeightMap, float4 *v, int hillskewMode, int modelPosY, float modelHeight, int plane) {
+    // Skip hillskew if in tile-snapping mode and the vertex is too far from the base
+    float heightFrac = fabs((*v).y - modelPosY) / modelHeight;
     if (hillskewMode == HILLSKEW_TILE_SNAPPING && heightFrac > HILLSKEW_TILE_SNAPPING_BLEND)
-        return; // Only apply tile snapping, which will only be applied to vertices close to the bottom of the model
+       return;
 
-    int x = (int) (*v).x;
-    int z = (int) (*v).z;
-    int px = x & 127;
-    int pz = z & 127;
-    int sx = x >> 7;
-    int sz = z >> 7;
-    int h1 = (px * tile_height(tileHeightMap, plane, sx + 1, sz) + (128 - px) * tile_height(tileHeightMap, plane, sx, sz)) >> 7;
-    int h2 = (px * tile_height(tileHeightMap, plane, sx + 1, sz + 1) + (128 - px) * tile_height(tileHeightMap, plane, sx, sz + 1)) >> 7;
-    int h3 = (pz * h2 + (128 - pz) * h1) >> 7;
+    float fx = (*v).x;
+    float fz = (*v).z;
+
+    float px = fmod(fx, 128.0f);
+    float pz = fmod(fz, 128.0f);
+    int sx = (int) (floor(fx / 128.0f));
+    int sz = (int) (floor(fz / 128.0f));
+
+    float h00 = (float) (tile_height(tileHeightMap, plane, sx,     sz));
+    float h10 = (float) (tile_height(tileHeightMap, plane, sx + 1, sz));
+    float h01 = (float) (tile_height(tileHeightMap, plane, sx,     sz + 1));
+    float h11 = (float) (tile_height(tileHeightMap, plane, sx + 1, sz + 1));
+
+    // Bilinear interpolation
+    float hx0 = mix(h00, h10, px / 128.0f);
+    float hx1 = mix(h01, h11, px / 128.0f);
+    float h = mix(hx0, hx1, pz / 128.0f);
+
+    if ((hillskewMode & HILLSKEW_MODEL) != 0)
+        (*v).y += h - modelPosY; // Apply full hillskew
 
     if ((hillskewMode & HILLSKEW_TILE_SNAPPING) != 0 && heightFrac <= HILLSKEW_TILE_SNAPPING_BLEND) {
-        (*v).y = mix(h3, (*v).y, heightFrac / HILLSKEW_TILE_SNAPPING_BLEND); // Blend tile snapping
-    } else {
-        (*v).y += h3 - y; // Hillskew the whole model
+        float blend = heightFrac / HILLSKEW_TILE_SNAPPING_BLEND;
+        (*v).y = mix(h, (*v).y, blend); // Blend snapping to terrain
     }
 }
 
@@ -317,10 +345,10 @@ void undoVanillaShading(struct VertexData *vertex, float3 unrotatedNormal) {
     }
     int maxLightness;
     #if LEGACY_GREY_COLORS
-    maxLightness = 55;
+        maxLightness = 55;
     #else
-    const int MAX_BRIGHTNESS_LOOKUP_TABLE[8] = { 127, 61, 59, 57, 56, 56, 55, 55 };
-    maxLightness = MAX_BRIGHTNESS_LOOKUP_TABLE[saturation];
+        const int MAX_BRIGHTNESS_LOOKUP_TABLE[8] = { 127, 61, 59, 57, 56, 56, 55, 55 };
+        maxLightness = MAX_BRIGHTNESS_LOOKUP_TABLE[saturation];
     #endif
     lightness = min(lightness, maxLightness);
     hsl &= ~0x7F;
@@ -352,11 +380,17 @@ float3 applyCharacterDisplacement(
     return mix(horizontalDisplacement, verticalDisplacement, offsetFrac);
 }
 
+float getModelWindDisplacementMod(int vertexFlags) {
+    const float modifiers[7] = { 0.25f, 0.5f, 0.7f, 1.0f, 1.25f, 1.5f, 2.0f };
+    int modifierIDx = (vertexFlags >> MATERIAL_FLAG_WIND_MODIFIER) & 0x7;
+    return modifiers[modifierIDx];
+}
+
 void applyWindDisplacement(
-    __constant struct ComputeUniforms *uni,
+    __constant struct UBOCompute *uni,
     const struct ObjectWindSample windSample,
     int vertexFlags,
-    float height,
+    float modelHeight,
     float3 worldPos,
     float3 vertA, float3 vertB, float3 vertC,
     float3 normA, float3 normB, float3 normC,
@@ -364,15 +398,22 @@ void applyWindDisplacement(
     float3* displacementB,
     float3* displacementC
 ) {
+#if WIND_DISPLACEMENT || CHARACTER_DISPLACEMENT
     const int windDisplacementMode = (vertexFlags >> MATERIAL_FLAG_WIND_SWAYING) & 0x7;
-
     if (windDisplacementMode <= WIND_DISPLACEMENT_DISABLED)
         return;
 
-    float strengthA = clamp(fabs(vertA.y) / height, 0.0f, 1.0f);
-    float strengthB = clamp(fabs(vertB.y) / height, 0.0f, 1.0f);
-    float strengthC = clamp(fabs(vertC.y) / height, 0.0f, 1.0f);
+    float strengthA = saturate(fabs(vertA.y) / modelHeight);
+    float strengthB = saturate(fabs(vertB.y) / modelHeight);
+    float strengthC = saturate(fabs(vertC.y) / modelHeight);
 
+    if ((vertexFlags >> MATERIAL_FLAG_INVERT_DISPLACEMENT_STRENGTH & 1) == 1) {
+        strengthA = 1.0f - strengthA;
+        strengthB = 1.0f - strengthB;
+        strengthC = 1.0f - strengthC;
+    }
+
+    float modelDisplacementMod = getModelWindDisplacementMod(vertexFlags);
 #if WIND_DISPLACEMENT
     if (windDisplacementMode >= WIND_DISPLACEMENT_VERTEX) {
         const float VertexSnapping = 150.0f;
@@ -406,6 +447,10 @@ void applyWindDisplacement(
             float3 skewB = normalize(cross(normB, (float3)(0.0f, 1.0f, 0.0f)));
             float3 skewC = normalize(cross(normC, (float3)(0.0f, 1.0f, 0.0f)));
 
+            strengthA *= modelDisplacementMod;
+            strengthB *= modelDisplacementMod;
+            strengthC *= modelDisplacementMod;
+
             *displacementA = windNoiseA * (windSample.heightBasedStrength * strengthA) * 0.5f * skewA;
             *displacementB = windNoiseB * (windSample.heightBasedStrength * strengthB) * 0.5f * skewB;
             *displacementC = windNoiseC * (windSample.heightBasedStrength * strengthC) * 0.5f * skewC;
@@ -422,10 +467,16 @@ void applyWindDisplacement(
             *displacementB = windNoiseB * (windSample.heightBasedStrength * strengthB * VertexDisplacementMod) * windSample.direction;
             *displacementC = windNoiseC * (windSample.heightBasedStrength * strengthC * VertexDisplacementMod) * windSample.direction;
 
-            strengthA = clamp(strengthA - VertexDisplacementMod, 0.0f, 1.0f);
-            strengthB = clamp(strengthB - VertexDisplacementMod, 0.0f, 1.0f);
-            strengthC = clamp(strengthC - VertexDisplacementMod, 0.0f, 1.0f);
+            strengthA = clamp(strengthA - VertexDisplacementMod, 0.0f, 1.0f) * modelDisplacementMod;
+            strengthB = clamp(strengthB - VertexDisplacementMod, 0.0f, 1.0f) * modelDisplacementMod;
+            strengthC = clamp(strengthC - VertexDisplacementMod, 0.0f, 1.0f) * modelDisplacementMod;
         }
+    }
+
+    if (windDisplacementMode != WIND_DISPLACEMENT_VERTEX_JIGGLE) {
+        *displacementA += windSample.displacement * strengthA * modelDisplacementMod;
+        *displacementB += windSample.displacement * strengthB * modelDisplacementMod;
+        *displacementC += windSample.displacement * strengthC * modelDisplacementMod;
     }
 #endif // WIND_DISPLACEMENT
 
@@ -437,21 +488,15 @@ void applyWindDisplacement(
 
         float fractAccum = 0.0f;
         for (int i = 0; i < uni->characterPositionCount; i++) {
-            *displacementA += applyCharacterDisplacement(uni->characterPositions[i], worldVertA, height, strengthA, &fractAccum);
-            *displacementB += applyCharacterDisplacement(uni->characterPositions[i], worldVertB, height, strengthB, &fractAccum);
-            *displacementC += applyCharacterDisplacement(uni->characterPositions[i], worldVertC, height, strengthC, &fractAccum);
+            *displacementA += applyCharacterDisplacement(uni->characterPositions[i], worldVertA, modelHeight, strengthA, &fractAccum);
+            *displacementB += applyCharacterDisplacement(uni->characterPositions[i], worldVertB, modelHeight, strengthB, &fractAccum);
+            *displacementC += applyCharacterDisplacement(uni->characterPositions[i], worldVertC, modelHeight, strengthC, &fractAccum);
             if (fractAccum >= 2.0f) break;
         }
     }
 #endif
 
-#if WIND_DISPLACEMENT
-    if (windDisplacementMode != WIND_DISPLACEMENT_VERTEX_JIGGLE) {
-        *displacementA += windSample.displacement * strengthA;
-        *displacementB += windSample.displacement * strengthB;
-        *displacementC += windSample.displacement * strengthC;
-    }
-#endif
+#endif // WIND_DISPLACEMENT || CHARACTER_DISPLACEMENT
 }
 
 void sort_and_insert(
@@ -461,7 +506,7 @@ void sort_and_insert(
   __global struct VertexData *vout,
   __global struct UVData *uvout,
   __global float4 *normalout,
-  __constant struct ComputeUniforms *uni,
+  __constant struct UBOCompute *uni,
   uint localId,
   struct ModelInfo minfo,
   int thisPriority,
@@ -481,7 +526,7 @@ void sort_and_insert(
     int flags = minfo.flags;
     int modelY = minfo.y >> 16;
     float4 pos = (float4)(minfo.x, modelY, minfo.z, 0);
-    float height = (float)(minfo.y & 0xffff);
+    float modelHeight = (float) (minfo.y & 0xffff);
     int orientation = minfo.flags & 0x7ff;
     int vertexFlags = uvOffset >= 0 ? uv[uvOffset + localId * 3].materialData : 0;
 
@@ -512,7 +557,7 @@ void sort_and_insert(
     float3 displacementB = (float3)(0);
     float3 displacementC = (float3)(0);
 
-    applyWindDisplacement(uni, windSample, vertexFlags, height, pos.xyz,
+    applyWindDisplacement(uni, windSample, vertexFlags, modelHeight, pos.xyz,
         vertA.xyz, vertB.xyz, vertC.xyz,
         normA.xyz, normB.xyz, normC.xyz,
         &displacementA, &displacementB, &displacementC);
@@ -522,19 +567,19 @@ void sort_and_insert(
     vertC += pos + (float4)(displacementC, 0.0);
 
     #if UNDO_VANILLA_SHADING
-    if ((thisrvA.ahsl >> 20 & 1) == 0) {
-        if (fast_length(normA) == 0) {
-            // Compute flat normal if necessary, and rotate it back to match unrotated normals
-            float3 N = cross(
-              (float3)(thisrvA.x - thisrvB.x, thisrvA.y - thisrvB.y, thisrvA.z - thisrvB.z),
-              (float3)(thisrvA.x - thisrvC.x, thisrvA.y - thisrvC.y, thisrvA.z - thisrvC.z)
-            );
-            normA = normB = normC = (float4) (N, 1.f);
+        if ((thisrvA.ahsl >> 20 & 1) == 0) {
+            if (fast_length(normA) == 0) {
+                // Compute flat normal if necessary, and rotate it back to match unrotated normals
+                float3 N = cross(
+                  (float3)(thisrvA.x - thisrvB.x, thisrvA.y - thisrvB.y, thisrvA.z - thisrvB.z),
+                  (float3)(thisrvA.x - thisrvC.x, thisrvA.y - thisrvC.y, thisrvA.z - thisrvC.z)
+                );
+                normA = normB = normC = (float4) (N, 1.f);
+            }
+            undoVanillaShading(&thisrvA, normA.xyz);
+            undoVanillaShading(&thisrvB, normB.xyz);
+            undoVanillaShading(&thisrvC, normC.xyz);
         }
-        undoVanillaShading(&thisrvA, normA.xyz);
-        undoVanillaShading(&thisrvB, normB.xyz);
-        undoVanillaShading(&thisrvC, normC.xyz);
-    }
     #endif
 
     normalout[outOffset + myOffset * 3    ] = rotate_vertex(normA, orientation);
@@ -548,9 +593,9 @@ void sort_and_insert(
     if ((vertexFlags >> MATERIAL_FLAG_TERRAIN_VERTEX_SNAPPING & 1) == 1)
         hillskewFlags |= HILLSKEW_TILE_SNAPPING;
     if (hillskewFlags != HILLSKEW_NONE) {
-        hillskew_vertex(tileHeightMap, &vertA, hillskewFlags, modelY, height, plane);
-        hillskew_vertex(tileHeightMap, &vertB, hillskewFlags, modelY, height, plane);
-        hillskew_vertex(tileHeightMap, &vertC, hillskewFlags, modelY, height, plane);
+        hillskew_vertex(tileHeightMap, &vertA, hillskewFlags, modelY, modelHeight, plane);
+        hillskew_vertex(tileHeightMap, &vertB, hillskewFlags, modelY, modelHeight, plane);
+        hillskew_vertex(tileHeightMap, &vertC, hillskewFlags, modelY, modelHeight, plane);
     }
 
     // position vertices in scene and write to out buffer
@@ -585,9 +630,9 @@ void sort_and_insert(
 
         // For vanilla UVs, the first 3 components are an integer position vector
         if (hillskewFlags != HILLSKEW_NONE) {
-            hillskew_vertex(tileHeightMap, &uvwA, hillskewFlags, modelY, height, plane);
-            hillskew_vertex(tileHeightMap, &uvwB, hillskewFlags, modelY, height, plane);
-            hillskew_vertex(tileHeightMap, &uvwC, hillskewFlags, modelY, height, plane);
+            hillskew_vertex(tileHeightMap, &uvwA, hillskewFlags, modelY, modelHeight, plane);
+            hillskew_vertex(tileHeightMap, &uvwB, hillskewFlags, modelY, modelHeight, plane);
+            hillskew_vertex(tileHeightMap, &uvwC, hillskewFlags, modelY, modelHeight, plane);
         }
       }
 
