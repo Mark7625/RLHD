@@ -49,7 +49,7 @@ public class ModelOverrideManager {
 	private FileWatcher.UnregisterCallback fileWatcher;
 
 	public void startUp() {
-		fileWatcher = MODEL_OVERRIDES_PATH.watch((path, first) -> {
+		fileWatcher = gamevalManager.watchWithGamevals(MODEL_OVERRIDES_PATH, (path, first) -> {
 			modelOverrides.clear();
 
 			try {

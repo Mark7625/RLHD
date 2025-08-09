@@ -39,11 +39,13 @@ public class NpcDisplacementCache {
 
 	public void initialize() {
 		HashSet<Integer> idsToIgnore = new HashSet<>();
-		for (var substringToIgnore : ANIM_IGNORE_LIST)
-			for (var entry : gamevalManager.getAnims().entrySet())
-				if (entry.getKey().contains(substringToIgnore))
-					idsToIgnore.add(entry.getValue());
-		ANIM_ID_IGNORE_LIST = Set.copyOf(idsToIgnore);
+		try (GamevalManager.Gamevals gamevals = gamevalManager.acquire()) {
+			for (var substringToIgnore : ANIM_IGNORE_LIST)
+				for (var entry : gamevalManager.getAnims().entrySet())
+					if (entry.getKey().contains(substringToIgnore))
+						idsToIgnore.add(entry.getValue());
+			ANIM_ID_IGNORE_LIST = Set.copyOf(idsToIgnore);
+		}
 	}
 
 	public void destroy() {

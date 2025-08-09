@@ -100,6 +100,9 @@ public class LightManager {
 	@Inject
 	private FrameTimer frameTimer;
 
+	@Inject
+	private GamevalManager gamevalManager;
+
 	private final ArrayList<Light> WORLD_LIGHTS = new ArrayList<>();
 	private final ListMultimap<Integer, LightDefinition> NPC_LIGHTS = ArrayListMultimap.create();
 	private final ListMultimap<Integer, LightDefinition> OBJECT_LIGHTS = ArrayListMultimap.create();
@@ -156,7 +159,7 @@ public class LightManager {
 
 	public void startUp() {
 		entityHiderConfig = configManager.getConfig(EntityHiderConfig.class);
-		LIGHTS_PATH.watch(path -> loadConfig(plugin.getGson(), path));
+		gamevalManager.watchWithGamevals(LIGHTS_PATH, (path, first) -> loadConfig(plugin.getGson(), path));
 		eventBus.register(this);
 	}
 

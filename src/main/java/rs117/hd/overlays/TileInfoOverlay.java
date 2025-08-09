@@ -147,10 +147,12 @@ public class TileInfoOverlay extends Overlay implements MouseListener, MouseWhee
 			// Listen to events before they're possibly consumed in DeveloperTools
 			mouseManager.registerMouseListener(0, this);
 			mouseManager.registerMouseWheelListener(this);
+			gamevalManager.lock();
 		} else {
 			overlayManager.remove(this);
 			mouseManager.unregisterMouseListener(this);
 			mouseManager.unregisterMouseWheelListener(this);
+			gamevalManager.unlock();
 		}
 		tileOverrideManager.setTrackReplacements(activate);
 	}
