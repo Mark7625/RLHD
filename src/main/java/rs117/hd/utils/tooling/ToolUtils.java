@@ -10,6 +10,19 @@ public class ToolUtils {
 		return ColorUtils.linearToSrgbHex(color != null ? color : ColorUtils.rgb("#FFFFFF"));
 	}
 
+	public static String getColorValue(java.awt.Color color) {
+		if (color == null) {
+			return "#FFFFFF";
+		}
+		// Convert Color to float array and then use the existing method
+		float[] colorArray = new float[] {
+			color.getRed() / 255.0f,
+			color.getGreen() / 255.0f,
+			color.getBlue() / 255.0f
+		};
+		return getColorValue(colorArray);
+	}
+
 	public static boolean castToBoolean(Object value) {
 		if (value instanceof Boolean) {
 			return (Boolean) value;
@@ -76,9 +89,12 @@ public class ToolUtils {
 		throw new IllegalArgumentException("Cannot cast to int: " + value);
 	}
 
-	public static float[] castToColor(Object value) {
+	public static Object castToColor(Object value) {
 		if (value instanceof float[]) {
-			return (float[]) value;
+			return value;
+		}
+		if (value instanceof java.awt.Color) {
+			return value; // Return Color object as-is
 		}
 		return rgb(value.toString());
 	}

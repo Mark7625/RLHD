@@ -8,6 +8,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -47,7 +48,7 @@ import rs117.hd.utils.ResourcePath;
 import rs117.hd.utils.tooling.props.ComponentData;
 import rs117.hd.utils.tooling.props.PropertyComponentFactory;
 import rs117.hd.utils.tooling.props.PropertyData;
-import rs117.hd.utils.tooling.props.impl.EnvironmentPropertyRegistry;
+import rs117.hd.utils.tooling.props.impl.SchemaBasedEnvironmentPropertyRegistry;
 import rs117.hd.utils.tooling.props.impl.render.CollapsiblePanel;
 
 @Slf4j
@@ -175,7 +176,7 @@ public class EnvironmentEditorPanel extends JPanel {
 		}
 		// Group properties by category
 		Map<String, List<Entry<String, PropertyData>>> grouped = new LinkedHashMap<>();
-		EnvironmentPropertyRegistry.PROPERTIES.entrySet().forEach(entry -> {
+		SchemaBasedEnvironmentPropertyRegistry.getProperties().entrySet().forEach(entry -> {
 			String category = entry.getValue().getCategory();
 			grouped.computeIfAbsent(category, k -> new ArrayList<>()).add(entry);
 		});
@@ -192,7 +193,7 @@ public class EnvironmentEditorPanel extends JPanel {
 				row.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
 				JLabel propName = new JLabel(key);
-				propName.setToolTipText("<html><p style='width:200px;'>" + propertyData.getDescription() + "</p></html>");
+				propName.setToolTipText("<html><p style='width:200px;'><b>Type:</b> " + "" + "<br>" + propertyData.getDescription() + "</p></html>");
 				propName.setForeground(Color.WHITE);
 				propName.setPreferredSize(new Dimension(140, 24));
 				row.add(propName);
@@ -312,8 +313,9 @@ public class EnvironmentEditorPanel extends JPanel {
 	}
 
 	public String getValue(Environment environment, String key) {
-		Function<Environment, String> retriever = EnvironmentPropertyRegistry.PROPERTIES.get(key).getGetter();
+		Function<Environment, String> retriever = SchemaBasedEnvironmentPropertyRegistry.getProperties().get(key).getGetter();
 		if (retriever != null) {
+			System.out.println("VALIE: " + retriever.apply(environment));
 			return retriever.apply(environment);
 		}
 		return "";
@@ -325,7 +327,7 @@ public class EnvironmentEditorPanel extends JPanel {
 			log.info("Unable to find Environment: {}", environment.name());
 			return;
 		}
-		BiConsumer<Environment, Object> setter = EnvironmentPropertyRegistry.PROPERTIES.get(key).getSetter();
+		BiConsumer<Environment, Object> setter = SchemaBasedEnvironmentPropertyRegistry.getProperties().get(key).getSetter();
 		if (setter != null) {
 			setter.accept(targetEnvironment, value);
 			environmentManager.refreshEnvironmentValues(environment,true);
@@ -388,4 +390,5 @@ public class EnvironmentEditorPanel extends JPanel {
 			return c;
 		}
 	}
+
 }

@@ -14,7 +14,15 @@ public class ColorPicker extends ComponentData {
 	private ColorJButton colorPickerBtn;
 
 	public void create() {
-		Color existing = Color.decode(value);
+		Color existing = null;
+		if (value != null && !value.trim().isEmpty()) {
+			try {
+				existing = Color.decode(value);
+			} catch (NumberFormatException e) {
+				// Invalid color format, use default
+				existing = null;
+			}
+		}
 
 		boolean alphaHidden = true;
 
@@ -30,15 +38,27 @@ public class ColorPicker extends ComponentData {
 		colorPickerBtn.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent e) {
+				Color currentColor = Color.BLACK;
+				if (value != null && !value.trim().isEmpty()) {
+					try {
+						currentColor = Color.decode(value);
+					} catch (NumberFormatException e1) {
+						// Invalid color format, use default
+						currentColor = Color.BLACK;
+					}
+				}
+				
 				environmentEditor.colorPicker = environmentEditor.colorPickerManager.create(SwingUtilities.windowForComponent(
 						environmentEditor),
-					Color.decode(value), environment.name() + " : " + key, false
+					currentColor, environment.name() + " : " + key, false
 				);
 				environmentEditor.colorPicker.setOnColorChange(c -> {
-					value = c.toString();
+					// Convert Color to hex format instead of toString()
+					value = String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
 					colorPickerBtn.setColor(c);
-					String hex = String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
-					environmentEditor.setValue(environment, key, hex);
+					// Update button text to show the selected color
+					colorPickerBtn.setText(value.toUpperCase());
+					environmentEditor.setValue(environment, key, value);
 				});
 				environmentEditor.colorPicker.setVisible(true);
 			}
