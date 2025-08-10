@@ -27,6 +27,7 @@ public class CollapsiblePanel extends JPanel {
     public CollapsiblePanel(String title) {
         setLayout(new BorderLayout());
         setOpaque(false);
+        setAlignmentX(Component.LEFT_ALIGNMENT);
 
         toggleButton = new JButton(title, SECTION_RETRACT_ICON);
         toggleButton.setFocusPainted(false);
@@ -42,6 +43,7 @@ public class CollapsiblePanel extends JPanel {
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setOpaque(false);
         contentPanel.setBorder(BorderFactory.createEmptyBorder(4, 16, 8, 8));
+        contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         toggleButton.addActionListener(new ActionListener() {
             @Override
@@ -55,6 +57,10 @@ public class CollapsiblePanel extends JPanel {
     }
 
     public void addContent(Component comp) {
+        // Ensure the component is left-aligned
+        if (comp instanceof JComponent) {
+            ((JComponent) comp).setAlignmentX(Component.LEFT_ALIGNMENT);
+        }
         contentPanel.add(comp);
     }
 
@@ -62,8 +68,47 @@ public class CollapsiblePanel extends JPanel {
         expanded = expand;
         contentPanel.setVisible(expanded);
         toggleButton.setIcon(expanded ? SECTION_RETRACT_ICON : SECTION_EXPAND_ICON);
+        
+        // Force revalidation of this panel and all parent containers
         revalidate();
         repaint();
+        
+        // Ensure parent containers also revalidate to handle layout changes
+        Container parent = getParent();
+        while (parent != null) {
+            parent.revalidate();
+            parent = parent.getParent();
+        }
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        if (!expanded) {
+            // When collapsed, only return the size needed for the toggle button
+            Dimension buttonSize = toggleButton.getPreferredSize();
+            return new Dimension(buttonSize.width, buttonSize.height);
+        }
+        return super.getPreferredSize();
+    }
+
+    @Override
+    public Dimension getMinimumSize() {
+        if (!expanded) {
+            // When collapsed, only return the minimum size needed for the toggle button
+            Dimension buttonSize = toggleButton.getMinimumSize();
+            return new Dimension(buttonSize.width, buttonSize.height);
+        }
+        return super.getMinimumSize();
+    }
+
+    @Override
+    public Dimension getMaximumSize() {
+        if (!expanded) {
+            // When collapsed, allow the panel to shrink to minimum size
+            Dimension buttonSize = toggleButton.getMaximumSize();
+            return new Dimension(buttonSize.width, buttonSize.height);
+        }
+        return super.getMaximumSize();
     }
 
     public boolean isExpanded() {
