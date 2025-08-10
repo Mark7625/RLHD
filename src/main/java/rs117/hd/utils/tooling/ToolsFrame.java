@@ -13,6 +13,7 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.components.colorpicker.ColorPickerManager;
 import net.runelite.client.ui.components.materialtabs.MaterialTab;
 import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
+import rs117.hd.HdPlugin;
 import rs117.hd.scene.EnvironmentManager;
 import rs117.hd.scene.TextureManager;
 import rs117.hd.utils.tooling.environment.EnvironmentEditorPanel;
@@ -26,6 +27,8 @@ public class ToolsFrame extends JFrame {
 	private ClientThread clientThread;
 	@Inject
 	private EnvironmentManager environmentManager;
+	@Inject
+	private HdPlugin plugin;
 	@Inject
 	private Client client;
 
@@ -72,7 +75,7 @@ public class ToolsFrame extends JFrame {
 
 				JPanel comingSoonPanel = new JPanel(new BorderLayout());
 				comingSoonPanel.add(new javax.swing.JLabel("Coming Soon", javax.swing.SwingConstants.CENTER), BorderLayout.CENTER);
-				MaterialTab editorTab = new MaterialTab("Environment Editor", tabGroup, new EnvironmentEditorPanel(clientThread, client, environmentManager,colorPicker));
+				MaterialTab editorTab = new MaterialTab("Environment Editor", tabGroup, new EnvironmentEditorPanel(clientThread, client, environmentManager,colorPicker,plugin));
 
 				tabGroup.setBorder(new EmptyBorder(5, 0, 0, 0));
 				tabGroup.addTab(editorTab);

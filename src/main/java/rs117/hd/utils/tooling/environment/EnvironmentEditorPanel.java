@@ -39,6 +39,7 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.components.colorpicker.ColorPickerManager;
 import net.runelite.client.ui.components.colorpicker.RuneliteColorPicker;
+import rs117.hd.HdPlugin;
 import rs117.hd.scene.EnvironmentManager;
 import rs117.hd.scene.areas.Area;
 import rs117.hd.scene.environments.Environment;
@@ -63,6 +64,7 @@ public class EnvironmentEditorPanel extends JPanel {
 	private final EnvironmentManager environmentManager;
 	private final Client client;
 	private final ClientThread clientThread;
+	private final HdPlugin plugin;
 
 	private Environment currentlySelectedEnvironment;
 	private String lastSearchText = "";
@@ -71,12 +73,14 @@ public class EnvironmentEditorPanel extends JPanel {
 		ClientThread clientThread,
 		Client client,
 		EnvironmentManager environmentManager,
-		ColorPickerManager colorPickerManager
+		ColorPickerManager colorPickerManager,
+		HdPlugin plugin
 	) {
 		this.clientThread = clientThread;
 		this.client = client;
 		this.environmentManager = environmentManager;
 		this.colorPickerManager = colorPickerManager;
+		this.plugin = plugin;
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 		setLayout(new BorderLayout());
 
@@ -219,13 +223,9 @@ public class EnvironmentEditorPanel extends JPanel {
 	 */
 	public void save() {
 		try {
-			Gson gson = new GsonBuilder()
-				.setPrettyPrinting()
-				.registerTypeAdapter(Environment.class, new EnvironmentSerializer())
-				.serializeNulls()
-				.create();
 
-			String json = gson.toJson(environmentManager.getEnvironments());
+
+			String json = plugin.getGson().toJson(environmentManager.getEnvironments());
 			ResourcePath.path("src/main/resources/rs117/hd/scene/environments.json").writeString(json);
 		} catch (Exception e) {
 			log.error("Failed to save environments", e);
