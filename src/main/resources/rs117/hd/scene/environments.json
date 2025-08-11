@@ -105,7 +105,7 @@
     "waterColor": "#0F1E38"
   },
   {
-    "area": "Daimon's Crater - Bounty Hunter",
+    "area": "Daimon\u0027s Crater - Bounty Hunter",
     "ambientColor": "#d7d2d2",
     "ambientStrength": 0.75,
     "directionalColor": "#c5b8b6",
@@ -709,7 +709,10 @@
     "area": "ESSENCE_MINE",
     "ambientColor": "#6687a9",
     "ambientStrength": 0.85,
-    "sunAngles": [ 50, 244 ],
+    "sunAngles": [
+      50,
+      244
+    ],
     "directionalStrength": 0.45,
     "fogColor": "#adb9c4",
     "fogDepth": 50
@@ -718,7 +721,10 @@
     "area": "ICE_QUEENS_DUNGEON",
     "ambientColor": "#6687a9",
     "ambientStrength": 0.85,
-    "sunAngles": [ 73, 244 ],
+    "sunAngles": [
+      73,
+      244
+    ],
     "directionalStrength": 0.45,
     "fogColor": "#adb9c4",
     "fogDepth": 50
@@ -759,7 +765,8 @@
     "fogColor": "#aebde0",
     "fogDepth": 20,
     "sunAngles": [
-      45, 235
+      45,
+      235
     ]
   },
   {
@@ -801,7 +808,10 @@
     "area": "FREMENNIK_ISLES_MIDDLE",
     "ambientColor": "#97baff",
     "directionalStrength": 4,
-    "sunAngles": [ 52, 235 ],
+    "sunAngles": [
+      52,
+      235
+    ],
     "fogDepth": 25,
     "windStrength": 85,
     "windCeiling": 400,
@@ -812,7 +822,10 @@
     "area": "NEITIZNOT",
     "ambientColor": "#97baff",
     "directionalStrength": 4,
-    "sunAngles": [ 52, 235 ],
+    "sunAngles": [
+      52,
+      235
+    ],
     "fogDepth": 15,
     "windStrength": 85,
     "windCeiling": 400,
@@ -870,7 +883,8 @@
     "directionalStrength": 0.25,
     "fogColor": "#000000",
     "sunAngles": [
-      52, 235
+      52,
+      235
     ],
     "fogDepth": 45
   },
@@ -878,7 +892,10 @@
     "area": "WATERBIRTH_ISLAND",
     "ambientColor": "#6fb0ff",
     "ambientStrength": 1.75,
-    "sunAngles": [ 72, 235 ],
+    "sunAngles": [
+      72,
+      235
+    ],
     "directionalColor": "#f4e5c9",
     "directionalStrength": 1.5,
     "fogColor": "#adb9c4",
@@ -888,7 +905,10 @@
     "area": "ISLAND_OF_STONE",
     "ambientColor": "#6fb0ff",
     "ambientStrength": 1.75,
-    "sunAngles": [ 72, 235 ],
+    "sunAngles": [
+      72,
+      235
+    ],
     "directionalColor": "#f4e5c9",
     "directionalStrength": 1.5,
     "fogColor": "#adb9c4",
@@ -1137,7 +1157,10 @@
     "instantTransition": true,
     "ambientColor": "#6fb0ff",
     "ambientStrength": 1,
-    "sunAngles": [ 72, 235 ],
+    "sunAngles": [
+      72,
+      235
+    ],
     "directionalColor": "#f4e5c9",
     "directionalStrength": 0.75,
     "fogColor": "#aebde3",
@@ -1705,7 +1728,10 @@
     "ambientStrength": 2.2,
     "directionalColor": "#FFFFFF",
     "directionalStrength": 1,
-    "sunAngles": [ 80, 190 ]
+    "sunAngles": [
+      80,
+      190
+    ]
   },
   {
     "area": "DEFENDER_OF_VARROCK_CASTLE_UNDER_ATTACK",
@@ -1795,7 +1821,10 @@
   },
   {
     "area": "EARTHBOUND_CAVERN",
-    "sunAngles": [ 62, 210 ],
+    "sunAngles": [
+      62,
+      210
+    ],
     "waterColor": "#477d95",
     "waterCausticsStrength": 20,
     "windAngle": 30,
@@ -1896,7 +1925,10 @@
       176.9941
     ],
     "directionalStrength": 2,
-    "sunAngles": [ 52, 235 ],
+    "sunAngles": [
+      52,
+      235
+    ],
     "fogColor": "#fddcb4",
     "fogDepth": 6.5,
     "windStrength": 50
@@ -1905,7 +1937,10 @@
     "area": "VARLAMORE",
     "ambientColor": "#97baff",
     "directionalStrength": 4,
-    "sunAngles": [ 52, 235 ],
+    "sunAngles": [
+      52,
+      235
+    ],
     "fogDepth": 6.5,
     "windSpeed": 15,
     "windStrength": 35
@@ -1914,7 +1949,10 @@
     "area": "APE_ATOLL",
     "ambientColor": "#97baff",
     "directionalStrength": 4,
-    "sunAngles": [ 52, 235 ],
+    "sunAngles": [
+      52,
+      235
+    ],
     "fogDepth": 6.5,
     "windAngle": 40,
     "windSpeed": 17,
@@ -1982,11 +2020,15 @@
     "area": "OVERWORLD",
     "ambientColor": "#97baff",
     "directionalStrength": 4,
-    "sunAngles": [ 52, 235 ],
+    "sunAngles": [
+      52,
+      235
+    ],
     "fogDepth": 6.5,
     "windAngle": 40,
     "windSpeed": 15,
-    "windStrength": 50
+    "windStrength": 50,
+    "fogColor": "#078a4f"
   },
   {
     "key": "AUTUMN",
@@ -2015,7 +2057,10 @@
     "ambientColor": "#8fcaff",
     "ambientStrength": 3.5,
     "directionalStrength": 1.5,
-    "sunAngles": [ 52, 235 ],
+    "sunAngles": [
+      52,
+      235
+    ],
     "fogColor": "#b8c5db",
     "fogDepth": 35,
     "windAngle": 60

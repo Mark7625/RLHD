@@ -25,10 +25,18 @@ public class NumberSpinner extends ComponentData {
 
     @Override
     public void create() {
+        // Handle empty or null values by providing defaults
+        String defaultValue = (value == null || value.trim().isEmpty()) ? "0" : value;
+        
         SpinnerModel model;
         if (type == NumberType.INT) {
             // Accept both '0' and '0.0' as valid input
-            int initialValue = (int) Math.round(Double.parseDouble(value));
+            int initialValue;
+            try {
+                initialValue = (int) Math.round(Double.parseDouble(defaultValue));
+            } catch (NumberFormatException e) {
+                initialValue = 0; // Default to 0 if parsing fails
+            }
             int minVal = min.intValue();
             int maxVal = max.intValue();
             // Clamp value
@@ -36,7 +44,12 @@ public class NumberSpinner extends ComponentData {
             if (initialValue > maxVal) initialValue = maxVal;
             model = new SpinnerNumberModel(initialValue, minVal, maxVal, step.intValue());
         } else {
-            double initialValue = Double.parseDouble(value);
+            double initialValue;
+            try {
+                initialValue = Double.parseDouble(defaultValue);
+            } catch (NumberFormatException e) {
+                initialValue = 0.0; // Default to 0.0 if parsing fails
+            }
             double minVal = min.doubleValue();
             double maxVal = max.doubleValue();
             // Clamp value

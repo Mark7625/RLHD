@@ -175,16 +175,16 @@ public class EnvironmentEditorPanel extends JPanel {
 			colorPicker.setVisible(false);
 		}
 		// Group properties by category
-		Map<String, List<Entry<String, PropertyData>>> grouped = new LinkedHashMap<>();
-		SchemaBasedEnvironmentPropertyRegistry.getProperties().entrySet().forEach(entry -> {
+		Map<String, List<Entry<String, PropertyData<Environment>>>> grouped = new LinkedHashMap<>();
+		SchemaBasedEnvironmentPropertyRegistry.getInstance().getProperties().entrySet().forEach(entry -> {
 			String category = entry.getValue().getCategory();
 			grouped.computeIfAbsent(category, k -> new ArrayList<>()).add(entry);
 		});
 		for (String category : grouped.keySet()) {
 			CollapsiblePanel section = new CollapsiblePanel(category);
-			for (Entry<String, PropertyData> entry : grouped.get(category)) {
+			for (Entry<String, PropertyData<Environment>> entry : grouped.get(category)) {
 				String key = entry.getKey();
-				PropertyData propertyData = entry.getValue();
+				PropertyData<Environment> propertyData = entry.getValue();
 
 				JPanel row = new JPanel();
 				row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
@@ -313,7 +313,7 @@ public class EnvironmentEditorPanel extends JPanel {
 	}
 
 	public String getValue(Environment environment, String key) {
-		Function<Environment, String> retriever = SchemaBasedEnvironmentPropertyRegistry.getProperties().get(key).getGetter();
+		Function<Environment, String> retriever = SchemaBasedEnvironmentPropertyRegistry.getInstance().getProperties().get(key).getGetter();
 		if (retriever != null) {
 			System.out.println("VALIE: " + retriever.apply(environment));
 			return retriever.apply(environment);
@@ -327,7 +327,7 @@ public class EnvironmentEditorPanel extends JPanel {
 			log.info("Unable to find Environment: {}", environment.name());
 			return;
 		}
-		BiConsumer<Environment, Object> setter = SchemaBasedEnvironmentPropertyRegistry.getProperties().get(key).getSetter();
+		BiConsumer<Environment, Object> setter = SchemaBasedEnvironmentPropertyRegistry.getInstance().getProperties().get(key).getSetter();
 		if (setter != null) {
 			setter.accept(targetEnvironment, value);
 			environmentManager.refreshEnvironmentValues(environment,true);
