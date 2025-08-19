@@ -57,7 +57,7 @@
     "fogDepth": 25
   },
   {
-    "area": "Lucien's Base Environment",
+    "area": "Lucien\u0027s Base Environment",
     "ambientColor": "#D8EAFF",
     "ambientStrength": 1,
     "directionalColor": "#f4e5c9",
@@ -2047,7 +2047,10 @@
     "area": "Guthix Temple",
     "ambientStrength": 0.9,
     "fogDepth": 30,
-    "sunAngles": [ 70, 220 ]
+    "sunAngles": [
+      70,
+      220
+    ]
   },
   {
     "area": "Doom of Mokhaiotl - Floor 1",
@@ -2077,7 +2080,7 @@
     "windAngle": 40,
     "windSpeed": 15,
     "windStrength": 50,
-    "fogColor": "#078a4f"
+    "fogColor": "#0743ff"
   },
   {
     "key": "AUTUMN",

@@ -7,9 +7,9 @@ import javax.swing.SwingUtilities;
 import net.runelite.client.ui.components.ColorJButton;
 import net.runelite.client.util.ColorUtil;
 import rs117.hd.utils.tooling.props.ComponentData;
+import rs117.hd.utils.tooling.props.PropertyContext;
 
-
-public class ColorPicker extends ComponentData {
+public class ColorPicker<T> extends ComponentData<T> {
 
 	private ColorJButton colorPickerBtn;
 
@@ -48,19 +48,19 @@ public class ColorPicker extends ComponentData {
 					}
 				}
 				
-				environmentEditor.colorPicker = environmentEditor.colorPickerManager.create(SwingUtilities.windowForComponent(
-						environmentEditor),
-					currentColor, environment.name() + " : " + key, false
+				net.runelite.client.ui.components.colorpicker.RuneliteColorPicker colorPicker = context.getColorPickerManager().create(
+					context.getWindowComponent(),
+					currentColor, context.getDisplayName(data) + " : " + key, false
 				);
-				environmentEditor.colorPicker.setOnColorChange(c -> {
+				colorPicker.setOnColorChange(c -> {
 					// Convert Color to hex format instead of toString()
 					value = String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
 					colorPickerBtn.setColor(c);
 					// Update button text to show the selected color
 					colorPickerBtn.setText(value.toUpperCase());
-					environmentEditor.setValue(environment, key, value);
+					context.setValue(data, key, value);
 				});
-				environmentEditor.colorPicker.setVisible(true);
+				colorPicker.setVisible(true);
 			}
 		});
 		component = colorPickerBtn;

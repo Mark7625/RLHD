@@ -6,8 +6,9 @@ import javax.swing.event.DocumentListener;
 import java.awt.Component;
 import java.text.NumberFormat;
 import rs117.hd.utils.tooling.props.ComponentData;
+import rs117.hd.utils.tooling.props.PropertyContext;
 
-public class NumberSpinner extends ComponentData {
+public class NumberSpinner<T> extends ComponentData<T> {
     public enum NumberType { INT, FLOAT }
 
     private JSpinner spinner;
@@ -72,7 +73,7 @@ public class NumberSpinner extends ComponentData {
             public void insertUpdate(DocumentEvent e) { update(); }
             public void update() {
                 Object val = spinnerTextField.getValue();
-                environmentEditor.setValue(environment, key, val);
+                context.setValue(data, key, val);
                 if (onValueChanged != null) onValueChanged.run();
             }
         });
