@@ -224,8 +224,6 @@ public class EnvironmentEditorPanel extends JPanel {
 	 */
 	public void save() {
 		try {
-
-
 			String json = plugin.getGson().toJson(environmentManager.getEnvironments());
 			ResourcePath.path("src/main/resources/rs117/hd/scene/environments.json").writeString(json);
 		} catch (Exception e) {
