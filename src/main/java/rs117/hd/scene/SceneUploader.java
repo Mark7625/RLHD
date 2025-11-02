@@ -276,7 +276,9 @@ public class SceneUploader {
 
 					boolean forceFill = false;
 					for (Area possibleArea : sceneContext.possibleAreas) {
+						System.out.println("NAME: " + possibleArea.name);
 						if (possibleArea.containsPoint(worldPoint) && possibleArea.fillGaps) {
+							System.out.println("FILL GAP");
 							forceFill = true;
 							break;
 						}
