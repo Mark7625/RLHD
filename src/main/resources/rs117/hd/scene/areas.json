@@ -4416,6 +4416,13 @@
     "hideOtherAreas": true
   },
   {
+    "name": "GOD_WARS_DUNGEON_ANCIENT_PRISON_HOLE",
+    "aabbs": [
+      [ 2914, 5214, 2936, 5192,0 ]
+    ],
+    "fillGaps": true
+  },
+  {
     "name": "ISLE_OF_SOULS_DUNGEON",
     "regions": [
       8593

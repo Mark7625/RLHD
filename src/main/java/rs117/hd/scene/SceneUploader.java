@@ -273,13 +273,22 @@ public class SceneUploader {
 					}
 
 					int[] worldPoint = sceneContext.sceneToWorld(tileX, tileY, tileZ);
+
+					boolean forceFill = false;
+					for (Area possibleArea : sceneContext.possibleAreas) {
+						if (possibleArea.containsPoint(worldPoint) && possibleArea.fillGaps) {
+							forceFill = true;
+							break;
+						}
+					}
+
 					boolean fillGaps =
 						tileZ == 0 &&
 						tileX > sceneMin &&
 						tileY > sceneMin &&
 						tileX < sceneMax - 1 &&
 						tileY < sceneMax - 1 &&
-						Area.OVERWORLD.containsPoint(worldPoint);
+						Area.OVERWORLD.containsPoint(worldPoint) || forceFill;
 
 					if (fillGaps) {
 						int tileRegionID = HDUtils.worldToRegionID(worldPoint);
