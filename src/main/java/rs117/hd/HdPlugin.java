@@ -80,6 +80,7 @@ import rs117.hd.config.SeasonalTheme;
 import rs117.hd.config.ShadingMode;
 import rs117.hd.config.ShadowMode;
 import rs117.hd.config.VanillaShadowMode;
+import rs117.hd.model.modelreplaceer.types.objects.ModelDefinition;
 import rs117.hd.opengl.AsyncUICopy;
 import rs117.hd.opengl.shader.ShaderException;
 import rs117.hd.opengl.shader.ShaderIncludes;
@@ -667,6 +668,7 @@ public class HdPlugin extends Plugin {
 			areaManager.shutDown();
 			gamevalManager.shutDown();
 			gammaCalibrationOverlay.destroy();
+			ModelDefinition.release();
 			npcDisplacementCache.destroy();
 
 			if (lwjglInitialized) {
