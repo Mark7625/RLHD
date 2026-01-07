@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.client.callback.ClientThread;
 import rs117.hd.HdPlugin;
-import rs117.hd.model.ModelPusher;
+import rs117.hd.renderer.zone.SceneManager;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.utils.FileWatcher;
 import rs117.hd.utils.ModelHash;
@@ -23,13 +23,8 @@ import static rs117.hd.utils.ResourcePath.path;
 @Slf4j
 @Singleton
 public class ModelOverrideManager {
-	private static final ResourcePath MODEL_OVERRIDES_PATH = Props.getPathOrDefault(
-		"rlhd.model-overrides-path",
-		() -> path(ModelOverrideManager.class, "model_overrides.json")
-	);
-
-	@Inject
-	private Client client;
+	private static final ResourcePath MODEL_OVERRIDES_PATH = Props
+		.getFile("rlhd.model-overrides-path", () -> path(ModelOverrideManager.class, "model_overrides.json"));
 
 	@Inject
 	private ClientThread clientThread;
@@ -38,7 +33,10 @@ public class ModelOverrideManager {
 	private HdPlugin plugin;
 
 	@Inject
-	private ModelPusher modelPusher;
+	private GamevalManager gamevalManager;
+
+	@Inject
+	private SceneManager sceneManager;
 
 	@Inject
 	private FishingSpotReplacer fishingSpotReplacer;
@@ -48,16 +46,19 @@ public class ModelOverrideManager {
 	private FileWatcher.UnregisterCallback fileWatcher;
 
 	public void startUp() {
-		fileWatcher = MODEL_OVERRIDES_PATH.watch((path, first) -> {
-			modelOverrides.clear();
-
+		fileWatcher = MODEL_OVERRIDES_PATH.watch((path, first) -> clientThread.invoke(() -> {
 			try {
-				ModelOverride[] entries = path.loadJson(plugin.getGson(), ModelOverride[].class);
-				if (entries == null)
+				sceneManager.getLoadingLock().lock();
+				sceneManager.completeAllStreaming();
+
+				ModelOverride[] parsedOverrides = path.loadJson(plugin.getGson(), ModelOverride[].class);
+				if (parsedOverrides == null)
 					throw new IOException("Empty or invalid: " + path);
-				for (ModelOverride override : entries) {
+
+				modelOverrides.clear();
+				for (ModelOverride override : parsedOverrides) {
 					try {
-						override.normalize(plugin.configVanillaShadowMode);
+						override.normalize(plugin);
 					} catch (IllegalStateException ex) {
 						log.error("Invalid model override '{}': {}", override.description, ex.getMessage());
 						continue;
@@ -73,21 +74,22 @@ public class ModelOverrideManager {
 					}
 				}
 
+				addOverride(fishingSpotReplacer.getModelOverride());
+
 				log.debug("Loaded {} model overrides", modelOverrides.size());
-			} catch (IOException ex) {
+
+				if (first)
+					return;
+
+				plugin.renderer.clearCaches();
+				plugin.renderer.reloadScene();
+			} catch (Exception ex) {
 				log.error("Failed to load model overrides:", ex);
+			} finally {
+				sceneManager.getLoadingLock().unlock();
+				log.trace("loadingLock unlocked - holdCount: {}", sceneManager.getLoadingLock().getHoldCount());
 			}
-
-			addOverride(fishingSpotReplacer.getModelOverride());
-
-			if (!first) {
-				clientThread.invoke(() -> {
-					modelPusher.clearModelCache();
-					if (client.getGameState() == GameState.LOGGED_IN)
-						client.setGameState(GameState.LOADING);
-				});
-			}
-		});
+		}));
 	}
 
 	public void shutDown() {
@@ -137,16 +139,30 @@ public class ModelOverrideManager {
 			isDuplicate = current != null && !current.isDummy;
 
 			if (isDuplicate && Props.DEVELOPMENT) {
+				String name = null;
+				switch (type) {
+					case ModelHash.TYPE_NPC:
+						name = gamevalManager.getNpcName(id);
+						break;
+					case ModelHash.TYPE_OBJECT:
+						name = gamevalManager.getObjectName(id);
+						break;
+					case ModelHash.TYPE_PROJECTILE:
+					case ModelHash.TYPE_GRAPHICS_OBJECT:
+						name = gamevalManager.getSpotanimName(id);
+						break;
+				}
+
 				// This should ideally not be reached, so print helpful warnings in development mode
 				if (entry.hideInAreas.length > 0) {
 					log.error(
-						"Replacing ID {} from '{}' with hideInAreas-override '{}'. This is likely a mistake...",
-						id, current.description, entry.description
+						"Replacing {} ({}) from '{}' with hideInAreas-override '{}'. This is likely a mistake...",
+						name, id, current.description, entry.description
 					);
 				} else {
 					log.error(
-						"Replacing ID {} from '{}' with '{}'. The first-mentioned override should be removed.",
-						id, current.description, entry.description
+						"Replacing {} ({}) from '{}' with '{}'. The first-mentioned override should be removed.",
+						name, id, current.description, entry.description
 					);
 				}
 			}
@@ -188,5 +204,10 @@ public class ModelOverrideManager {
 					return entry.getValue();
 
 		return override;
+	}
+
+	@Nonnull
+	public ModelOverride getOverride(TileObject tileObject, int[] worldPos) {
+		return getOverride(ModelHash.packUuid(ModelHash.TYPE_OBJECT, tileObject.getId()), worldPos);
 	}
 }

@@ -3,7 +3,7 @@ package rs117.hd.utils;
 import javax.annotation.Nullable;
 import net.runelite.api.*;
 
-import static rs117.hd.utils.HDUtils.clamp;
+import static rs117.hd.utils.MathUtils.*;
 
 public class ModelHash {
 	// Model hashes are composed as follows:
@@ -84,6 +84,10 @@ public class ModelHash {
 
 	public static int getIdOrIndex(long hash) {
 		return (int) (hash >> 20);
+	}
+
+	public static boolean isTemporaryObject(long hash) {
+		return getIdOrIndex(hash) == 0xFFFFFFFF;
 	}
 
 	/**

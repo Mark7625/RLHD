@@ -11,18 +11,18 @@ import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
+import rs117.hd.HdPlugin;
 import rs117.hd.config.SeasonalTheme;
 import rs117.hd.config.VanillaShadowMode;
-import rs117.hd.data.materials.Material;
-import rs117.hd.data.materials.UvType;
 import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.areas.AABB;
+import rs117.hd.scene.materials.Material;
 import rs117.hd.utils.Props;
-import rs117.hd.utils.Vector;
 
 import static net.runelite.api.Perspective.*;
 import static rs117.hd.utils.ExpressionParser.asExpression;
 import static rs117.hd.utils.ExpressionParser.parseExpression;
+import static rs117.hd.utils.MathUtils.*;
 
 @Slf4j
 @NoArgsConstructor
@@ -37,7 +37,7 @@ public class ModelOverride
 
 	// When, where or what the override should apply to
 	public SeasonalTheme seasonalTheme;
-	@JsonAdapter(AABB.JsonAdapter.class)
+	@JsonAdapter(AABB.ArrayAdapter.class)
 	public AABB[] areas = {};
 	@JsonAdapter(GamevalManager.NpcAdapter.class)
 	public Set<Integer> npcIds = EMPTY;
@@ -67,11 +67,19 @@ public class ModelOverride
 	public boolean hideHdShadowsInPvm = false;
 	public boolean castShadows = true;
 	public boolean receiveShadows = true;
+	public boolean terrainVertexSnap = false;
+	public boolean undoVanillaShading = true;
+	public float terrainVertexSnapThreshold = 0.125f;
 	public float shadowOpacityThreshold = 0;
 	public TzHaarRecolorType tzHaarRecolorType = TzHaarRecolorType.NONE;
 	public InheritTileColorType inheritTileColorType = InheritTileColorType.NONE;
+	public WindDisplacement windDisplacementMode = WindDisplacement.DISABLED;
+	public int windDisplacementModifier = 0;
+	public boolean invertDisplacementStrength = false;
+	public int depthBias = -1;
+	public boolean disablePrioritySorting = false;
 
-	@JsonAdapter(AABB.JsonAdapter.class)
+	@JsonAdapter(AABB.ArrayAdapter.class)
 	public AABB[] hideInAreas = {};
 
 	public Map<Material, ModelOverride> materialOverrides;
@@ -82,13 +90,16 @@ public class ModelOverride
 	public transient boolean isDummy;
 	public transient Map<AABB, ModelOverride> areaOverrides;
 	public transient AhslPredicate ahslCondition;
+	public transient boolean hasTransparency;
+	public transient boolean mightHaveTransparency;
+	public transient boolean modifiesVanillaTexture;
 
 	@FunctionalInterface
 	public interface AhslPredicate {
 		boolean test(int ahsl);
 	}
 
-	public void normalize(VanillaShadowMode vanillaShadowMode) {
+	public void normalize(HdPlugin plugin) {
 		// Ensure there are no nulls in case of invalid configuration during development
 		if (baseMaterial == null) {
 			if (Props.DEVELOPMENT)
@@ -115,28 +126,57 @@ public class ModelOverride
 				throw new IllegalStateException("Invalid inheritTileColorType");
 			inheritTileColorType = ModelOverride.NONE.inheritTileColorType;
 		}
+		if (windDisplacementMode == null) {
+			if (Props.DEVELOPMENT)
+				throw new IllegalStateException("Invalid windDisplacementMode");
+			windDisplacementMode = ModelOverride.NONE.windDisplacementMode;
+		}
+
+		if (windDisplacementModifier < -3 || windDisplacementModifier > 3) {
+			if (Props.DEVELOPMENT)
+				throw new IllegalStateException("Invalid windDisplacementModifier (range is -3 to 3)");
+			windDisplacementModifier = clamp(windDisplacementModifier, -3, 3);
+		}
+
+		modifiesVanillaTexture = textureMaterial.modifiesVanillaTexture;
+
+		boolean disableTextures = !plugin.configModelTextures && !forceMaterialChanges;
+		if (disableTextures) {
+			if (baseMaterial.modifiesVanillaTexture)
+				baseMaterial = Material.NONE;
+			if (textureMaterial.modifiesVanillaTexture)
+				textureMaterial = Material.NONE;
+		}
 
 		if (areas == null)
 			areas = new AABB[0];
 		if (hideInAreas == null)
 			hideInAreas = new AABB[0];
 
-		baseMaterial = baseMaterial.resolveReplacements();
-		textureMaterial = textureMaterial.resolveReplacements();
+		hasTransparency = mightHaveTransparency =
+			baseMaterial.hasTransparency ||
+			textureMaterial.hasTransparency ||
+			tzHaarRecolorType != TzHaarRecolorType.NONE;
 
 		if (materialOverrides != null) {
 			var normalized = new HashMap<Material, ModelOverride>();
 			for (var entry : materialOverrides.entrySet()) {
 				var override = entry.getValue();
-				override.normalize(vanillaShadowMode);
-				normalized.put(entry.getKey().resolveReplacements(), override);
+				override.normalize(plugin);
+				if (disableTextures && override.modifiesVanillaTexture)
+					continue;
+				mightHaveTransparency |= override.mightHaveTransparency;
+				normalized.put(entry.getKey(), override);
 			}
+			if (normalized.isEmpty())
+				normalized = null;
 			materialOverrides = normalized;
 		}
 
 		if (colorOverrides != null) {
 			for (var override : colorOverrides) {
-				override.normalize(vanillaShadowMode);
+				override.normalize(plugin);
+				mightHaveTransparency |= override.mightHaveTransparency;
 				override.ahslCondition = parseAhslConditions(override.colors);
 			}
 		}
@@ -149,9 +189,9 @@ public class ModelOverride
 			uvOrientationZ = uvOrientation;
 
 		if (retainVanillaShadowsInPvm) {
-			if (vanillaShadowMode.retainInPvm)
+			if (plugin.configVanillaShadowMode.retainInPvm)
 				hideVanillaShadows = false;
-			if (vanillaShadowMode == VanillaShadowMode.PREFER_IN_PVM && hideHdShadowsInPvm)
+			if (plugin.configVanillaShadowMode == VanillaShadowMode.PREFER_IN_PVM && hideHdShadowsInPvm)
 				castShadows = false;
 		}
 
@@ -187,16 +227,27 @@ public class ModelOverride
 			hideHdShadowsInPvm,
 			castShadows,
 			receiveShadows,
+			terrainVertexSnap,
+			undoVanillaShading,
+			terrainVertexSnapThreshold,
 			shadowOpacityThreshold,
 			tzHaarRecolorType,
 			inheritTileColorType,
+			windDisplacementMode,
+			windDisplacementModifier,
+			invertDisplacementStrength,
+			depthBias,
+			disablePrioritySorting,
 			hideInAreas,
 			materialOverrides,
 			colorOverrides,
 			colors,
 			isDummy,
 			areaOverrides,
-			ahslCondition
+			ahslCondition,
+			hasTransparency,
+			mightHaveTransparency,
+			modifiesVanillaTexture
 		);
 	}
 
@@ -235,7 +286,7 @@ public class ModelOverride
 			} else if (prim.isNumber()) {
 				try {
 					int targetHsl = prim.getAsInt();
-					condition = ahsl -> ahsl == (targetHsl & 0xFFFF);
+					condition = ahsl -> (ahsl & 0xFFFF) == targetHsl;
 				} catch (Exception ex) {
 					log.warn("Expected integer, but got {} in override '{}'", el, description);
 					continue;
@@ -266,8 +317,10 @@ public class ModelOverride
 						case "ahsl":
 							return ahsl;
 						case "hsl":
-						default:
 							return ahsl & 0xFFFF;
+						default:
+							assert false : "Unexpected variable: " + key;
+							return 0;
 					}
 				});
 			} else {
@@ -290,15 +343,15 @@ public class ModelOverride
 	}
 
 	public void computeModelUvw(float[] out, int i, float x, float y, float z, int orientation) {
-		double rad, cos, sin;
+		float rad, cos, sin;
 		float temp;
 		if (orientation % 2048 != 0) {
 			// Reverse baked vertex rotation
-			rad = orientation * UNIT;
-			cos = Math.cos(rad);
-			sin = Math.sin(rad);
-			temp = (float) (x * sin + z * cos);
-			x = (float) (x * cos - z * sin);
+			rad = orientation * JAU_TO_RAD;
+			cos = cos(rad);
+			sin = sin(rad);
+			temp = x * sin + z * cos;
+			x = x * cos - z * sin;
 			z = temp;
 		}
 
@@ -309,20 +362,20 @@ public class ModelOverride
 		uvType.computeModelUvw(out, i, x, y, z);
 
 		if (uvOrientation % 2048 != 0) {
-			rad = uvOrientation * UNIT;
-			cos = Math.cos(rad);
-			sin = Math.sin(rad);
+			rad = uvOrientation * JAU_TO_RAD;
+			cos = cos(rad);
+			sin = sin(rad);
 			x = out[i] - .5f;
 			z = out[i + 1] - .5f;
-			temp = (float) (x * sin + z * cos);
-			x = (float) (x * cos - z * sin);
+			temp = x * sin + z * cos;
+			x = x * cos - z * sin;
 			z = temp;
 			out[i] = x + .5f;
 			out[i + 1] = z + .5f;
 		}
 	}
 
-	public void fillUvsForFace(float[] out, Model model, int orientation, UvType uvType, int face) {
+	public void fillUvsForFace(float[] out, Model model, int orientation, UvType uvType, int face, float[] workingSpace) {
 		switch (uvType) {
 			case WORLD_XY:
 			case WORLD_XZ:
@@ -353,7 +406,7 @@ public class ModelOverride
 				break;
 			}
 			case BOX:
-				computeBoxUvw(out, model, orientation, face);
+				computeBoxUvw(out, model, orientation, face, workingSpace);
 				break;
 			case VANILLA: {
 				final byte[] textureFaces = model.getTextureFaces();
@@ -395,125 +448,127 @@ public class ModelOverride
 		}
 	}
 
-	private void computeBoxUvw(float[] out, Model model, int modelOrientation, int face) {
-		final float[][] vertexXYZ = {
-			model.getVerticesX(),
-			model.getVerticesY(),
-			model.getVerticesZ()
-		};
-		final int[] triABC = {
-			model.getFaceIndices1()[face],
-			model.getFaceIndices2()[face],
-			model.getFaceIndices3()[face]
-		};
+	@SuppressWarnings({ "PointlessArithmeticExpression", "UnnecessaryLocalVariable" })
+	private void computeBoxUvw(float[] out, Model model, int modelOrientation, int face, float[] workingSpace) {
+		final float[] verticesX = model.getVerticesX();
+		final float[] verticesY = model.getVerticesY();
+		final float[] verticesZ = model.getVerticesZ();
 
-		float[][] v = new float[3][3];
-		for (int tri = 0; tri < 3; tri++)
-			for (int i = 0; i < 3; i++)
-				v[tri][i] = vertexXYZ[i][triABC[tri]];
+		final float[] v = workingSpace;
+		int vidx;
+		vidx = model.getFaceIndices1()[face];
+		v[0 * 3 + 0] = verticesX[vidx];
+		v[0 * 3 + 1] = verticesY[vidx];
+		v[0 * 3 + 2] = verticesZ[vidx];
+		vidx = model.getFaceIndices2()[face];
+		v[1 * 3 + 0] = verticesX[vidx];
+		v[1 * 3 + 1] = verticesY[vidx];
+		v[1 * 3 + 2] = verticesZ[vidx];
+		vidx = model.getFaceIndices3()[face];
+		v[2 * 3 + 0] = verticesX[vidx];
+		v[2 * 3 + 1] = verticesY[vidx];
+		v[2 * 3 + 2] = verticesZ[vidx];
 
-		double rad, cos, sin;
+		float rad, cos, sin;
 		float temp;
 		if (modelOrientation % 2048 != 0) {
 			// Reverse baked vertex rotation
-			rad = modelOrientation * UNIT;
-			cos = Math.cos(rad);
-			sin = Math.sin(rad);
+			rad = modelOrientation * JAU_TO_RAD;
+			cos = cos(rad);
+			sin = sin(rad);
 
 			for (int i = 0; i < 3; i++) {
-				temp = (float) (v[i][0] * sin + v[i][2] * cos);
-				v[i][0] = (float) (v[i][0] * cos - v[i][2] * sin);
-				v[i][2] = temp;
+				temp = v[i * 3] * sin + v[i * 3 + 2] * cos;
+				v[i * 3] = v[i * 3] * cos - v[i * 3 + 2] * sin;
+				v[i * 3 + 2] = temp;
 			}
 		}
 
 		for (int i = 0; i < 3; i++) {
-			v[i][0] = (v[i][0] / LOCAL_TILE_SIZE + .5f) / uvScale;
-			v[i][1] = (v[i][1] / LOCAL_TILE_SIZE + .5f) / uvScale;
-			v[i][2] = (v[i][2] / LOCAL_TILE_SIZE + .5f) / uvScale;
+			v[i * 3] = (v[i * 3] / LOCAL_TILE_SIZE + .5f) / uvScale;
+			v[i * 3 + 1] = (v[i * 3 + 1] / LOCAL_TILE_SIZE + .5f) / uvScale;
+			v[i * 3 + 2] = (v[i * 3 + 2] / LOCAL_TILE_SIZE + .5f) / uvScale;
 		}
 
-		// Compute face normal
-		float[] a = new float[3];
-		float[] b = new float[3];
-		Vector.subtract(a, v[1], v[0]);
-		Vector.subtract(b, v[2], v[0]);
-		float[] n = new float[3];
-		Vector.cross(n, a, b);
-		float[] absN = new float[3];
-		Vector.abs(absN, n);
+		// Compute face normal as cross(v[1] - v[0], v[2] - v[0])
+		float nx = (v[3 + 1] - v[1]) * (v[6 + 2] - v[2]) - (v[3 + 2] - v[2]) * (v[6 + 1] - v[1]);
+		float ny = (v[3 + 2] - v[2]) * (v[6 + 0] - v[0]) - (v[3 + 0] - v[0]) * (v[6 + 2] - v[2]);
+		float nz = (v[3 + 0] - v[0]) * (v[6 + 1] - v[1]) - (v[3 + 1] - v[1]) * (v[6 + 0] - v[0]);
+		float absNx = abs(nx);
+		float absNy = abs(ny);
+		float absNz = abs(nz);
 
 		out[2] = out[6] = out[10] = 0;
-		if (absN[0] > absN[1] && absN[0] > absN[2]) {
+		if (absNx > absNy && absNx > absNz) {
 			// YZ plane
-			float flip = Math.signum(n[0]);
+			float flip = sign(nx);
 			for (int tri = 0; tri < 3; tri++) {
-				out[tri * 4] = flip * -v[tri][2];
-				out[tri * 4 + 1] = v[tri][1];
+				out[tri * 4] = flip * -v[tri * 3 + 2];
+				out[tri * 4 + 1] = v[tri * 3 + 1];
 			}
 
 			if (uvOrientationX % 2048 != 0) {
-				rad = uvOrientationX * UNIT;
-				cos = Math.cos(rad);
-				sin = Math.sin(rad);
+				rad = uvOrientationX * JAU_TO_RAD;
+				cos = cos(rad);
+				sin = sin(rad);
 
 				for (int i = 0; i < 3; i++) {
 					int j = i * 4;
-					v[i][0] = out[j] - .5f;
-					v[i][2] = out[j + 1] - .5f;
-					temp = (float) (v[i][0] * sin + v[i][2] * cos);
-					v[i][0] = (float) (v[i][0] * cos - v[i][2] * sin);
-					v[i][2] = temp;
-					out[j] = v[i][0] + .5f;
-					out[j + 1] = v[i][2] + .5f;
+					v[i * 3] = out[j] - .5f;
+					v[i * 3 + 2] = out[j + 1] - .5f;
+					temp = v[i * 3] * sin + v[i * 3 + 2] * cos;
+					v[i * 3] = v[i * 3] * cos - v[i * 3 + 2] * sin;
+					v[i * 3 + 2] = temp;
+					out[j] = v[i * 3] + .5f;
+					out[j + 1] = v[i * 3 + 2] + .5f;
 				}
 			}
-		} else if (absN[1] > absN[0] && absN[1] > absN[2]) {
+		} else if (absNy > absNx && absNy > absNz) {
 			// XZ
-			float flip = Math.signum(n[1]);
+			float flip = sign(ny);
 			for (int tri = 0; tri < 3; tri++) {
-				out[tri * 4] = flip * -v[tri][0];
-				out[tri * 4 + 1] = v[tri][2];
+				out[tri * 4] = flip * -v[tri * 3];
+				out[tri * 4 + 1] = v[tri * 3 + 2];
 			}
 
 			if (uvOrientationY % 2048 != 0) {
-				rad = uvOrientationY * UNIT;
-				cos = Math.cos(rad);
-				sin = Math.sin(rad);
+				rad = uvOrientationY * JAU_TO_RAD;
+				cos = cos(rad);
+				sin = sin(rad);
 
 				for (int i = 0; i < 3; i++) {
 					int j = i * 4;
-					v[i][0] = out[j] - .5f;
-					v[i][2] = out[j + 1] - .5f;
-					temp = (float) (v[i][0] * sin + v[i][2] * cos);
-					v[i][0] = (float) (v[i][0] * cos - v[i][2] * sin);
-					v[i][2] = temp;
-					out[j] = v[i][0] + .5f;
-					out[j + 1] = v[i][2] + .5f;
+					v[i * 3] = out[j] - .5f;
+					v[i * 3 + 2] = out[j + 1] - .5f;
+					temp = v[i * 3] * sin + v[i * 3 + 2] * cos;
+					v[i * 3] = v[i * 3] * cos - v[i * 3 + 2] * sin;
+					v[i * 3 + 2] = temp;
+					out[j] = v[i * 3] + .5f;
+					out[j + 1] = v[i * 3 + 2] + .5f;
 				}
 			}
 		} else {
 			// XY
-			float flip = Math.signum(n[2]);
+			float flip = sign(nz);
 			for (int tri = 0; tri < 3; tri++) {
-				out[tri * 4] = flip * v[tri][0];
-				out[tri * 4 + 1] = v[tri][1];
+				out[tri * 4] = flip * v[tri * 3];
+				out[tri * 4 + 1] = v[tri * 3 + 1];
 			}
 
 			if (uvOrientationZ % 2048 != 0) {
-				rad = uvOrientationZ * UNIT;
-				cos = Math.cos(rad);
-				sin = Math.sin(rad);
+				rad = uvOrientationZ * JAU_TO_RAD;
+				cos = cos(rad);
+				sin = sin(rad);
 
 				for (int i = 0; i < 3; i++) {
 					int j = i * 4;
-					v[i][0] = out[j] - .5f;
-					v[i][2] = out[j + 1] - .5f;
-					temp = (float) (v[i][0] * sin + v[i][2] * cos);
-					v[i][0] = (float) (v[i][0] * cos - v[i][2] * sin);
-					v[i][2] = temp;
-					out[j] = v[i][0] + .5f;
-					out[j + 1] = v[i][2] + .5f;
+					v[i * 3] = out[j] - .5f;
+					v[i * 3 + 2] = out[j + 1] - .5f;
+					temp = v[i * 3] * sin + v[i * 3 + 2] * cos;
+					v[i * 3] = v[i * 3] * cos - v[i * 3 + 2] * sin;
+					v[i * 3 + 2] = temp;
+					out[j] = v[i * 3] + .5f;
+					out[j + 1] = v[i * 3 + 2] + .5f;
 				}
 			}
 		}

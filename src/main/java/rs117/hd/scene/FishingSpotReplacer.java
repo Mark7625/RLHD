@@ -5,18 +5,19 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
+import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.overlays.FrameTimer;
 import rs117.hd.overlays.Timer;
 import rs117.hd.scene.model_overrides.ModelOverride;
 
 import static rs117.hd.utils.ColorUtils.hsl;
+import static rs117.hd.utils.MathUtils.*;
 
 public class FishingSpotReplacer {
 	private static final int FISHING_SPOT_MODEL_ID = 41238;
@@ -38,6 +39,9 @@ public class FishingSpotReplacer {
 	private EventBus eventBus;
 
 	@Inject
+	private HdPlugin plugin;
+
+	@Inject
 	private HdPluginConfig config;
 
 	@Inject
@@ -47,31 +51,23 @@ public class FishingSpotReplacer {
 	private FrameTimer frameTimer;
 
 	private final Map<Integer, RuneLiteObject> npcIndexToModel = new HashMap<>();
-	private Animation fishingSpotAnimation;
-	private Animation lavaFishingSpotAnimation;
 
 	public void startUp() {
 		eventBus.register(this);
-		fishingSpotAnimation = client.loadAnimation(FISHING_SPOT_ANIMATION_ID);
-		lavaFishingSpotAnimation = client.loadAnimation(LAVA_SPOT_ANIMATION_ID);
 	}
 
 	public void shutDown() {
 		eventBus.unregister(this);
 		despawnRuneLiteObjects();
-		fishingSpotAnimation = null;
-		lavaFishingSpotAnimation = null;
 	}
 
 	public void despawnRuneLiteObjects() {
-		npcIndexToModel.values().forEach(rlobj -> rlobj.setActive(false));
+		for (var obj : npcIndexToModel.values())
+			obj.setActive(false);
 		npcIndexToModel.clear();
 	}
 
 	public ModelOverride getModelOverride() {
-		if (!config.replaceFishingSpots())
-			return null;
-
 		ModelOverride override = new ModelOverride();
 		override.hide = true;
 		override.npcIds = NPC_IDS;
@@ -79,74 +75,88 @@ public class FishingSpotReplacer {
 	}
 
 	public void update() {
-		if (!config.replaceFishingSpots())
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext == null)
 			return;
 
 		frameTimer.begin(Timer.REPLACE_FISHING_SPOTS);
 
-		// Despawn fishing spots for inactive NPCs
-		Set<Integer> npcIndices = client.getNpcs().stream().map(NPC::getIndex).collect(Collectors.toSet());
-		npcIndexToModel.entrySet().removeIf(entry -> {
-			if (npcIndices.contains(entry.getKey()))
-				return false;
+		var worldView = client.getTopLevelWorldView();
+		var npcs = worldView.npcs();
+		var modelsToDespawn = new HashMap<>(npcIndexToModel);
+		for (NPC npc : npcs) {
+			if (!NPC_IDS.contains(npc.getId()))
+				continue;
+
+			var model = modelsToDespawn.remove(npc.getIndex());
+			if (model == null) {
+				// No fishing spot replacement associated with the NPC yet, so spawn one
+				spawnFishingSpot(sceneContext, npc);
+			} else {
+				// Already associated with a fishing spot replacement, so let's update its position
+				model.setLocation(npc.getLocalLocation(), worldView.getPlane());
+			}
+		}
+
+		for (var entry : modelsToDespawn.entrySet()) {
+			// Despawn the RuneLiteObject and stop tracking the index
 			entry.getValue().setActive(false);
-			return true;
-		});
-
-		client.getNpcs().forEach(this::spawnFishingSpot);
-
-		// Update the location of active fishing spots to match their corresponding NPC's current position
-		npcIndexToModel.forEach((index, runeLiteObject) -> {
-			NPC npc = client.getTopLevelWorldView().npcs().byIndex(index);
-			if (npc != null)
-				runeLiteObject.setLocation(npc.getLocalLocation(), client.getTopLevelWorldView().getPlane());
-		});
+			npcIndexToModel.remove(entry.getKey());
+		}
 
 		frameTimer.end(Timer.REPLACE_FISHING_SPOTS);
 	}
 
 	@Subscribe
 	public void onNpcSpawned(NpcSpawned npcSpawned) {
-		spawnFishingSpot(npcSpawned.getNpc());
+		var sceneContext = plugin.getSceneContext();
+		var npc = npcSpawned.getNpc();
+		if (sceneContext != null && NPC_IDS.contains(npc.getId()))
+			spawnFishingSpot(sceneContext, npc);
 	}
 
-	public void spawnFishingSpot(NPC npc) {
-		if (!NPC_IDS.contains(npc.getId()))
+	public void spawnFishingSpot(SceneContext sceneContext, NPC npc) {
+		if (npcIndexToModel.containsKey(npc.getIndex()))
 			return;
 
-		npcIndexToModel.computeIfAbsent(npc.getIndex(), i -> {
-			int modelId = FISHING_SPOT_MODEL_ID;
-			Animation animation = fishingSpotAnimation;
-			int recolor = -1;
-
-			if (LAVA_FISHING_SPOT_IDS.contains(npc.getId())) {
-				modelId = LAVA_SPOT_MODEL_ID;
-				animation = lavaFishingSpotAnimation;
-				recolor = LAVA_SPOT_COLOR;
-			} else {
-				var lp = npc.getLocalLocation();
-				if (lp.isInScene()) {
-					Tile tile = client.getScene().getTiles()[client.getPlane()][lp.getSceneX()][lp.getSceneY()];
-					recolor = tileOverrideManager.getOverride(client.getScene(), tile).waterType.fishingSpotRecolor;
-				}
+		AnimationController animController;
+		int modelId;
+		int recolor = -1;
+		if (LAVA_FISHING_SPOT_IDS.contains(npc.getId())) {
+			animController = new AnimationController(client, LAVA_SPOT_ANIMATION_ID);
+			modelId = LAVA_SPOT_MODEL_ID;
+			recolor = LAVA_SPOT_COLOR;
+		} else {
+			animController = new AnimationController(client, FISHING_SPOT_ANIMATION_ID);
+			modelId = FISHING_SPOT_MODEL_ID;
+			var lp = npc.getLocalLocation();
+			if (lp.isInScene()) {
+				var worldView = client.getTopLevelWorldView();
+				int plane = worldView.getPlane();
+				Tile tile = worldView.getScene().getTiles()[plane][lp.getSceneX()][lp.getSceneY()];
+				recolor = tileOverrideManager.getOverride(sceneContext, tile).waterType.fishingSpotRecolor;
 			}
+		}
 
-			ModelData modelData = client.loadModelData(modelId);
-			if (modelData == null)
-				return null;
+		ModelData modelData = client.loadModelData(modelId);
+		if (modelData == null)
+			return;
 
-			if (recolor != -1) {
-				modelData = modelData.cloneColors();
-				Arrays.fill(modelData.getFaceColors(), (short) recolor);
-			}
+		if (recolor != -1) {
+			modelData = modelData.cloneColors();
+			Arrays.fill(modelData.getFaceColors(), (short) recolor);
+		}
 
-			RuneLiteObject fishingSpot = client.createRuneLiteObject();
-			fishingSpot.setAnimation(animation);
-			fishingSpot.setDrawFrontTilesFirst(false);
-			fishingSpot.setActive(true);
-			fishingSpot.setShouldLoop(true);
-			fishingSpot.setModel(modelData.light());
-			return fishingSpot;
-		});
+		var anim = animController.getAnimation();
+		if (anim != null)
+			animController.setFrame(RAND.nextInt(anim.getDuration()));
+
+		RuneLiteObject fishingSpot = client.createRuneLiteObject();
+		fishingSpot.setAnimationController(animController);
+		fishingSpot.setOrientation(RAND.nextInt(4) * 512);
+		fishingSpot.setDrawFrontTilesFirst(false);
+		fishingSpot.setActive(true);
+		fishingSpot.setModel(modelData.light());
+		npcIndexToModel.put(npc.getIndex(), fishingSpot);
 	}
 }

@@ -1,11 +1,17 @@
 package rs117.hd.overlays;
 
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.callback.ClientThread;
+import org.lwjgl.opengl.*;
 import rs117.hd.HdPlugin;
 
 import static org.lwjgl.opengl.GL33C.*;
@@ -19,34 +25,77 @@ public class FrameTimer {
 	@Inject
 	private HdPlugin plugin;
 
-	private final int numTimers = Timer.values().length;
-	private final int numGpuTimers = (int) Arrays.stream(Timer.values()).filter(t -> t.isGpuTimer).count();
-	private final boolean[] activeTimers = new boolean[numTimers];
-	private final long[] timings = new long[numTimers];
-	private final int[] gpuQueries = new int[numTimers * 2];
-	private final ArrayDeque<Listener> listeners = new ArrayDeque<>();
+	private static final int NUM_TIMERS = Timer.TIMERS.length;
+	private static final int NUM_GPU_TIMERS = (int) Arrays.stream(Timer.TIMERS).filter(t -> t.isGpuTimer).count();
+	private static final int NUM_GPU_DEBUG_GROUPS = (int) Arrays.stream(Timer.TIMERS).filter(t -> t.gpuDebugGroup).count();
 
-	private boolean isInactive = true;
-	private long cumulativeError = 0;
+	private final AutoTimer[] autoTimers = new AutoTimer[NUM_TIMERS];
+	private final boolean[] activeTimers = new boolean[NUM_TIMERS];
+	private final long[] timings = new long[NUM_TIMERS];
+	private final int[] gpuQueries = new int[NUM_TIMERS * 2];
+	private final ArrayDeque<Timer> glDebugGroupStack = new ArrayDeque<>(NUM_GPU_DEBUG_GROUPS);
+	private final ArrayDeque<Listener> listeners = new ArrayDeque<>();
+	private long[] lastGCTimes;
+
+	@RequiredArgsConstructor
+	public class AutoTimer implements AutoCloseable {
+		private final Timer timer;
+
+		@Override
+		public void close() {
+			end(timer);
+		}
+	}
+
+	@SuppressWarnings("resource")
+	public FrameTimer() {
+		for (int i = 0; i < NUM_TIMERS; i++)
+			autoTimers[i] = new AutoTimer(Timer.TIMERS[i]);
+	}
+
+	@Getter
+	private boolean isActive = false;
+
+	public long cumulativeError;
+	public long errorCompensation;
 
 	private void initialize() {
-		clientThread.invokeLater(() -> {
-			int[] queryNames = new int[numGpuTimers * 2];
+		clientThread.invoke(() -> {
+			int[] queryNames = new int[NUM_GPU_TIMERS * 2];
 			glGenQueries(queryNames);
 			int queryIndex = 0;
-			for (var timer : Timer.values())
+			for (var timer : Timer.TIMERS)
 				if (timer.isGpuTimer)
 					for (int j = 0; j < 2; ++j)
 						gpuQueries[timer.ordinal() * 2 + j] = queryNames[queryIndex++];
 
-			isInactive = false;
+			isActive = true;
+			plugin.setupSyncMode();
 			plugin.enableDetailedTimers = true;
+
+			// Estimate the timer's own runtime, with a warm-up run first
+			final int iterations = 100000;
+			final int compensation = 1950000; // additional manual correction
+			for (int i = 0; i < 2; i++) {
+				errorCompensation = 0;
+				for (int j = 0; j < iterations; j++) {
+					begin(Timer.DRAW_FRAME);
+					end(Timer.DRAW_FRAME);
+				}
+				errorCompensation = (timings[Timer.DRAW_FRAME.ordinal()] + compensation) / iterations;
+				timings[Timer.DRAW_FRAME.ordinal()] = 0;
+			}
+			log.debug("Estimated the overhead of timers to be around {} ns", errorCompensation);
 		});
 	}
 
 	private void destroy() {
-		clientThread.invokeLater(() -> {
-			isInactive = true;
+		clientThread.invoke(() -> {
+			if (!isActive)
+				return;
+
+			isActive = false;
+			plugin.setupSyncMode();
 			plugin.enableDetailedTimers = false;
 
 			glDeleteQueries(gpuQueries);
@@ -77,47 +126,85 @@ public class FrameTimer {
 		destroy();
 	}
 
-	private void reset() {
+	public void reset() {
 		Arrays.fill(timings, 0);
 		Arrays.fill(activeTimers, false);
+		cumulativeError = 0;
 	}
 
-	public void begin(Timer timer) {
-		if (isInactive)
-			return;
+	public AutoTimer begin(Timer timer) {
+		int index = timer.ordinal();
+		if (log.isDebugEnabled() && timer.gpuDebugGroup && HdPlugin.GL_CAPS.OpenGL43) {
+			if (glDebugGroupStack.contains(timer)) {
+				log.warn("The debug group {} is already on the stack", timer.name());
+			} else {
+				glDebugGroupStack.push(timer);
+				GL43C.glPushDebugGroup(GL43C.GL_DEBUG_SOURCE_APPLICATION, index, timer.name);
+			}
+		}
+
+		if (!isActive)
+			return null;
 
 		if (timer.isGpuTimer) {
-			if (activeTimers[timer.ordinal()])
+			if (activeTimers[index])
 				throw new UnsupportedOperationException("Cumulative GPU timing isn't supported");
-			glQueryCounter(gpuQueries[timer.ordinal() * 2], GL_TIMESTAMP);
-		} else if (!activeTimers[timer.ordinal()]) {
-			timings[timer.ordinal()] -= System.nanoTime() - cumulativeError;
+			glQueryCounter(gpuQueries[index * 2], GL_TIMESTAMP);
+		} else if (!activeTimers[index]) {
+			cumulativeError += errorCompensation + 1 >> 1;
+			timings[index] -= System.nanoTime() - cumulativeError;
 		}
-		activeTimers[timer.ordinal()] = true;
+		activeTimers[index] = true;
+
+		return autoTimers[index];
 	}
 
 	public void end(Timer timer) {
-		if (isInactive || !activeTimers[timer.ordinal()])
+		if (log.isDebugEnabled() && timer.gpuDebugGroup && HdPlugin.GL_CAPS.OpenGL43) {
+			if (glDebugGroupStack.peek() != timer) {
+				log.warn("The debug group {} was popped out of order", timer.name());
+			} else {
+				glDebugGroupStack.pop();
+				GL43C.glPopDebugGroup();
+			}
+		}
+
+		if (!isActive || !activeTimers[timer.ordinal()])
 			return;
 
 		if (timer.isGpuTimer) {
 			glQueryCounter(gpuQueries[timer.ordinal() * 2 + 1], GL_TIMESTAMP);
 			// leave the GPU timer active, since it needs to be gathered at a later point
 		} else {
-			cumulativeError += 17; // compensate slightly for the timer's own overhead
+			cumulativeError += errorCompensation >> 1;
 			timings[timer.ordinal()] += System.nanoTime() - cumulativeError;
 			activeTimers[timer.ordinal()] = false;
 		}
 	}
 
+	public void add(Timer timer, long nanos) {
+		if (isActive)
+			timings[timer.ordinal()] += nanos;
+	}
+
 	public void endFrameAndReset() {
-		if (isInactive)
+		if (HdPlugin.GL_CAPS.OpenGL43) {
+			while (!glDebugGroupStack.isEmpty()) {
+				log.warn("The debug group {} was never popped", glDebugGroupStack.pop().name());
+				GL43C.glPopDebugGroup();
+			}
+		}
+
+		if (!isActive)
 			return;
 
-		long frameEnd = System.nanoTime();
+		long frameEndNanos = System.nanoTime();
+		long frameEndTimestamp = System.currentTimeMillis();
+
+		trackGarbageCollection();
 
 		int[] available = { 0 };
-		for (var timer : Timer.values()) {
+		for (var timer : Timer.TIMERS) {
 			int i = timer.ordinal();
 			if (timer.isGpuTimer) {
 				if (!activeTimers[i])
@@ -132,15 +219,36 @@ public class FrameTimer {
 				if (activeTimers[i]) {
 					// End the CPU timer automatically, but warn about it
 					log.warn("Timer {} was never ended", timer);
-					timings[i] += frameEnd;
+					timings[i] += frameEndNanos;
 				}
 			}
 		}
 
-		var frameTimings = new FrameTimings(frameEnd, timings);
+		var frameTimings = new FrameTimings(frameEndTimestamp, timings);
 		for (var listener : listeners)
 			listener.onFrameCompletion(frameTimings);
 
 		reset();
+	}
+
+	private void trackGarbageCollection() {
+		List<GarbageCollectorMXBean> garbageCollectors = ManagementFactory.getGarbageCollectorMXBeans();
+		if (lastGCTimes == null || lastGCTimes.length != garbageCollectors.size())
+			lastGCTimes = new long[garbageCollectors.size()];
+
+		plugin.garbageCollectionCount = 0;
+		long elapsedDuration = 0;
+		for (int i = 0; i < garbageCollectors.size(); i++) {
+			var gc = garbageCollectors.get(i);
+			long time = gc.getCollectionTime();
+			if (time > 0 && time != lastGCTimes[i]) {
+				long duration = time - lastGCTimes[i];
+				lastGCTimes[i] = time;
+				elapsedDuration += duration;
+			}
+			plugin.garbageCollectionCount += gc.getCollectionCount();
+		}
+
+		add(Timer.GARBAGE_COLLECTION, elapsedDuration * 1_000_000L);
 	}
 }
