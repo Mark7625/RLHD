@@ -18,6 +18,7 @@ import rs117.hd.HdPluginConfig;
 import rs117.hd.config.ShadowMode;
 import rs117.hd.overlays.FrameTimer;
 import rs117.hd.overlays.Timer;
+import rs117.hd.renderer.zone.OcclusionManager.OcclusionQuery;
 import rs117.hd.scene.ModelOverrideManager;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.utils.HDUtils;
@@ -27,6 +28,8 @@ import rs117.hd.utils.collections.PrimitiveIntArray;
 import static net.runelite.api.Perspective.*;
 import static net.runelite.api.hooks.DrawCallbacks.*;
 import static rs117.hd.HdPlugin.PROCESSOR_COUNT;
+import static rs117.hd.renderer.zone.OcclusionManager.DIRECTIONAL_QUERY;
+import static rs117.hd.renderer.zone.OcclusionManager.SCENE_QUERY;
 import static rs117.hd.renderer.zone.WorldViewContext.VAO_ALPHA;
 import static rs117.hd.renderer.zone.WorldViewContext.VAO_OPAQUE;
 import static rs117.hd.renderer.zone.WorldViewContext.VAO_PLAYER;
@@ -143,7 +146,7 @@ public class ModelStreamingManager {
 		return count;
 	}
 
-	public void drawTemp(Projection worldProjection, Scene scene, GameObject gameObject, Model m, int orientation, int x, int y, int z) {
+	public void drawTemp(Projection worldProjection, OcclusionQuery occlusionQuery, Scene scene, GameObject gameObject, Model m, int orientation, int x, int y, int z) {
 		WorldViewContext ctx = sceneManager.getContext(scene);
 		if (ctx == null || (!sceneManager.isRoot(ctx) && ctx.isLoading) || !renderCallbackManager.drawObject(scene, gameObject))
 			return;
@@ -210,6 +213,7 @@ public class ModelStreamingManager {
 						visibleFaces,
 						culledFaces,
 						worldProjection,
+						occlusionQuery,
 						ctx,
 						gameObject,
 						renderable,
@@ -236,6 +240,7 @@ public class ModelStreamingManager {
 				clientVisibleFaces,
 				clientCulledFaces,
 				worldProjection,
+				occlusionQuery,
 				ctx,
 				gameObject,
 				renderable,
@@ -257,6 +262,7 @@ public class ModelStreamingManager {
 		PrimitiveIntArray visibleFaces,
 		PrimitiveIntArray culledFaces,
 		Projection worldProjection,
+		OcclusionQuery occlusionQuery,
 		WorldViewContext ctx,
 		GameObject gameObject,
 		Renderable renderable,
@@ -291,6 +297,7 @@ public class ModelStreamingManager {
 		final int preOrientation = HDUtils.getModelPreOrientation(gameObject.getConfig());
 		if (culledFaces.length > 0 &&
 			modelOverride.castShadows &&
+			occlusionQuery.isVisible(DIRECTIONAL_QUERY) &&
 			plugin.configShadowMode != ShadowMode.OFF &&
 			(!sceneManager.isRoot(ctx) || zone.inShadowFrustum)
 		) {
@@ -308,7 +315,7 @@ public class ModelStreamingManager {
 			shadowView.end();
 		}
 
-		if (visibleFaces.length > 0) {
+		if (visibleFaces.length > 0 && occlusionQuery.isVisible(SCENE_QUERY)) {
 			// opaque player faces have their own vao and are drawn in a separate pass from normal opaque faces
 			// because they are not depth tested. transparent player faces don't need their own vao because normal
 			// transparent faces are already not depth tested
@@ -364,6 +371,7 @@ public class ModelStreamingManager {
 	public void drawDynamic(
 		int renderThreadId,
 		Projection projection,
+		OcclusionQuery occlusionQuery,
 		Scene scene,
 		TileObject tileObject,
 		Renderable r,
@@ -454,6 +462,7 @@ public class ModelStreamingManager {
 						visibleFaces,
 						culledFaces,
 						ctx,
+						occlusionQuery,
 						projection,
 						tileObject,
 						modelOverride,
@@ -483,6 +492,7 @@ public class ModelStreamingManager {
 				clientVisibleFaces,
 				clientCulledFaces,
 				ctx,
+				occlusionQuery,
 				projection,
 				tileObject,
 				modelOverride,
@@ -502,6 +512,7 @@ public class ModelStreamingManager {
 		PrimitiveIntArray visibleFaces,
 		PrimitiveIntArray culledFaces,
 		WorldViewContext ctx,
+		OcclusionQuery occlusionQuery,
 		Projection projection,
 		TileObject tileObject,
 		ModelOverride modelOverride,
@@ -538,6 +549,7 @@ public class ModelStreamingManager {
 
 			if (culledFaces.length > 0 &&
 				modelOverride.castShadows &&
+				occlusionQuery.isVisible(DIRECTIONAL_QUERY) &&
 				plugin.configShadowMode != ShadowMode.OFF &&
 				(!sceneManager.isRoot(ctx) || zone.inShadowFrustum)
 			) {
@@ -555,7 +567,7 @@ public class ModelStreamingManager {
 				shadowView.end();
 			}
 
-			if (visibleFaces.length > 0) {
+			if (visibleFaces.length > 0 && occlusionQuery.isVisible(SCENE_QUERY)) {
 				final int alphaFaceCount = hasAlpha ? sceneUploader.tempModelAlphaFaces : 0;
 				final int opaqueFaceCount = visibleFaces.length - alphaFaceCount;
 

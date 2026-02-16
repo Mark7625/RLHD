@@ -26,7 +26,10 @@ package rs117.hd.renderer.zone;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -47,10 +50,12 @@ import rs117.hd.opengl.shader.ShaderException;
 import rs117.hd.opengl.shader.ShaderIncludes;
 import rs117.hd.opengl.shader.ShadowShaderProgram;
 import rs117.hd.opengl.uniforms.UBOLights;
+import rs117.hd.opengl.uniforms.UBOOcclusion;
 import rs117.hd.opengl.uniforms.UBOWorldViews;
 import rs117.hd.overlays.FrameTimer;
 import rs117.hd.overlays.Timer;
 import rs117.hd.renderer.Renderer;
+import rs117.hd.renderer.zone.OcclusionManager.OcclusionQuery;
 import rs117.hd.scene.EnvironmentManager;
 import rs117.hd.scene.LightManager;
 import rs117.hd.scene.ProceduralGenerator;
@@ -78,6 +83,8 @@ import static rs117.hd.HdPlugin.NEAR_PLANE;
 import static rs117.hd.HdPlugin.ORTHOGRAPHIC_ZOOM;
 import static rs117.hd.HdPlugin.checkGLErrors;
 import static rs117.hd.HdPluginConfig.*;
+import static rs117.hd.renderer.zone.OcclusionManager.DIRECTIONAL_QUERY;
+import static rs117.hd.renderer.zone.OcclusionManager.SCENE_QUERY;
 import static rs117.hd.renderer.zone.WorldViewContext.VAO_OPAQUE;
 import static rs117.hd.renderer.zone.WorldViewContext.VAO_SHADOW;
 import static rs117.hd.utils.MathUtils.*;
@@ -94,6 +101,7 @@ public class ZoneRenderer implements Renderer {
 
 	private static int UNIFORM_BLOCK_COUNT = HdPlugin.UNIFORM_BLOCK_COUNT;
 	public static final int UNIFORM_BLOCK_WORLD_VIEWS = UNIFORM_BLOCK_COUNT++;
+	public static final int UNIFORM_BLOCK_OCCLUSION = UNIFORM_BLOCK_COUNT++;
 
 	@Inject
 	private Client client;
@@ -119,6 +127,8 @@ public class ZoneRenderer implements Renderer {
 	@Inject
 	private ModelStreamingManager modelStreamingManager;
 
+	@Inject OcclusionManager occlusionManager;
+
 	@Inject
 	private FrameTimer frameTimer;
 
@@ -139,8 +149,12 @@ public class ZoneRenderer implements Renderer {
 
 	@Inject
 	private UBOWorldViews uboWorldViews;
+	
+	@Inject
+	private UBOOcclusion uboOcclusion;
 
 	public final Camera sceneCamera = new Camera().setReverseZ(true);
+
 	public final Camera directionalCamera = new Camera().setOrthographic(true);
 	public final ShadowCasterVolume directionalShadowCasterVolume = new ShadowCasterVolume(directionalCamera);
 
@@ -153,6 +167,9 @@ public class ZoneRenderer implements Renderer {
 
 	private GLBuffer indirectDrawCmds;
 	public static GpuIntBuffer indirectDrawCmdsStaging;
+
+	private final HashMap<Integer, OcclusionQuery> tempOcclusionQueries = new HashMap<>();
+	private final ConcurrentHashMap<Long, OcclusionQuery> dynamicOcclusionQueries = new ConcurrentHashMap<>();
 
 	public static GLBuffer eboAlpha;
 	public static GLMappedBuffer eboAlphaMapped;
@@ -186,9 +203,12 @@ public class ZoneRenderer implements Renderer {
 		depthAlphaCmd.setFrameTimer(frameTimer);
 		sceneCmd.setFrameTimer(frameTimer);
 		directionalCmd.setFrameTimer(frameTimer);
-
-		jobSystem.startUp(config.cpuUsageLimit());
+		
 		uboWorldViews.initialize(UNIFORM_BLOCK_WORLD_VIEWS);
+		uboOcclusion.initialize(UNIFORM_BLOCK_OCCLUSION);
+		jobSystem.startUp(config.cpuUsageLimit());
+		modelStreamingManager.initialize();
+		occlusionManager.initialize(renderState, uboOcclusion);
 		sceneManager.initialize(renderState, uboWorldViews);
 	}
 
@@ -196,9 +216,12 @@ public class ZoneRenderer implements Renderer {
 	public void destroy() {
 		destroyBuffers();
 
+		occlusionManager.destroy();
 		jobSystem.shutDown();
+		modelStreamingManager.destroy();
 		sceneManager.destroy();
 		uboWorldViews.destroy();
+		uboOcclusion.destroy();
 
 		SceneUploader.POOL = null;
 		FacePrioritySorter.POOL = null;
@@ -215,6 +238,7 @@ public class ZoneRenderer implements Renderer {
 		includes
 			.define("MAX_SIMULTANEOUS_WORLD_VIEWS", UBOWorldViews.MAX_SIMULTANEOUS_WORLD_VIEWS)
 			.addInclude("WORLD_VIEW_GETTER", () -> plugin.generateGetter("WorldView", UBOWorldViews.MAX_SIMULTANEOUS_WORLD_VIEWS))
+			.addUniformBuffer(uboOcclusion)
 			.addUniformBuffer(uboWorldViews);
 	}
 
@@ -224,6 +248,7 @@ public class ZoneRenderer implements Renderer {
 		sceneProgram.compile(includes);
 		fastShadowProgram.compile(includes);
 		detailedShadowProgram.compile(includes);
+		occlusionManager.initializeShaders(includes);
 	}
 
 	@Override
@@ -232,6 +257,7 @@ public class ZoneRenderer implements Renderer {
 		sceneProgram.destroy();
 		fastShadowProgram.destroy();
 		detailedShadowProgram.destroy();
+		occlusionManager.destroyShaders();
 	}
 
 	private void initializeBuffers() {
@@ -301,9 +327,16 @@ public class ZoneRenderer implements Renderer {
 		ctx.completeInvalidation();
 
 		int offset = ctx.sceneContext.sceneOffset >> 3;
-		for (int zx = 0; zx < ctx.sizeX; ++zx)
-			for (int zz = 0; zz < ctx.sizeZ; ++zz)
+		for (int zx = 0; zx < ctx.sizeX; ++zx) {
+			for (int zz = 0; zz < ctx.sizeZ; ++zz) {
+				if(!ctx.zones[zx][zz].initialized)
+					continue;
 				ctx.zones[zx][zz].multizoneLocs(ctx.sceneContext, zx - offset, zz - offset, sceneCamera, ctx.zones);
+
+				if(ctx.zones[zx][zz].occlusionQuery != null && (ctx.zones[zx][zz].inSceneFrustum || ctx.zones[zx][zz].inShadowFrustum))
+					ctx.zones[zx][zz].occlusionQuery.queue();
+			}
+		}
 
 		ctx.sortStaticAlphaModels(sceneCamera);
 
@@ -379,6 +412,8 @@ public class ZoneRenderer implements Renderer {
 				frameTimer.begin(Timer.UPDATE_LIGHTS);
 				lightManager.update(ctx.sceneContext, plugin.cameraShift, plugin.cameraFrustum);
 				frameTimer.end(Timer.UPDATE_LIGHTS);
+
+				occlusionManager.readbackQueries();
 			} catch (Exception ex) {
 				log.error("Error while updating environment or lights:", ex);
 				plugin.stopPlugin();
@@ -697,6 +732,7 @@ public class ZoneRenderer implements Renderer {
 
 		renderState.enable.set(GL_CULL_FACE);
 		renderState.enable.set(GL_DEPTH_TEST);
+		renderState.depthFunc.set(GL_GEQUAL);
 		renderState.depthMask.set(true);
 		renderState.colorMask.set(false, false, false, false);
 
@@ -895,11 +931,11 @@ public class ZoneRenderer implements Renderer {
 			return;
 
 		Zone z = ctx.zones[zx][zz];
-		if (!z.initialized || z.sizeO == 0)
+		if(!z.initialized || z.sizeO == 0 || z.occlusionQuery == null || z.occlusionQuery.isFullyOccluded())
 			return;
 
 		frameTimer.begin(Timer.DRAW_ZONE_OPAQUE);
-		if (!sceneManager.isRoot(ctx) || z.inSceneFrustum) {
+		if (z.occlusionQuery.isVisible(SCENE_QUERY) && (!sceneManager.isRoot(ctx) || z.inSceneFrustum)) {
 			z.renderOpaque(tempCmd, ctx, false);
 
 			depthOpaqueCmd.append(tempCmd);
@@ -909,7 +945,7 @@ public class ZoneRenderer implements Renderer {
 		}
 
 		final boolean isSquashed = ctx.uboWorldViewStruct != null && ctx.uboWorldViewStruct.isSquashed();
-		if (!isSquashed && (!sceneManager.isRoot(ctx) || z.inShadowFrustum)) {
+		if (!isSquashed && z.occlusionQuery.isVisible(DIRECTIONAL_QUERY) && (!sceneManager.isRoot(ctx) || z.inShadowFrustum)) {
 			directionalCmd.SetShader(fastShadowProgram);
 			z.renderOpaque(directionalCmd, ctx, plugin.configRoofShadows);
 		}
@@ -925,16 +961,18 @@ public class ZoneRenderer implements Renderer {
 			return;
 
 		final Zone z = ctx.zones[zx][zz];
-		if (!z.initialized)
+		if (!z.initialized || z.occlusionQuery == null || z.occlusionQuery.isFullyOccluded())
 			return;
 
 		frameTimer.begin(Timer.DRAW_ZONE_ALPHA);
-		final boolean renderWater = z.inSceneFrustum && level == 0 && z.hasWater;
+		final boolean renderWater = z.inSceneFrustum && level == 0 && z.hasWater && z.occlusionQuery.isVisible(SCENE_QUERY);
 		if (renderWater) {
 			z.renderOpaqueLevel(tempCmd, Zone.LEVEL_WATER_SURFACE);
 
 			depthAlphaCmd.append(tempCmd);
+			sceneCmd.DepthMask(false);
 			sceneCmd.append(tempCmd);
+			sceneCmd.DepthMask(true);
 
 			tempCmd.reset();
 		}
@@ -949,12 +987,12 @@ public class ZoneRenderer implements Renderer {
 				z.alphaSort(zx - offset, zz - offset, sceneCamera);
 
 			final boolean isSquashed = ctx.uboWorldViewStruct != null && ctx.uboWorldViewStruct.isSquashed();
-			if (!isSquashed && (!sceneManager.isRoot(ctx) || z.inShadowFrustum)) {
+			if (!isSquashed && z.occlusionQuery.isVisible(DIRECTIONAL_QUERY) && (!sceneManager.isRoot(ctx) || z.inShadowFrustum)) {
 				directionalCmd.SetShader(plugin.configShadowMode == ShadowMode.DETAILED ? detailedShadowProgram : fastShadowProgram);
 				z.renderAlpha(directionalCmd, zx - offset, zz - offset, level, ctx, false, plugin.configRoofShadows);
 			}
 
-			if (!sceneManager.isRoot(ctx) || z.inSceneFrustum) {
+			if (z.occlusionQuery.isVisible(SCENE_QUERY) && (!sceneManager.isRoot(ctx) || z.inSceneFrustum)) {
 				sceneCmd.DepthMask(false);
 				z.renderAlpha(sceneCmd, zx - offset, zz - offset, level, ctx, true, false);
 				z.renderAlpha(depthAlphaCmd, zx - offset, zz - offset, level, ctx, false, false);
@@ -1067,7 +1105,24 @@ public class ZoneRenderer implements Renderer {
 	) {
 		final long start = System.nanoTime();
 		try {
-			modelStreamingManager.drawDynamic(renderThreadId, projection, scene, tileObject, r, m, orient, x, y, z);
+			OcclusionQuery query = dynamicOcclusionQueries.get(tileObject.getHash());
+			if(query == null) {
+				query = occlusionManager.obtainQuery();
+				dynamicOcclusionQueries.put(tileObject.getHash(), query);
+			}
+
+			if(!query.isQueued()) {
+				query.reset();
+				query.queue();
+			}
+			query.addAABB(m.getAABB(orient), x, y, z);
+
+			if(query.isFullyOccluded()) {
+				frameTimer.add(renderThreadId == -1 ? Timer.DRAW_DYNAMIC : Timer.DRAW_DYNAMIC_ASYNC, System.nanoTime() - start);
+				return;
+			}
+
+			modelStreamingManager.drawDynamic(renderThreadId, projection, query, scene, tileObject, r, m, orient, x, y, z);
 		} catch (Exception ex) {
 			log.error("Error in drawDynamic:", ex);
 		} finally {
@@ -1079,7 +1134,22 @@ public class ZoneRenderer implements Renderer {
 	public void drawTemp(Projection worldProjection, Scene scene, GameObject gameObject, Model m, int orientation, int x, int y, int z) {
 		frameTimer.begin(Timer.DRAW_TEMP);
 		try {
-			modelStreamingManager.drawTemp(worldProjection, scene, gameObject, m, orientation, x, y, z);
+			OcclusionQuery query = tempOcclusionQueries.get(gameObject.getId());
+			if(query == null) {
+				query = occlusionManager.obtainQuery();
+				tempOcclusionQueries.put(gameObject.getId(), query);
+			}
+
+			query.reset();
+			query.addAABB(m.getAABB(orientation), x, y, z);
+			query.queue();
+
+			if(query.isFullyOccluded()) {
+				frameTimer.end(Timer.DRAW_TEMP);
+				return;
+			}
+
+			modelStreamingManager.drawTemp(worldProjection, query, scene, gameObject, m, orientation, x, y, z);
 		} catch (Exception ex) {
 			log.error("Error in drawTemp:", ex);
 		} finally {
@@ -1112,6 +1182,7 @@ public class ZoneRenderer implements Renderer {
 			tiledLightingPass();
 			directionalShadowPass();
 			scenePass();
+			occlusionManager.occlusionDebugPass();
 		}
 
 		if (sceneFboValid && plugin.sceneResolution != null && plugin.sceneViewport != null) {
@@ -1166,9 +1237,17 @@ public class ZoneRenderer implements Renderer {
 				// this might be AWT shutting down on VM shutdown, ignore it
 				return;
 			}
-
 			log.error("Unable to swap buffers:", ex);
 		}
+
+		for(Map.Entry<Long, OcclusionQuery> entry : dynamicOcclusionQueries.entrySet()) {
+			if(!entry.getValue().isQueued()) {
+				dynamicOcclusionQueries.remove(entry.getKey());
+				entry.getValue().free();
+			}
+		}
+
+		occlusionManager.occlusionPass();
 
 		glBindFramebuffer(GL_FRAMEBUFFER, plugin.awtContext.getFramebuffer(false));
 

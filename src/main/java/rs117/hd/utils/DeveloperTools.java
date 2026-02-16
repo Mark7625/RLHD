@@ -17,6 +17,7 @@ import rs117.hd.overlays.LightGizmoOverlay;
 import rs117.hd.overlays.ShadowMapOverlay;
 import rs117.hd.overlays.TileInfoOverlay;
 import rs117.hd.overlays.TiledLightingOverlay;
+import rs117.hd.renderer.zone.OcclusionManager;
 import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
@@ -49,6 +50,9 @@ public class DeveloperTools implements KeyListener {
 
 	@Inject
 	private HdPlugin plugin;
+
+	@Inject
+	private OcclusionManager occlusionManager;
 
 	@Inject
 	private TileInfoOverlay tileInfoOverlay;
@@ -168,6 +172,9 @@ public class DeveloperTools implements KeyListener {
 				break;
 			case "culling":
 				plugin.freezeCulling = !plugin.freezeCulling;
+				break;
+			case "occlusion":
+				occlusionManager.toggleWireframe();
 				break;
 		}
 	}

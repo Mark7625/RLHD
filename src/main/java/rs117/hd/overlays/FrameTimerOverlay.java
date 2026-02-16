@@ -16,6 +16,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 import rs117.hd.HdPlugin;
+import rs117.hd.renderer.zone.OcclusionManager;
 import rs117.hd.renderer.zone.SceneManager;
 import rs117.hd.renderer.zone.WorldViewContext;
 import rs117.hd.renderer.zone.ZoneRenderer;
@@ -23,6 +24,8 @@ import rs117.hd.utils.FrameTimingsRecorder;
 import rs117.hd.utils.NpcDisplacementCache;
 import rs117.hd.utils.jobs.JobSystem;
 
+import static rs117.hd.renderer.zone.OcclusionManager.DIRECTIONAL_QUERY;
+import static rs117.hd.renderer.zone.OcclusionManager.SCENE_QUERY;
 import static rs117.hd.renderer.zone.SceneManager.MAX_WORLDVIEWS;
 import static rs117.hd.utils.MathUtils.*;
 
@@ -195,6 +198,19 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 				children.add(LineComponent.builder()
 					.left("NPC displacement cache size:")
 					.right(String.valueOf(npcDisplacementCache.size()))
+					.build());
+			}
+
+			var occlusionManager = OcclusionManager.getInstance();
+			if(occlusionManager != null && occlusionManager.isActive()) {
+				children.add(LineComponent.builder()
+					.left("Visible Scene Queries:")
+					.right(String.format("%d/%d", occlusionManager.getPassedQueryCount(SCENE_QUERY), occlusionManager.getQueryCount()))
+					.build());
+
+				children.add(LineComponent.builder()
+					.left("Visible Directional Queries:")
+					.right(String.format("%d/%d", occlusionManager.getPassedQueryCount(DIRECTIONAL_QUERY), occlusionManager.getQueryCount()))
 					.build());
 			}
 
