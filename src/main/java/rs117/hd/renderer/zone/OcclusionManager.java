@@ -51,6 +51,7 @@ public class OcclusionManager {
 
 	private static final int[] DEBUG_DRAW = new int[] { SCENE_DEBUG };
 	private static final int[] OCCLUSION_DRAW = new int[] { SCENE_QUERY, DIRECTIONAL_QUERY };
+	private static final int FRAMES_IN_FLIGHT = 3;
 
 	@Getter
 	private static OcclusionManager instance;
@@ -226,7 +227,8 @@ public class OcclusionManager {
 			query.queued = false;
 
 			for(int k = 0; k < QUERY_COUNT; k++) {
-				if (query.id[k] == 0)
+				final int id = query.getReadbackId(k);
+				if (id == 0)
 					continue;
 
 				if (k == DIRECTIONAL_QUERY && plugin.configShadowTransparency) {
@@ -234,14 +236,14 @@ public class OcclusionManager {
 					continue;
 				}
 
-				glGetQueryObjectiv(query.id[k], GL_QUERY_RESULT_AVAILABLE, result);
-				if (result[0] == 0) { // TODO: Double buffer
+				glGetQueryObjectiv(id, GL_QUERY_RESULT_AVAILABLE, result);
+				if (result[0] == 0) {
 					query.occluded[k] = false;
 					continue;
 				}
 
 				if (!plugin.freezeCulling)
-					query.occluded[k] = glGetQueryObjectui64(query.id[k], GL_QUERY_RESULT) == 0;
+					query.occluded[k] = glGetQueryObjectui64(id, GL_QUERY_RESULT) == 0;
 
 				if(!query.occluded[k])
 					passedQueryCount[k]++;
@@ -308,6 +310,9 @@ public class OcclusionManager {
 		renderState.depthMask.set(true);
 		renderState.colorMask.set(true, true, true, true);
 		renderState.apply();
+
+		for(int i = 0; i < queuedQueries.size(); i++)
+			queuedQueries.get(i).advance();
 
 		prevQueuedQueries.addAll(queuedQueries);
 		queuedQueries.clear();
@@ -423,7 +428,7 @@ public class OcclusionManager {
 					glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, query.count);
 				} else {
 					occlusionProgram.offset.set(query.uboOffset);
-					glBeginQuery(GL_ANY_SAMPLES_PASSED, query.id[type]);
+					glBeginQuery(GL_ANY_SAMPLES_PASSED, query.getSampleId(type));
 					glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, query.count);
 					glEndQuery(GL_ANY_SAMPLES_PASSED);
 				}
@@ -447,11 +452,14 @@ public class OcclusionManager {
 	}
 
 	public final class OcclusionQuery {
-		private final int[] id = new int[QUERY_COUNT]; // TODO: QUERY_COUNT * BUFFER_COUNT | In order to avoid stalling the GPU due to previous frame still drawing
+		private final int[] id = new int[QUERY_COUNT * FRAMES_IN_FLIGHT];
+		private final boolean[] sampled = new boolean[QUERY_COUNT * FRAMES_IN_FLIGHT];
 		private final boolean[] occluded = new boolean[QUERY_COUNT];
 
 		@Getter
 		private boolean queued;
+
+		private int activeId;
 
 		private int uboOffset;
 		private float offsetX = 0;
@@ -462,6 +470,24 @@ public class OcclusionManager {
 		private WorldViewStruct worldView;
 		private float[] aabb = new float[6];
 		private int count = 0;
+
+		private void advance() {
+			activeId = (activeId + 1) % FRAMES_IN_FLIGHT;
+		}
+
+		private int getReadbackId(int type) {
+			int idx = type * FRAMES_IN_FLIGHT + (activeId + 1) % FRAMES_IN_FLIGHT;
+			if(!sampled[idx])
+				return 0;
+			sampled[idx] = false;
+			return id[idx];
+		}
+
+		private int getSampleId(int type) {
+			int idx = type * FRAMES_IN_FLIGHT + activeId;
+			sampled[idx] = true;
+			return id[idx];
+		}
 
 		public boolean isOccluded(int type) {
 			return occluded[type] && active;
