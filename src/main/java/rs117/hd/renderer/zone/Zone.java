@@ -318,8 +318,10 @@ public class Zone {
 		int baseX = (mx - (sceneContext.sceneOffset >> 3)) << 10;
 		int baseZ = (mz - (sceneContext.sceneOffset >> 3)) << 10;
 
-		if(occlusionQuery != null)
+		if(occlusionQuery != null) {
 			occlusionQuery.setOffset(baseX, 0, baseZ);
+			occlusionQuery.setWorldView(viewContext.uboWorldViewStruct);
+		}
 
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			IntBuffer buf = stack.mallocInt(3)

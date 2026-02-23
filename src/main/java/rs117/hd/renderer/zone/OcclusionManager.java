@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import org.lwjgl.system.MemoryStack;
@@ -19,6 +20,7 @@ import rs117.hd.opengl.shader.OcclusionShaderProgram;
 import rs117.hd.opengl.shader.ShaderException;
 import rs117.hd.opengl.shader.ShaderIncludes;
 import rs117.hd.opengl.uniforms.UBOOcclusion;
+import rs117.hd.opengl.uniforms.UBOWorldViews.WorldViewStruct;
 import rs117.hd.overlays.FrameTimer;
 import rs117.hd.overlays.Timer;
 import rs117.hd.utils.RenderState;
@@ -37,6 +39,7 @@ import static org.lwjgl.opengl.GL30C.glDeleteVertexArrays;
 import static org.lwjgl.opengl.GL30C.glGenVertexArrays;
 import static org.lwjgl.opengl.GL33C.*;
 import static rs117.hd.HdPlugin.checkGLErrors;
+import static rs117.hd.utils.MathUtils.*;
 
 @Slf4j
 @Singleton
@@ -78,6 +81,7 @@ public class OcclusionManager {
 	private final List<OcclusionQuery> prevQueuedQueries = new ArrayList<>();
 
 	private final int[] result = new int[1];
+	private final float[] vec = new float[4];
 
 	@Getter
 	private boolean active;
@@ -222,17 +226,19 @@ public class OcclusionManager {
 			query.queued = false;
 
 			for(int k = 0; k < QUERY_COUNT; k++) {
-				if(query.id[k] == 0)
+				if (query.id[k] == 0)
 					continue;
 
-				if(k == DIRECTIONAL_QUERY && plugin.configShadowTransparency) {
+				if (k == DIRECTIONAL_QUERY && plugin.configShadowTransparency) {
 					query.occluded[k] = false; // Shadow Transparency isn't supported due the depth testing failing
 					continue;
 				}
 
 				glGetQueryObjectiv(query.id[k], GL_QUERY_RESULT_AVAILABLE, result);
-				if (result[0] == 0) // TODO: Double buffer
+				if (result[0] == 0) { // TODO: Double buffer
+					query.occluded[k] = false;
 					continue;
+				}
 
 				if (!plugin.freezeCulling)
 					query.occluded[k] = glGetQueryObjectui64(query.id[k], GL_QUERY_RESULT) == 0;
@@ -335,8 +341,36 @@ public class OcclusionManager {
 				float posY = query.offsetY + query.aabb[k * 6 + 1];
 				float posZ = query.offsetZ + query.aabb[k * 6 + 2];
 
+				float sizeX = query.aabb[k * 6 + 3] + 0.1f;
+				float sizeY = query.aabb[k * 6 + 4] + 0.1f;
+				float sizeZ = query.aabb[k * 6 + 5] + 0.1f;
+
+				if(query.worldView != null) {
+					float sizeXHalf = sizeX / 2;
+					float sizeYHalf = sizeY / 2;
+					float sizeZHalf = sizeZ / 2;
+
+					query.worldView.project(vec4(vec, posX - sizeXHalf, posY - sizeYHalf, posZ - sizeZHalf, 1.0f));
+					float minX = vec[0];
+					float minY = vec[1];
+					float minZ = vec[2];
+
+					query.worldView.project(vec4(vec, posX + sizeXHalf, posY + sizeYHalf, posZ + sizeZHalf, 1.0f));
+					float maxX = vec[0];
+					float maxY = vec[1];
+					float maxZ = vec[2];
+
+					posX = (minX + maxX) / 2;
+					posY = (minY + maxY) / 2;
+					posZ = (minZ + maxZ) / 2;
+
+					sizeX = maxX - minX;
+					sizeY = maxY - minY;
+					sizeZ = maxZ - minZ;
+				}
+
 				uboOcclusion.positions[uboOffset].set(posX, posY, posZ);
-				uboOcclusion.sizes[uboOffset].set(query.aabb[k * 6 + 3] + 0.1f, query.aabb[k * 6 + 4] + 0.1f, query.aabb[k * 6 + 5] + 0.1f);
+				uboOcclusion.sizes[uboOffset].set(sizeX, sizeY, sizeZ);
 				uboOffset++;
 			}
 		}
@@ -424,6 +458,8 @@ public class OcclusionManager {
 		private float offsetY = 0;
 		private float offsetZ = 0;
 
+		@Setter
+		private WorldViewStruct worldView;
 		private float[] aabb = new float[6];
 		private int count = 0;
 
@@ -476,24 +512,6 @@ public class OcclusionManager {
 			if(count * 6 >= aabb.length)
 				aabb = Arrays.copyOf(aabb, aabb.length * 2);
 
-			if(count > 1) {
-				float newMinX = posX - sizeX / 2;
-				float newMinY = posY - sizeY / 2;
-				float newMinZ = posZ - sizeZ / 2;
-				float newMaxX = posX + sizeX / 2;
-				float newMaxY = posY + sizeY / 2;
-				float newMaxZ = posZ + sizeZ / 2;
-
-				for (int i = 0; i < count; i++) {
-					if (newMinX >= (aabb[i * 6] - aabb[i * 6 + 3] / 2) && newMaxX <= (aabb[i * 6] + aabb[i * 6 + 3] / 2) &&
-						newMinY >= (aabb[i * 6 + 1] - aabb[i * 6 + 4] / 2) && newMaxY <= (aabb[i * 6 + 1] + aabb[i * 6 + 4] / 2) &&
-						newMinZ >= (aabb[i * 6 + 2] - aabb[i * 6 + 5] / 2) && newMaxZ <= (aabb[i * 6 + 2] + aabb[i * 6 + 5] / 2)) {
-						// New AABB is contained, skip adding it
-						return;
-					}
-				}
-			}
-
 			aabb[count * 6] = posX;
 			aabb[count * 6 + 1] = posY;
 			aabb[count * 6 + 2] = posZ;
@@ -523,6 +541,7 @@ public class OcclusionManager {
 		public void free() {
 			count = 0;
 			queued = false;
+			worldView = null;
 			offsetX = 0;
 			offsetY = 0;
 			offsetZ = 0;

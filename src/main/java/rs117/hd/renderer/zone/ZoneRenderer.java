@@ -36,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
 import net.runelite.api.hooks.*;
+import net.runelite.client.callback.RenderCallbackManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.ui.DrawManager;
 import org.lwjgl.opengl.*;
@@ -127,7 +128,11 @@ public class ZoneRenderer implements Renderer {
 	@Inject
 	private ModelStreamingManager modelStreamingManager;
 
-	@Inject OcclusionManager occlusionManager;
+	@Inject
+	private OcclusionManager occlusionManager;
+
+	@Inject
+	private RenderCallbackManager renderCallbackManager;
 
 	@Inject
 	private FrameTimer frameTimer;
@@ -1103,11 +1108,16 @@ public class ZoneRenderer implements Renderer {
 		int y,
 		int z
 	) {
+		WorldViewContext ctx = sceneManager.getContext(scene);
+		if (ctx == null || !sceneManager.isRoot(ctx) && ctx.isLoading || !renderCallbackManager.drawObject(scene, tileObject))
+			return;
+
 		final long start = System.nanoTime();
 		try {
 			OcclusionQuery query = dynamicOcclusionQueries.get(tileObject.getHash());
 			if(query == null) {
 				query = occlusionManager.obtainQuery();
+				query.setWorldView(ctx.uboWorldViewStruct);
 				dynamicOcclusionQueries.put(tileObject.getHash(), query);
 			}
 
@@ -1132,11 +1142,16 @@ public class ZoneRenderer implements Renderer {
 
 	@Override
 	public void drawTemp(Projection worldProjection, Scene scene, GameObject gameObject, Model m, int orientation, int x, int y, int z) {
+		WorldViewContext ctx = sceneManager.getContext(scene);
+		if (ctx == null || !sceneManager.isRoot(ctx) && ctx.isLoading || !renderCallbackManager.drawObject(scene, gameObject))
+			return;
+
 		frameTimer.begin(Timer.DRAW_TEMP);
 		try {
 			OcclusionQuery query = tempOcclusionQueries.get(gameObject.getId());
 			if(query == null) {
 				query = occlusionManager.obtainQuery();
+				query.setWorldView(ctx.uboWorldViewStruct);
 				tempOcclusionQueries.put(gameObject.getId(), query);
 			}
 
