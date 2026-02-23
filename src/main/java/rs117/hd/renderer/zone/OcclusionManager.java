@@ -83,6 +83,7 @@ public class OcclusionManager {
 
 	private final int[] result = new int[1];
 	private final float[] vec = new float[4];
+	private final float[] directionalFwd = new float[3];
 
 	@Getter
 	private boolean active;
@@ -231,11 +232,6 @@ public class OcclusionManager {
 				if (id == 0)
 					continue;
 
-				if (k == DIRECTIONAL_QUERY && plugin.configShadowTransparency) {
-					query.occluded[k] = false; // Shadow Transparency isn't supported due the depth testing failing
-					continue;
-				}
-
 				glGetQueryObjectiv(id, GL_QUERY_RESULT_AVAILABLE, result);
 				if (result[0] == 0) {
 					query.occluded[k] = false;
@@ -288,6 +284,8 @@ public class OcclusionManager {
 
 		frameTimer.begin(Timer.RENDER_OCCLUSION);
 
+		zoneRenderer.directionalCamera.getForwardDirection(directionalFwd);
+
 		renderState.enable.set(GL_CULL_FACE);
 		renderState.enable.set(GL_DEPTH_TEST);
 		renderState.depthMask.set(false);
@@ -323,71 +321,10 @@ public class OcclusionManager {
 	}
 
 	private void processQueries(List<OcclusionQuery> queries, int[] queryTypes) {
-		int start = 0;
-		int uboOffset = 0;
-		for(int i = 0; i < queries.size(); i++) {
-			final OcclusionQuery query = queries.get(i);
-			if (query.count == 0)
-				continue;
-			assert query.count < UBOOcclusion.MAX_AABBS;
-
-			if(uboOffset + query.count >= UBOOcclusion.MAX_AABBS) {
-				flushQueries(queries, start, i, queryTypes);
-				start = i;
-				uboOffset = 0;
-			}
-
-			if(query.id[0] == 0)
-				glGenQueries(query.id);
-
-			query.uboOffset = uboOffset;
-			for(int k = 0; k < query.count; k++) {
-				float posX = query.offsetX + query.aabb[k * 6];
-				float posY = query.offsetY + query.aabb[k * 6 + 1];
-				float posZ = query.offsetZ + query.aabb[k * 6 + 2];
-
-				float sizeX = query.aabb[k * 6 + 3] + 0.1f;
-				float sizeY = query.aabb[k * 6 + 4] + 0.1f;
-				float sizeZ = query.aabb[k * 6 + 5] + 0.1f;
-
-				if(query.worldView != null) {
-					float sizeXHalf = sizeX / 2;
-					float sizeYHalf = sizeY / 2;
-					float sizeZHalf = sizeZ / 2;
-
-					query.worldView.project(vec4(vec, posX - sizeXHalf, posY - sizeYHalf, posZ - sizeZHalf, 1.0f));
-					float minX = vec[0];
-					float minY = vec[1];
-					float minZ = vec[2];
-
-					query.worldView.project(vec4(vec, posX + sizeXHalf, posY + sizeYHalf, posZ + sizeZHalf, 1.0f));
-					float maxX = vec[0];
-					float maxY = vec[1];
-					float maxZ = vec[2];
-
-					posX = (minX + maxX) / 2;
-					posY = (minY + maxY) / 2;
-					posZ = (minZ + maxZ) / 2;
-
-					sizeX = maxX - minX;
-					sizeY = maxY - minY;
-					sizeZ = maxZ - minZ;
-				}
-
-				uboOcclusion.positions[uboOffset].set(posX, posY, posZ);
-				uboOcclusion.sizes[uboOffset].set(sizeX, sizeY, sizeZ);
-				uboOffset++;
-			}
-		}
-		flushQueries(queries, start, queries.size(), queryTypes);
-	}
-
-	private void flushQueries(List<OcclusionQuery> queries, int start, int end, int[] queryTypes) {
-		uboOcclusion.upload();
 		for(int k = 0; k < queryTypes.length; k++) {
-			final int type = queryTypes[k];
-			switch (type) {
+			switch (queryTypes[k]) {
 				case SCENE_QUERY:
+				case DIRECTIONAL_QUERY:
 					renderState.viewport.set(0, 0, plugin.sceneResolution[0], plugin.sceneResolution[1]);
 					renderState.framebuffer.set(GL_DRAW_FRAMEBUFFER, plugin.fboSceneDepth);
 					renderState.depthFunc.set(GL_GEQUAL);
@@ -403,38 +340,110 @@ public class OcclusionManager {
 					occlusionDebugProgram.use();
 					occlusionDebugProgram.viewProj.set(zoneRenderer.sceneCamera.getViewProjMatrix());
 					break;
-				case DIRECTIONAL_QUERY:
-					if (!plugin.configShadowsEnabled || plugin.configShadowTransparency)
-						continue;
-					renderState.viewport.set(0, 0, plugin.shadowMapResolution, plugin.shadowMapResolution);
-					renderState.framebuffer.set(GL_DRAW_FRAMEBUFFER, plugin.fboShadowMap);
-					renderState.depthFunc.set(GL_LEQUAL);
-
-					occlusionProgram.use();
-					occlusionProgram.viewProj.set(zoneRenderer.directionalCamera.getViewProjMatrix());
-					break;
 			}
 			renderState.apply();
 
-			for (int i = start; i < end; i++) {
+			int start = 0;
+			int uboOffset = 0;
+
+			for (int i = 0; i < queries.size(); i++) {
 				final OcclusionQuery query = queries.get(i);
 				if (query.count == 0)
 					continue;
 				assert query.count < UBOOcclusion.MAX_AABBS;
 
-				if(type == SCENE_DEBUG) {
-					occlusionDebugProgram.offset.set(query.uboOffset);
-					occlusionDebugProgram.queryId.set(query.id[0]);
-					glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, query.count);
-				} else {
-					occlusionProgram.offset.set(query.uboOffset);
-					glBeginQuery(GL_ANY_SAMPLES_PASSED, query.getSampleId(type));
-					glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, query.count);
-					glEndQuery(GL_ANY_SAMPLES_PASSED);
+				if (uboOffset + query.count >= UBOOcclusion.MAX_AABBS) {
+					flushQueries(queries, start, i, queryTypes[k]);
+					start = i;
+					uboOffset = 0;
+				}
+
+				if (query.id[0] == 0)
+					glGenQueries(query.id);
+
+				query.uboOffset = uboOffset;
+				for (int j = 0; j < query.count; j++) {
+					float posX = query.offsetX + query.aabb[j * 6];
+					float posY = query.offsetY + query.aabb[j * 6 + 1];
+					float posZ = query.offsetZ + query.aabb[j * 6 + 2];
+
+					float sizeX = query.aabb[j * 6 + 3] + 0.1f;
+					float sizeY = query.aabb[j * 6 + 4] + 0.1f;
+					float sizeZ = query.aabb[j * 6 + 5] + 0.1f;
+
+					if (query.worldView != null) {
+						float sizeXHalf = sizeX / 2;
+						float sizeYHalf = sizeY / 2;
+						float sizeZHalf = sizeZ / 2;
+
+						query.worldView.project(vec4(vec, posX - sizeXHalf, posY - sizeYHalf, posZ - sizeZHalf, 1.0f));
+						float minX = vec[0];
+						float minY = vec[1];
+						float minZ = vec[2];
+
+						query.worldView.project(vec4(vec, posX + sizeXHalf, posY + sizeYHalf, posZ + sizeZHalf, 1.0f));
+						float maxX = vec[0];
+						float maxY = vec[1];
+						float maxZ = vec[2];
+
+						posX = (minX + maxX) / 2;
+						posY = (minY + maxY) / 2;
+						posZ = (minZ + maxZ) / 2;
+
+						sizeX = maxX - minX;
+						sizeY = maxY - minY;
+						sizeZ = maxZ - minZ;
+					}
+
+					if (queryTypes[k] == DIRECTIONAL_QUERY) {
+						final float EXPAND_FACTOR = 2.0f;
+						float dirX = directionalFwd[0];
+						float dirY = directionalFwd[1];
+						float dirZ = directionalFwd[2];
+
+						float projected =
+							abs(dirX) * (sizeX / 2) +
+							abs(dirY) * (sizeY / 2) +
+							abs(dirZ) * (sizeZ / 2);
+
+						sizeX += abs(dirX) * projected * EXPAND_FACTOR;
+						sizeY += abs(dirY) * projected * EXPAND_FACTOR;
+						sizeZ += abs(dirZ) * projected * EXPAND_FACTOR;
+
+						posX += dirX * projected;
+						posY += dirY * projected;
+						posZ += dirZ * projected;
+					}
+
+					uboOcclusion.positions[uboOffset].set(posX, posY, posZ);
+					uboOcclusion.sizes[uboOffset].set(sizeX, sizeY, sizeZ);
+					uboOffset++;
 				}
 			}
+			flushQueries(queries, start, queries.size(), queryTypes[k]);
 		}
 		checkGLErrors();
+	}
+
+	private void flushQueries(List<OcclusionQuery> queries, int start, int end, int type) {
+		uboOcclusion.upload();
+		for (int i = start; i < end; i++) {
+			final OcclusionQuery query = queries.get(i);
+			if (query.count == 0)
+				continue;
+			assert query.count < UBOOcclusion.MAX_AABBS;
+
+			if(type == SCENE_DEBUG) {
+				occlusionDebugProgram.offset.set(query.uboOffset);
+				occlusionDebugProgram.queryId.set(query.id[0]);
+				glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, query.count);
+			} else {
+				occlusionProgram.offset.set(query.uboOffset);
+				glBeginQuery(GL_ANY_SAMPLES_PASSED, query.getSampleId(type));
+				glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, query.count);
+				glEndQuery(GL_ANY_SAMPLES_PASSED);
+			}
+		}
 	}
 
 	public void shutdown() {
