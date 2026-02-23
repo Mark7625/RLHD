@@ -26,10 +26,7 @@ package rs117.hd.renderer.zone;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -56,7 +53,6 @@ import rs117.hd.opengl.uniforms.UBOWorldViews;
 import rs117.hd.overlays.FrameTimer;
 import rs117.hd.overlays.Timer;
 import rs117.hd.renderer.Renderer;
-import rs117.hd.renderer.zone.OcclusionManager.OcclusionQuery;
 import rs117.hd.scene.EnvironmentManager;
 import rs117.hd.scene.LightManager;
 import rs117.hd.scene.ProceduralGenerator;
@@ -172,9 +168,6 @@ public class ZoneRenderer implements Renderer {
 
 	private GLBuffer indirectDrawCmds;
 	public static GpuIntBuffer indirectDrawCmdsStaging;
-
-	private final HashMap<Integer, OcclusionQuery> tempOcclusionQueries = new HashMap<>();
-	private final ConcurrentHashMap<Long, OcclusionQuery> dynamicOcclusionQueries = new ConcurrentHashMap<>();
 
 	public static GLBuffer eboAlpha;
 	public static GLMappedBuffer eboAlphaMapped;
@@ -1108,31 +1101,9 @@ public class ZoneRenderer implements Renderer {
 		int y,
 		int z
 	) {
-		WorldViewContext ctx = sceneManager.getContext(scene);
-		if (ctx == null || !sceneManager.isRoot(ctx) && ctx.isLoading || !renderCallbackManager.drawObject(scene, tileObject))
-			return;
-
 		final long start = System.nanoTime();
 		try {
-			OcclusionQuery query = dynamicOcclusionQueries.get(tileObject.getHash());
-			if(query == null) {
-				query = occlusionManager.obtainQuery();
-				query.setWorldView(ctx.uboWorldViewStruct);
-				dynamicOcclusionQueries.put(tileObject.getHash(), query);
-			}
-
-			if(!query.isQueued()) {
-				query.reset();
-				query.queue();
-			}
-			query.addAABB(m.getAABB(orient), x, y, z);
-
-			if(query.isFullyOccluded()) {
-				frameTimer.add(renderThreadId == -1 ? Timer.DRAW_DYNAMIC : Timer.DRAW_DYNAMIC_ASYNC, System.nanoTime() - start);
-				return;
-			}
-
-			modelStreamingManager.drawDynamic(renderThreadId, projection, query, scene, tileObject, r, m, orient, x, y, z);
+			modelStreamingManager.drawDynamic(renderThreadId, projection, scene, tileObject, r, m, orient, x, y, z);
 		} catch (Exception ex) {
 			log.error("Error in drawDynamic:", ex);
 		} finally {
@@ -1142,29 +1113,9 @@ public class ZoneRenderer implements Renderer {
 
 	@Override
 	public void drawTemp(Projection worldProjection, Scene scene, GameObject gameObject, Model m, int orientation, int x, int y, int z) {
-		WorldViewContext ctx = sceneManager.getContext(scene);
-		if (ctx == null || !sceneManager.isRoot(ctx) && ctx.isLoading || !renderCallbackManager.drawObject(scene, gameObject))
-			return;
-
 		frameTimer.begin(Timer.DRAW_TEMP);
 		try {
-			OcclusionQuery query = tempOcclusionQueries.get(gameObject.getId());
-			if(query == null) {
-				query = occlusionManager.obtainQuery();
-				query.setWorldView(ctx.uboWorldViewStruct);
-				tempOcclusionQueries.put(gameObject.getId(), query);
-			}
-
-			query.reset();
-			query.addAABB(m.getAABB(orientation), x, y, z);
-			query.queue();
-
-			if(query.isFullyOccluded()) {
-				frameTimer.end(Timer.DRAW_TEMP);
-				return;
-			}
-
-			modelStreamingManager.drawTemp(worldProjection, query, scene, gameObject, m, orientation, x, y, z);
+			modelStreamingManager.drawTemp(worldProjection, scene, gameObject, m, orientation, x, y, z);
 		} catch (Exception ex) {
 			log.error("Error in drawTemp:", ex);
 		} finally {
@@ -1253,13 +1204,6 @@ public class ZoneRenderer implements Renderer {
 				return;
 			}
 			log.error("Unable to swap buffers:", ex);
-		}
-
-		for(Map.Entry<Long, OcclusionQuery> entry : dynamicOcclusionQueries.entrySet()) {
-			if(!entry.getValue().isQueued()) {
-				dynamicOcclusionQueries.remove(entry.getKey());
-				entry.getValue().free();
-			}
 		}
 
 		occlusionManager.occlusionPass();
