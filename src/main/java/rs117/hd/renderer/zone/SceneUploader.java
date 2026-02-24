@@ -242,6 +242,7 @@ public class SceneUploader implements AutoCloseable {
 			uploadZoneWater(ctx, zone, mzx, mzz, vb, fb);
 			zone.levelOffsets[Zone.LEVEL_WATER_SURFACE] = vb.position();
 		}
+		zone.occlusionQuery.removeEncapsulatedAABBs();
 	}
 
 	private void uploadZoneLevel(

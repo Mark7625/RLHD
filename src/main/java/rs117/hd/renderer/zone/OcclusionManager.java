@@ -491,7 +491,7 @@ public class OcclusionManager {
 
 		private int getReadbackId(int type) {
 			int idx = type * FRAMES_IN_FLIGHT + (activeId + 1) % FRAMES_IN_FLIGHT;
-			if(!sampled[idx])
+			if (!sampled[idx])
 				return 0;
 			sampled[idx] = false;
 			return id[idx];
@@ -512,8 +512,8 @@ public class OcclusionManager {
 		}
 
 		public boolean isFullyOccluded() {
-			for(int i = 0; i < QUERY_COUNT; i++) {
-				if(!isOccluded(i))
+			for (int i = 0; i < QUERY_COUNT; i++) {
+				if (!isOccluded(i))
 					return false;
 			}
 			return true;
@@ -536,7 +536,14 @@ public class OcclusionManager {
 		}
 
 		public void addAABB(AABB aabb, float x, float y, float z) {
-			addAABB(x + aabb.getCenterX(), y + aabb.getCenterY(), z + aabb.getCenterZ(), aabb.getExtremeX(), aabb.getExtremeY(), aabb.getExtremeZ());
+			addAABB(
+				x + aabb.getCenterX(),
+				y + aabb.getCenterY(),
+				z + aabb.getCenterZ(),
+				aabb.getExtremeX(),
+				aabb.getExtremeY(),
+				aabb.getExtremeZ()
+			);
 		}
 
 		public void addMinMax(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
@@ -548,8 +555,9 @@ public class OcclusionManager {
 
 		public void addAABB(
 			float posX, float posY, float posZ,
-			float sizeX, float sizeY, float sizeZ) {
-			if(count * 6 >= aabb.length)
+			float sizeX, float sizeY, float sizeZ
+		) {
+			if (count * 6 >= aabb.length)
 				aabb = Arrays.copyOf(aabb, aabb.length * 2);
 
 			aabb[count * 6] = posX;
@@ -563,12 +571,71 @@ public class OcclusionManager {
 			count++;
 		}
 
+		public void removeEncapsulatedAABBs() {
+			int writeIdx = 0;
+			for (int i = 0; i < count; i++) {
+				float posX1 = aabb[i * 6];
+				float posY1 = aabb[i * 6 + 1];
+				float posZ1 = aabb[i * 6 + 2];
+				float sizeX1 = aabb[i * 6 + 3];
+				float sizeY1 = aabb[i * 6 + 4];
+				float sizeZ1 = aabb[i * 6 + 5];
+
+				float minX1 = posX1 - sizeX1 / 2;
+				float minY1 = posY1 - sizeY1 / 2;
+				float minZ1 = posZ1 - sizeZ1 / 2;
+				float maxX1 = posX1 + sizeX1 / 2;
+				float maxY1 = posY1 + sizeY1 / 2;
+				float maxZ1 = posZ1 + sizeZ1 / 2;
+
+				boolean encapsulated = false;
+				for (int j = 0; j < count; j++) {
+					if (i == j)
+						continue;
+
+					float posX2 = aabb[j * 6];
+					float posY2 = aabb[j * 6 + 1];
+					float posZ2 = aabb[j * 6 + 2];
+					float sizeX2 = aabb[j * 6 + 3];
+					float sizeY2 = aabb[j * 6 + 4];
+					float sizeZ2 = aabb[j * 6 + 5];
+
+					float minX2 = posX2 - sizeX2 / 2;
+					float minY2 = posY2 - sizeY2 / 2;
+					float minZ2 = posZ2 - sizeZ2 / 2;
+					float maxX2 = posX2 + sizeX2 / 2;
+					float maxY2 = posY2 + sizeY2 / 2;
+					float maxZ2 = posZ2 + sizeZ2 / 2;
+
+					if (minX1 >= minX2 && maxX1 <= maxX2 &&
+						minY1 >= minY2 && maxY1 <= maxY2 &&
+						minZ1 >= minZ2 && maxZ1 <= maxZ2) {
+						encapsulated = true;
+						break;
+					}
+				}
+
+				if (!encapsulated) {
+					if (writeIdx != i) {
+						aabb[writeIdx * 6] = posX1;
+						aabb[writeIdx * 6 + 1] = posY1;
+						aabb[writeIdx * 6 + 2] = posZ1;
+						aabb[writeIdx * 6 + 3] = sizeX1;
+						aabb[writeIdx * 6 + 4] = sizeY1;
+						aabb[writeIdx * 6 + 5] = sizeZ1;
+					}
+					writeIdx++;
+				}
+			}
+			count = writeIdx;
+		}
+
 		public void reset() {
 			count = 0;
 		}
 
 		public void queue() {
-			if(!active || queued) {
+			if (!active || queued) {
 				return;
 			}
 
