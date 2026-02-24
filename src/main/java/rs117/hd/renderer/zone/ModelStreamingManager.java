@@ -3,7 +3,6 @@ package rs117.hd.renderer.zone;
 import com.google.inject.Injector;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -75,8 +74,6 @@ public class ModelStreamingManager {
 	@Inject
 	private ZoneRenderer renderer;
 
-	private final ConcurrentHashMap<Long, OcclusionQuery> dynamicOcclusionQueries = new ConcurrentHashMap<>();
-
 	private final ArrayList<AsyncCachedModel> pending = new ArrayList<>();
 	private final PrimitiveIntArray clientVisibleFaces = new PrimitiveIntArray();
 	private final PrimitiveIntArray clientCulledFaces = new PrimitiveIntArray();
@@ -122,21 +119,6 @@ public class ModelStreamingManager {
 		return streamingContexts[renderThreadId + 1];
 	}
 
-	OcclusionQuery obtainOcclusionQuery(WorldViewContext ctx, long hash, int orientation, Model m, float x, float y, float z) {
-		OcclusionQuery query = dynamicOcclusionQueries.get(hash);
-		if (query == null) {
-			query = occlusionManager.obtainQuery();
-			query.setWorldView(ctx.uboWorldViewStruct);
-			dynamicOcclusionQueries.put(hash, query);
-		}
-		if(!query.isQueued()) {
-			query.reset();
-			query.queue();
-		}
-		query.addAABB(m.getAABB(orientation), x, y, z);
-		return query;
-	}
-
 	private boolean useMultithreading() {
 		return config.multithreadedModelProcessing() && PROCESSOR_COUNT > 1;
 	}
@@ -156,13 +138,6 @@ public class ModelStreamingManager {
 	public void onBeforeRender(BeforeRender event) {
 		for (int i = 0; i < streamingContexts.length; i++)
 			streamingContexts[i].renderableCount = 0;
-
-		for(ConcurrentHashMap.Entry<Long, OcclusionQuery> entry : dynamicOcclusionQueries.entrySet()) {
-			if(!entry.getValue().isQueued()) {
-				dynamicOcclusionQueries.remove(entry.getKey());
-				entry.getValue().free();
-			}
-		}
 
 		updateRenderThreads();
 	}
@@ -226,7 +201,7 @@ public class ModelStreamingManager {
 			return;
 		}
 
-		final OcclusionQuery occlusionQuery = obtainOcclusionQuery(ctx, gameObject.getId(), orientation, m, x, y, z);
+		final OcclusionQuery occlusionQuery = occlusionManager.obtainOcclusionQuery(ctx, gameObject.getId(), orientation, m, x, y, z);
 		if(occlusionQuery.isFullyOccluded()) {
 			frameTimer.end(Timer.DRAW_TEMP);
 			return;
@@ -474,7 +449,7 @@ public class ModelStreamingManager {
 			return;
 		}
 
-		final OcclusionQuery occlusionQuery = obtainOcclusionQuery(ctx, tileObject.getHash(), orient, m, x, y, z);
+		final OcclusionQuery occlusionQuery = occlusionManager.obtainOcclusionQuery(ctx, tileObject.getHash(), orient, m, x, y, z);
 		if(occlusionQuery.isFullyOccluded())
 			return;
 

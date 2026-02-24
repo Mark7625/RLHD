@@ -5,7 +5,11 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -77,6 +81,8 @@ public class OcclusionManager {
 	private RenderState renderState;
 	private UBOOcclusion uboOcclusion;
 
+	private final ConcurrentHashMap<Long, OcclusionQuery> dynamicOcclusionQueries = new ConcurrentHashMap<>();
+	private final Set<Map.Entry<Long, OcclusionQuery>> dynamicOcclusionQuerySet = dynamicOcclusionQueries.entrySet();
 	private final ConcurrentLinkedQueue<OcclusionQuery> freeQueries = new ConcurrentLinkedQueue<>();
 	private final List<OcclusionQuery> queuedQueries = new ArrayList<>();
 	private final List<OcclusionQuery> prevQueuedQueries = new ArrayList<>();
@@ -205,6 +211,21 @@ public class OcclusionManager {
 		return passedQueryCount[type];
 	}
 
+	public OcclusionQuery obtainOcclusionQuery(WorldViewContext ctx, long hash, int orientation, Model m, float x, float y, float z) {
+		OcclusionQuery query = dynamicOcclusionQueries.get(hash);
+		if (query == null) {
+			query = obtainQuery();
+			query.setWorldView(ctx.uboWorldViewStruct);
+			dynamicOcclusionQueries.put(hash, query);
+		}
+		if(!query.isQueued()) {
+			query.reset();
+			query.queue();
+		}
+		query.addAABB(m.getAABB(orientation), x, y, z);
+		return query;
+	}
+
 	public OcclusionQuery obtainQuery() {
 		OcclusionQuery query = freeQueries.poll();
 		if(query == null)
@@ -214,6 +235,15 @@ public class OcclusionManager {
 
 	public void readbackQueries() {
 		active = config.occlusionCulling();
+
+		final Iterator<ConcurrentHashMap.Entry<Long, OcclusionQuery>> iter = dynamicOcclusionQuerySet.iterator();
+		while(iter.hasNext()) {
+			final OcclusionQuery query = iter.next().getValue();
+			if(query.isQueued())
+				continue;
+			query.free();
+			iter.remove();
+		}
 
 		if(prevQueuedQueries.isEmpty())
 			return;
