@@ -285,6 +285,7 @@ public class OcclusionManager {
 		frameTimer.begin(Timer.RENDER_OCCLUSION);
 
 		zoneRenderer.directionalCamera.getForwardDirection(directionalFwd);
+		normalize(directionalFwd, directionalFwd);
 
 		renderState.enable.set(GL_CULL_FACE);
 		renderState.enable.set(GL_DEPTH_TEST);
@@ -396,23 +397,27 @@ public class OcclusionManager {
 					}
 
 					if (queryTypes[k] == DIRECTIONAL_QUERY) {
-						final float EXPAND_FACTOR = 2.0f;
-						float dirX = directionalFwd[0];
-						float dirY = directionalFwd[1];
-						float dirZ = directionalFwd[2];
+						final float EXPAND_FACTOR = 4.0f;
+						float dirX = -directionalFwd[0];
+						float dirY = -directionalFwd[1];
+						float dirZ = -directionalFwd[2];
 
 						float projected =
 							abs(dirX) * (sizeX / 2) +
 							abs(dirY) * (sizeY / 2) +
 							abs(dirZ) * (sizeZ / 2);
 
-						sizeX += abs(dirX) * projected * EXPAND_FACTOR;
-						sizeY += abs(dirY) * projected * EXPAND_FACTOR;
-						sizeZ += abs(dirZ) * projected * EXPAND_FACTOR;
+						float offset = projected * EXPAND_FACTOR;
 
-						posX += dirX * projected;
-						posY += dirY * projected;
-						posZ += dirZ * projected;
+						// Only extend size along the forward direction
+						sizeX += abs(dirX) * offset / 2;
+						sizeY += abs(dirY) * offset / 2;
+						sizeZ += abs(dirZ) * offset / 2;
+
+						// Offset position along the forward direction
+						posX += dirX * offset / 2;
+						posY += dirY * offset / 2;
+						posZ += dirZ * offset / 2;
 					}
 
 					uboOcclusion.positions[uboOffset].set(posX, posY, posZ);
