@@ -24,6 +24,7 @@ public enum Timer {
 	DRAW_TEMP,
 	DRAW_POSTSCENE,
 	DRAW_TILED_LIGHTING,
+	DRAW_OCCLUSION,
 	DRAW_SUBMIT,
 
 	// Miscellaneous

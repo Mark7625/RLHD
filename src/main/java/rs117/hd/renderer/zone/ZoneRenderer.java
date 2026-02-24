@@ -1189,7 +1189,6 @@ public class ZoneRenderer implements Renderer {
 
 		jobSystem.processPendingClientCallbacks();
 
-		frameTimer.end(Timer.DRAW_FRAME);
 		frameTimer.end(Timer.RENDER_FRAME);
 
 		try {
@@ -1207,8 +1206,8 @@ public class ZoneRenderer implements Renderer {
 		}
 
 		occlusionManager.occlusionPass();
-
 		glBindFramebuffer(GL_FRAMEBUFFER, plugin.awtContext.getFramebuffer(false));
+		frameTimer.end(Timer.DRAW_FRAME);
 
 		frameTimer.endFrameAndReset();
 		checkGLErrors();

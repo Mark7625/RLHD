@@ -47,7 +47,7 @@ import static rs117.hd.utils.MathUtils.*;
 
 @Slf4j
 @Singleton
-public class OcclusionManager {
+public final class OcclusionManager {
 	public static final int SCENE_QUERY = 0;
 	public static final int DIRECTIONAL_QUERY = 1;
 	public static final int SCENE_DEBUG = 2;
@@ -314,6 +314,7 @@ public class OcclusionManager {
 			return;
 
 		frameTimer.begin(Timer.RENDER_OCCLUSION);
+		frameTimer.begin(Timer.DRAW_OCCLUSION);
 
 		zoneRenderer.directionalCamera.getForwardDirection(directionalFwd);
 		normalize(directionalFwd, directionalFwd);
@@ -347,6 +348,7 @@ public class OcclusionManager {
 		prevQueuedQueries.addAll(queuedQueries);
 		queuedQueries.clear();
 
+		frameTimer.end(Timer.DRAW_OCCLUSION);
 		frameTimer.end(Timer.RENDER_OCCLUSION);
 
 		checkGLErrors();
@@ -362,7 +364,6 @@ public class OcclusionManager {
 					renderState.depthFunc.set(GL_GEQUAL);
 
 					occlusionProgram.use();
-					occlusionProgram.viewProj.set(zoneRenderer.sceneCamera.getViewProjMatrix());
 					break;
 				case SCENE_DEBUG:
 					renderState.viewport.set(0, 0, plugin.sceneResolution[0], plugin.sceneResolution[1]);
@@ -370,7 +371,6 @@ public class OcclusionManager {
 					renderState.depthFunc.set(GL_GEQUAL);
 
 					occlusionDebugProgram.use();
-					occlusionDebugProgram.viewProj.set(zoneRenderer.sceneCamera.getViewProjMatrix());
 					break;
 			}
 			renderState.apply();
@@ -394,71 +394,77 @@ public class OcclusionManager {
 					glGenQueries(query.id);
 
 				query.uboOffset = uboOffset;
-				for (int j = 0; j < query.count; j++) {
-					float posX = query.offsetX + query.aabb[j * 6];
-					float posY = query.offsetY + query.aabb[j * 6 + 1];
-					float posZ = query.offsetZ + query.aabb[j * 6 + 2];
-
-					float sizeX = query.aabb[j * 6 + 3] + 0.1f;
-					float sizeY = query.aabb[j * 6 + 4] + 0.1f;
-					float sizeZ = query.aabb[j * 6 + 5] + 0.1f;
-
-					if (query.worldView != null) {
-						float sizeXHalf = sizeX / 2;
-						float sizeYHalf = sizeY / 2;
-						float sizeZHalf = sizeZ / 2;
-
-						query.worldView.project(vec4(vec, posX - sizeXHalf, posY - sizeYHalf, posZ - sizeZHalf, 1.0f));
-						float minX = vec[0];
-						float minY = vec[1];
-						float minZ = vec[2];
-
-						query.worldView.project(vec4(vec, posX + sizeXHalf, posY + sizeYHalf, posZ + sizeZHalf, 1.0f));
-						float maxX = vec[0];
-						float maxY = vec[1];
-						float maxZ = vec[2];
-
-						posX = (minX + maxX) / 2;
-						posY = (minY + maxY) / 2;
-						posZ = (minZ + maxZ) / 2;
-
-						sizeX = maxX - minX;
-						sizeY = maxY - minY;
-						sizeZ = maxZ - minZ;
-					}
-
-					if (queryTypes[k] == DIRECTIONAL_QUERY) {
-						final float EXPAND_FACTOR = 4.0f;
-						float dirX = -directionalFwd[0];
-						float dirY = -directionalFwd[1];
-						float dirZ = -directionalFwd[2];
-
-						float projected =
-							abs(dirX) * (sizeX / 2) +
-							abs(dirY) * (sizeY / 2) +
-							abs(dirZ) * (sizeZ / 2);
-
-						float offset = projected * EXPAND_FACTOR;
-
-						// Only extend size along the forward direction
-						sizeX += abs(dirX) * offset / 2;
-						sizeY += abs(dirY) * offset / 2;
-						sizeZ += abs(dirZ) * offset / 2;
-
-						// Offset position along the forward direction
-						posX += dirX * offset / 2;
-						posY += dirY * offset / 2;
-						posZ += dirZ * offset / 2;
-					}
-
-					uboOcclusion.positions[uboOffset].set(posX, posY, posZ);
-					uboOcclusion.sizes[uboOffset].set(sizeX, sizeY, sizeZ);
-					uboOffset++;
-				}
+				uboOffset = buildQueryAABBs(query, queryTypes[k], uboOffset);
 			}
 			flushQueries(queries, start, queries.size(), queryTypes[k]);
 		}
 		checkGLErrors();
+	}
+
+	private int buildQueryAABBs(OcclusionQuery query, int type, int uboOffset) {
+		for (int j = 0; j < query.count; j++) {
+			float posX = query.offsetX + query.aabb[j * 6];
+			float posY = query.offsetY + query.aabb[j * 6 + 1];
+			float posZ = query.offsetZ + query.aabb[j * 6 + 2];
+
+			float sizeX = query.aabb[j * 6 + 3] + 0.1f;
+			float sizeY = query.aabb[j * 6 + 4] + 0.1f;
+			float sizeZ = query.aabb[j * 6 + 5] + 0.1f;
+
+			if (query.worldView != null) {
+				float sizeXHalf = sizeX / 2;
+				float sizeYHalf = sizeY / 2;
+				float sizeZHalf = sizeZ / 2;
+
+				query.worldView.project(vec4(vec, posX - sizeXHalf, posY - sizeYHalf, posZ - sizeZHalf, 1.0f));
+				float minX = vec[0];
+				float minY = vec[1];
+				float minZ = vec[2];
+
+				query.worldView.project(vec4(vec, posX + sizeXHalf, posY + sizeYHalf, posZ + sizeZHalf, 1.0f));
+				float maxX = vec[0];
+				float maxY = vec[1];
+				float maxZ = vec[2];
+
+				posX = (minX + maxX) / 2;
+				posY = (minY + maxY) / 2;
+				posZ = (minZ + maxZ) / 2;
+
+				sizeX = maxX - minX;
+				sizeY = maxY - minY;
+				sizeZ = maxZ - minZ;
+			}
+
+			if (type == DIRECTIONAL_QUERY) {
+				final float EXPAND_FACTOR = 4.0f;
+				float dirX = -directionalFwd[0];
+				float dirY = -directionalFwd[1];
+				float dirZ = -directionalFwd[2];
+
+				float projected =
+					abs(dirX) * (sizeX / 2) +
+					abs(dirY) * (sizeY / 2) +
+					abs(dirZ) * (sizeZ / 2);
+
+				float offset = projected * EXPAND_FACTOR;
+
+				// Only extend size along the forward direction
+				sizeX += abs(dirX) * offset / 2;
+				sizeY += abs(dirY) * offset / 2;
+				sizeZ += abs(dirZ) * offset / 2;
+
+				// Offset position along the forward direction
+				posX += dirX * offset / 2;
+				posY += dirY * offset / 2;
+				posZ += dirZ * offset / 2;
+			}
+
+			uboOcclusion.positions[uboOffset].set(posX, posY, posZ);
+			uboOcclusion.sizes[uboOffset].set(sizeX, sizeY, sizeZ);
+			uboOffset++;
+		}
+
+		return uboOffset;
 	}
 
 	private void flushQueries(List<OcclusionQuery> queries, int start, int end, int type) {
