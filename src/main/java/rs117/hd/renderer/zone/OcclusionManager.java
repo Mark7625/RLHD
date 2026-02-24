@@ -222,7 +222,8 @@ public class OcclusionManager {
 			query.reset();
 			query.queue();
 		}
-		query.addAABB(m.getAABB(orientation), x, y, z);
+		if(active)
+			query.addAABB(m.getAABB(orientation), x, y, z);
 		return query;
 	}
 
