@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import org.lwjgl.system.MemoryStack;
 import rs117.hd.HdPlugin;
+import rs117.hd.renderer.zone.OcclusionManager.OcclusionQuery;
 import rs117.hd.scene.MaterialManager;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.materials.Material;
@@ -74,6 +75,7 @@ public class Zone {
 	@Nullable
 	public GLBuffer vboO, vboA, vboM;
 	public GLTextureBuffer tboF;
+	public OcclusionQuery occlusionQuery;
 
 	public boolean initialized; // whether the zone vao and vbos are ready
 	public boolean cull; // whether the zone is queued for deletion
@@ -121,6 +123,7 @@ public class Zone {
 		}
 
 		tboF = f;
+		occlusionQuery = OcclusionManager.getInstance().obtainQuery();
 	}
 
 	public static void freeZones(@Nullable Zone[][] zones) {
@@ -167,6 +170,11 @@ public class Zone {
 		if (uploadJob != null) {
 			uploadJob.cancel();
 			uploadJob = null;
+		}
+
+		if(occlusionQuery != null) {
+			occlusionQuery.free();
+			occlusionQuery = null;
 		}
 
 		sortedAlphaFacesUpload.release();
@@ -309,6 +317,11 @@ public class Zone {
 
 		int baseX = (mx - (sceneContext.sceneOffset >> 3)) << 10;
 		int baseZ = (mz - (sceneContext.sceneOffset >> 3)) << 10;
+
+		if(occlusionQuery != null) {
+			occlusionQuery.setOffset(baseX, 0, baseZ);
+			occlusionQuery.setWorldView(viewContext.uboWorldViewStruct);
+		}
 
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			IntBuffer buf = stack.mallocInt(3)
@@ -810,7 +823,7 @@ public class Zone {
 		int zz,
 		int level,
 		WorldViewContext ctx,
-		boolean isShadowPass,
+		boolean isScenePass,
 		boolean includeRoof
 	) {
 		if (alphaModels.isEmpty())
@@ -826,8 +839,6 @@ public class Zone {
 		}
 
 		drawIdx = 0;
-
-		cmd.DepthMask(false);
 
 		boolean shouldQueueUpload = false;
 		for (int i = 0; i < alphaModels.size(); i++) {
@@ -854,7 +865,7 @@ public class Zone {
 				continue;
 			}
 
-			if (isShadowPass || m.asyncSortIdx < 0) {
+			if (!isScenePass || m.asyncSortIdx < 0) {
 				lastDrawMode = STATIC_UNSORTED;
 				pushRange(m.startpos, m.endpos);
 				continue;
@@ -885,8 +896,6 @@ public class Zone {
 		}
 
 		flush(cmd);
-
-		cmd.DepthMask(true);
 	}
 
 	private void flush(CommandBuffer cmd) {
@@ -948,7 +957,8 @@ public class Zone {
 						int zx2 = (centerX >> 10) + offset;
 						int zz2 = (centerZ >> 10) + offset;
 						if (zx2 >= 0 && zx2 < zones.length && zz2 >= 0 && zz2 < zones[0].length) {
-							if (zones[zx2][zz2].inSceneFrustum && zones[zx2][zz2].initialized) {
+							Zone z2 = zones[zx2][zz2];
+							if(z2.inSceneFrustum && z2.initialized && (z2.occlusionQuery == null || !z2.occlusionQuery.isFullyOccluded())) {
 								max = distance;
 								closestZoneX = centerX >> 10;
 								closestZoneZ = centerZ >> 10;

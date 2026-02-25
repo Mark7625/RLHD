@@ -237,6 +237,8 @@ public abstract class UniformBuffer<GLBUFFER extends GLBuffer> {
 		}
 	}
 
+	public static int BUFFER_OFFSET_ALIGNMENT = -1;
+
 	public final GLBUFFER glBuffer;
 
 	private int size;
@@ -341,6 +343,21 @@ public abstract class UniformBuffer<GLBUFFER extends GLBuffer> {
 	public void bind(int bindingIndex) {
 		this.bindingIndex = bindingIndex;
 		glBindBufferBase(GL_UNIFORM_BUFFER, bindingIndex, glBuffer.id);
+	}
+
+	public void bindRange(Property startProperty, Property endProperty) {
+		assert endProperty.offset >= startProperty.offset;
+
+		if(BUFFER_OFFSET_ALIGNMENT == -1)
+			BUFFER_OFFSET_ALIGNMENT = glGetInteger(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT);
+
+		long bytesOffset = (long) startProperty.offset * Integer.BYTES;
+		long alignedOffset = (bytesOffset / BUFFER_OFFSET_ALIGNMENT) * BUFFER_OFFSET_ALIGNMENT;
+
+		long bytesSize = (long) ((endProperty.offset - startProperty.offset) + endProperty.type.size) * Integer.BYTES;
+		long alignedSize = bytesSize + (bytesOffset - alignedOffset);
+
+		glBindBufferRange(GL_UNIFORM_BUFFER, bindingIndex, glBuffer.id, alignedOffset, alignedSize);
 	}
 
 	protected void preUpload() {}

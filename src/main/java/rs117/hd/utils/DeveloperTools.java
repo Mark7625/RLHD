@@ -22,6 +22,7 @@ import rs117.hd.overlays.LightGizmoOverlay;
 import rs117.hd.overlays.ShadowMapOverlay;
 import rs117.hd.overlays.TileInfoOverlay;
 import rs117.hd.overlays.TiledLightingOverlay;
+import rs117.hd.renderer.zone.OcclusionManager;
 import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
@@ -58,6 +59,9 @@ public class DeveloperTools implements KeyListener {
 
 	@Inject
 	private HdPlugin plugin;
+
+	@Inject
+	private OcclusionManager occlusionManager;
 
 	@Inject
 	private TileInfoOverlay tileInfoOverlay;
@@ -185,12 +189,15 @@ public class DeveloperTools implements KeyListener {
 			case "culling":
 				plugin.freezeCulling = !plugin.freezeCulling;
 				break;
+
 			case "pt":
 				clientThread.invoke(() -> {
 					int n = plugin.getParticleManager().spawnPerformanceTestEmitters();
 					plugin.client.addChatMessage(ChatMessageType.GAMEMESSAGE, "117 HD",
 						"<col=ffff00>[117 HD] Spawned " + n + " particle test emitters.</col>", "117 HD");
 				});
+			case "occlusion":
+				occlusionManager.toggleWireframe();
 				break;
 		}
 	}
