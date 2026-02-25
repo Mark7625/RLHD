@@ -85,6 +85,7 @@ public class ParticleManager {
 	private final ParticleBuffer particleBuffer = new ParticleBuffer();
 	@Getter
 	private final Set<ParticleEmitter> emittersCulledThisFrame = new HashSet<>();
+	private final List<ParticleEmitter> emitterIterationList = new ArrayList<>();
 	private final Deque<Particle> particlePool = new ArrayDeque<>(256);
 
 	@Getter
@@ -554,7 +555,9 @@ public class ParticleManager {
 
 			// Iterate over a copy to avoid ConcurrentModificationException if emitters are added/removed during tick.
 			// Cull emitters first by occlusion (no tick = no particles); then particle pass culls by camera.
-			for (ParticleEmitter emitter : new ArrayList<>(sceneEmitters)) {
+			emitterIterationList.clear();
+			emitterIterationList.addAll(sceneEmitters);
+			for (ParticleEmitter emitter : emitterIterationList) {
 				ParticleDefinition def = emitter.getDefinition();
 				boolean skipCulling = def != null && def.displayWhenCulled;
 
