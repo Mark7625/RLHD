@@ -5,7 +5,6 @@
 package rs117.hd.scene.particles;
 
 import javax.annotation.Nullable;
-import rs117.hd.scene.particles.emitter.ParticleEmitter;
 
 public class Particle {
 	public final float[] position = new float[3];

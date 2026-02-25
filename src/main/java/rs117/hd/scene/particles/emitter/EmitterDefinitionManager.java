@@ -6,7 +6,6 @@ package rs117.hd.scene.particles.emitter;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
-import com.google.gson.Gson;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +17,7 @@ import net.runelite.client.callback.ClientThread;
 import rs117.hd.HdPlugin;
 import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.particles.ParticleDefinitionLoader;
+import rs117.hd.scene.particles.ParticleEmitter;
 import rs117.hd.utils.FileWatcher;
 import rs117.hd.utils.Props;
 import rs117.hd.utils.ResourcePath;

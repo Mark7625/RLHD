@@ -6,7 +6,7 @@ package rs117.hd.scene.particles.emitter;
 
 import javax.annotation.Nullable;
 
-public class ParticleEmitterDefinition {
+public class ParticleDefinition {
 	public static final float NO_TARGET = -1f;
 
 	public String id;
@@ -53,9 +53,8 @@ public class ParticleEmitterDefinition {
 	public boolean loopEmission = true;
 	public int fallbackEmitterType = -1;
 	@Nullable
-	public ParticleEmitterDefinition fallbackDefinition;
+	public ParticleDefinition fallbackDefinition;
 	public int targetColourArgb;
-	public int minGraphicsQuality;
 	public int colourTransitionPercent = 100;
 	public int alphaTransitionPercent = 100;
 	public float targetSpeed = NO_TARGET;
@@ -65,7 +64,6 @@ public class ParticleEmitterDefinition {
 	public int[] globalEffectors;
 	public float targetScale = NO_TARGET;
 	public int scaleTransitionPercent = 100;
-	public boolean forceTextureOnSoftwareRenderer;
 	public boolean useSceneAmbientLight = true;
 	public boolean collidesWithObjects;
 	public boolean clipToTerrain = true;

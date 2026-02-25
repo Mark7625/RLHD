@@ -4,8 +4,6 @@
  */
 package rs117.hd.scene.particles;
 
-import rs117.hd.scene.particles.emitter.ParticleEmitter;
-
 /**
  * Structure-of-arrays storage for particles to improve cache locality in the update and render loops.
  */

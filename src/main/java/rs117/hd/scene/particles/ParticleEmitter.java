@@ -2,7 +2,7 @@
  * Copyright (c) 2025, Mark7625 (https://github.com/Mark7625/)
  * All rights reserved.
  */
-package rs117.hd.scene.particles.emitter;
+package rs117.hd.scene.particles;
 
 import java.util.concurrent.ThreadLocalRandom;
 import javax.annotation.Nullable;
@@ -13,8 +13,7 @@ import lombok.NoArgsConstructor;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import rs117.hd.scene.lights.Alignment;
-import rs117.hd.scene.particles.Particle;
-import rs117.hd.scene.particles.ParticleBuffer;
+import rs117.hd.scene.particles.emitter.ParticleDefinition;
 
 import static rs117.hd.utils.MathUtils.*;
 
@@ -107,7 +106,7 @@ public class ParticleEmitter {
 	@Builder.Default
 	private boolean active = true;
 	@Nullable
-	private ParticleEmitterDefinition definition;
+	private ParticleDefinition definition;
 
 	private long cycleStartCycle;
 	@Builder.Default
@@ -227,7 +226,7 @@ public class ParticleEmitter {
 		return this;
 	}
 
-	public void setDefinition(@Nullable ParticleEmitterDefinition def) {
+	public void setDefinition(@Nullable ParticleDefinition def) {
 		this.definition = def;
 	}
 

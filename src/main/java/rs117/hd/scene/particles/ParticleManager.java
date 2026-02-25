@@ -8,11 +8,9 @@ import com.google.common.base.Stopwatch;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -35,11 +33,9 @@ import rs117.hd.renderer.zone.Zone;
 import rs117.hd.scene.particles.emitter.EmitterDefinitionManager;
 import rs117.hd.scene.particles.emitter.EmitterPlacement;
 import rs117.hd.scene.particles.emitter.ObjectEmitterBinding;
-import rs117.hd.scene.particles.emitter.ParticleEmitter;
-import rs117.hd.scene.particles.emitter.ParticleEmitterDefinition;
+import rs117.hd.scene.particles.emitter.ParticleDefinition;
 import rs117.hd.data.ObjectType;
 import rs117.hd.utils.HDUtils;
-import rs117.hd.utils.ResourcePath;
 
 import static net.runelite.api.Constants.*;
 import static net.runelite.api.Perspective.*;
@@ -113,7 +109,7 @@ public class ParticleManager {
 
 	/** Called by ParticleEmitter.tick() after spawnInto(); adds p to buffer and releases p. */
 	public void addSpawnedParticleToBuffer(Particle p, float ox, float oy, float oz, ParticleEmitter emitter) {
-		ParticleEmitterDefinition def = emitter.getDefinition();
+		ParticleDefinition def = emitter.getDefinition();
 		p.emitter = emitter;
 		p.emitterOriginX = ox;
 		p.emitterOriginY = oy;
@@ -228,7 +224,7 @@ public class ParticleManager {
 
 		particleTextureLoader.setActiveTextureName(particleDefinitionLoader.getDefaultTexturePath());
 
-		final Map<String, ParticleEmitterDefinition> definitions = particleDefinitionLoader.getDefinitions();
+		final Map<String, ParticleDefinition> definitions = particleDefinitionLoader.getDefinitions();
 		if (definitions.isEmpty()) {
 			log.debug("[Particles] No particle definitions loaded, skipping emitter recreation.");
 			return;
@@ -248,7 +244,7 @@ public class ParticleManager {
 			}
 
 			final String pid = place.particleId.toUpperCase();
-			final ParticleEmitterDefinition def = definitions.get(pid);
+			final ParticleDefinition def = definitions.get(pid);
 			if (def == null) {
 				continue;
 			}
@@ -268,7 +264,7 @@ public class ParticleManager {
 		}
 	}
 
-	private ParticleEmitter createEmitterFromDefinition(ParticleEmitterDefinition def, WorldPoint wp) {
+	private ParticleEmitter createEmitterFromDefinition(ParticleDefinition def, WorldPoint wp) {
 		def.postDecode();
 		if (def.fallbackDefinition != null)
 			def = def.fallbackDefinition;
@@ -317,12 +313,12 @@ public class ParticleManager {
 		};
 	}
 
-	public Map<String, ParticleEmitterDefinition> getDefinitions() {
+	public Map<String, ParticleDefinition> getDefinitions() {
 		return particleDefinitionLoader.getDefinitions();
 	}
 
 	@Nullable
-	public ParticleEmitterDefinition getDefinition(String id) {
+	public ParticleDefinition getDefinition(String id) {
 		return particleDefinitionLoader.getDefinition(id);
 	}
 
@@ -330,7 +326,7 @@ public class ParticleManager {
 		return particleDefinitionLoader.getDefinitionIdsOrdered();
 	}
 
-	public void applyDefinitionToEmitter(ParticleEmitter emitter, ParticleEmitterDefinition def) {
+	public void applyDefinitionToEmitter(ParticleEmitter emitter, ParticleDefinition def) {
 		if (emitter == null || def == null) return;
 		WorldPoint wp = emitter.getWorldPoint();
 		if (wp == null) return;
@@ -365,7 +361,7 @@ public class ParticleManager {
 		if (def.targetSpeed >= 0f)
 			emitter.targetSpeed(def.targetSpeed, def.speedTransitionPercent / 100f * 2f);
 		else
-			emitter.targetSpeed(ParticleEmitterDefinition.NO_TARGET, 1f);
+			emitter.targetSpeed(ParticleDefinition.NO_TARGET, 1f);
 		if (def.targetScale >= 0f)
 			emitter.targetScale(def.targetScale, scaleTrans);
 		if (targetColor != null)
@@ -399,7 +395,7 @@ public class ParticleManager {
 
 	@Nullable
 	public ParticleEmitter spawnEmitterFromDefinition(String definitionId, WorldPoint wp) {
-		ParticleEmitterDefinition def = particleDefinitionLoader.getDefinition(definitionId);
+		ParticleDefinition def = particleDefinitionLoader.getDefinition(definitionId);
 		if (def == null) return null;
 		ParticleEmitter e = createEmitterFromDefinition(def, wp);
 		e.particleId(def.id);
@@ -474,7 +470,7 @@ public class ParticleManager {
 		WorldPoint wp = tileObject.getWorldLocation();
 		List<ParticleEmitter> created = new ArrayList<>();
 		for (ObjectEmitterBinding binding : bindings) {
-			ParticleEmitterDefinition def = particleDefinitionLoader.getDefinition(binding.getParticleId());
+			ParticleDefinition def = particleDefinitionLoader.getDefinition(binding.getParticleId());
 			if (def == null) continue;
 			ParticleEmitter e = createEmitterFromDefinition(def, wp);
 			e.particleId(def.id);
@@ -559,7 +555,7 @@ public class ParticleManager {
 			// Iterate over a copy to avoid ConcurrentModificationException if emitters are added/removed during tick.
 			// Cull emitters first by occlusion (no tick = no particles); then particle pass culls by camera.
 			for (ParticleEmitter emitter : new ArrayList<>(sceneEmitters)) {
-				ParticleEmitterDefinition def = emitter.getDefinition();
+				ParticleDefinition def = emitter.getDefinition();
 				boolean skipCulling = def != null && def.displayWhenCulled;
 
 				if (!getEmitterSpawnPosition(ctx, emitter, pos, planeOut)) {
