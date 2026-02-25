@@ -154,7 +154,6 @@ public class ZoneRenderer implements Renderer {
 	}
 
 	public final Camera sceneCamera = new Camera().setReverseZ(true);
-
 	public final Camera directionalCamera = new Camera().setOrthographic(true);
 	public final ShadowCasterVolume directionalShadowCasterVolume = new ShadowCasterVolume(directionalCamera);
 
