@@ -24,14 +24,18 @@ import rs117.hd.renderer.zone.pass.ScenePassContext;
 import rs117.hd.scene.particles.ParticleBuffer;
 import rs117.hd.scene.particles.ParticleManager;
 import rs117.hd.scene.particles.ParticleTextureLoader;
-import rs117.hd.utils.HDUtils;
+import rs117.hd.renderer.zone.Zone;
+import rs117.hd.renderer.zone.WorldViewContext;
 import static net.runelite.api.Perspective.LOCAL_TILE_SIZE;
+import static rs117.hd.renderer.zone.OcclusionManager.SCENE_QUERY;
+import static rs117.hd.renderer.zone.SceneManager.NUM_ZONES;
 import static org.lwjgl.opengl.GL15.glUnmapBuffer;
 import static org.lwjgl.opengl.GL30.GL_MAP_INVALIDATE_RANGE_BIT;
 import static org.lwjgl.opengl.GL30.GL_MAP_WRITE_BIT;
 import static org.lwjgl.opengl.GL30.glMapBufferRange;
 import static org.lwjgl.opengl.GL33C.*;
 import static rs117.hd.HdPlugin.TEXTURE_UNIT_PARTICLE;
+import static rs117.hd.utils.HDUtils.isSphereIntersectingFrustum;
 
 @Slf4j
 @Singleton
@@ -158,7 +162,7 @@ public class ParticlePass implements ScenePass {
 	public void beforeDraw(ScenePassContext ctx) {
 		if (ctx.getSceneContext() != null) {
 			ctx.beginTimer(Timer.UPDATE_PARTICLES);
-			particleManager.update(ctx.getSceneContext(), plugin.deltaTime);
+			particleManager.update(ctx.getSceneContext(), plugin.deltaTime, ctx.getWorldViewContext());
 			ctx.endTimer(Timer.UPDATE_PARTICLES);
 		}
 	}
@@ -166,7 +170,7 @@ public class ParticlePass implements ScenePass {
 	@Override
 	public void draw(ScenePassContext ctx) {
 		int currentPlane = client.getTopLevelWorldView().getPlane();
-		int particleInstanceCount = uploadParticles(currentPlane);
+		int particleInstanceCount = uploadParticles(ctx, currentPlane);
 		if (particleInstanceCount > 0) {
 			var renderState = ctx.getRenderState();
 			renderState.program.set(particleProgram);
@@ -194,7 +198,7 @@ public class ParticlePass implements ScenePass {
 		ctx.getRenderState().depthMask.set(true);
 	}
 
-	private int uploadParticles(int currentPlane) {
+	private int uploadParticles(ScenePassContext passCtx, int currentPlane) {
 		ParticleBuffer buf = particleManager.getParticleBuffer();
 		particleStagingBuffer.clear();
 		lastParticleTotalOnPlane = 0;
@@ -205,14 +209,31 @@ public class ParticlePass implements ScenePass {
 		float cxCam = plugin.cameraPosition[0];
 		float cyCam = plugin.cameraPosition[1];
 		float czCam = plugin.cameraPosition[2];
-		float maxDistSq = (float) (plugin.getDrawDistance() * LOCAL_TILE_SIZE);
-		maxDistSq *= maxDistSq;
-		float[][] frustumPlanes = plugin.cameraFrustum;
+		WorldViewContext worldView = passCtx.getWorldViewContext();
+		var sceneContext = passCtx.getSceneContext();
+		int sceneOffset = (sceneContext != null) ? sceneContext.sceneOffset : 0;
+		var culledEmitters = particleManager.getEmittersCulledThisFrame();
+		float maxDist = plugin.getDrawDistance() * LOCAL_TILE_SIZE;
+		float maxDistSq = maxDist * maxDist;
 		int n = 0;
 		for (int i = 0; i < buf.count; i++) {
 			if (buf.plane[i] != currentPlane)
 				continue;
 			lastParticleTotalOnPlane++;
+			// Skip particles from emitters culled by occlusion (no need to check zone/camera for these)
+			if (buf.emitter[i] != null && culledEmitters.contains(buf.emitter[i]))
+				continue;
+			// Per-particle occlusion: skip particles in zones that are fully occluded
+			if (worldView != null && worldView.zones != null && sceneContext != null) {
+				int tileExX = (int) buf.posX[i] / LOCAL_TILE_SIZE + sceneOffset;
+				int tileExZ = (int) buf.posZ[i] / LOCAL_TILE_SIZE + sceneOffset;
+				int zx = Math.max(0, Math.min(NUM_ZONES - 1, tileExX >> 3));
+				int zz = Math.max(0, Math.min(NUM_ZONES - 1, tileExZ >> 3));
+				Zone zone = worldView.zones[zx][zz];
+				if (zone.occlusionQuery == null || zone.occlusionQuery.isFullyOccluded() || !zone.occlusionQuery.isVisible(SCENE_QUERY)) {
+					continue;
+				}
+			}
 			float dx = buf.posX[i] - cxCam;
 			float dy = buf.posY[i] - cyCam;
 			float dz = buf.posZ[i] - czCam;
@@ -221,15 +242,16 @@ public class ParticlePass implements ScenePass {
 				lastParticleCulledDistance++;
 				continue;
 			}
-			if (!HDUtils.isSphereIntersectingFrustum(buf.posX[i], buf.posY[i], buf.posZ[i], buf.size[i], frustumPlanes, frustumPlanes.length)) {
+			float cx = buf.posX[i] + plugin.cameraShift[0];
+			float cy = buf.posY[i];
+			float cz = buf.posZ[i] + plugin.cameraShift[1];
+			float radius = buf.size[i];
+			if (!isSphereIntersectingFrustum(cx, cy, cz, radius, plugin.cameraFrustum, 6)) {
 				lastParticleCulledFrustum++;
 				continue;
 			}
 			particleDistSq[n] = dSq;
 			buf.getCurrentColor(i, particleColor);
-			float cx = buf.posX[i] + plugin.cameraShift[0];
-			float cy = buf.posY[i];
-			float cz = buf.posZ[i] + plugin.cameraShift[1];
 			particleStagingBuffer.put(cx).put(cy).put(cz);
 			particleStagingBuffer.put(particleColor[0]).put(particleColor[1]).put(particleColor[2]).put(particleColor[3]);
 			particleStagingBuffer.put(buf.size[i]);

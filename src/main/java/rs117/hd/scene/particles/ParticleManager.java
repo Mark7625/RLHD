@@ -30,6 +30,8 @@ import net.runelite.client.eventbus.Subscribe;
 import rs117.hd.HdPlugin;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.lights.Alignment;
+import rs117.hd.renderer.zone.WorldViewContext;
+import rs117.hd.renderer.zone.Zone;
 import rs117.hd.scene.particles.emitter.EmitterDefinitionManager;
 import rs117.hd.scene.particles.emitter.EmitterPlacement;
 import rs117.hd.scene.particles.emitter.ObjectEmitterBinding;
@@ -41,7 +43,8 @@ import rs117.hd.utils.ResourcePath;
 
 import static net.runelite.api.Constants.*;
 import static net.runelite.api.Perspective.*;
-import static rs117.hd.utils.HDUtils.isSphereIntersectingFrustum;
+import static rs117.hd.renderer.zone.OcclusionManager.SCENE_QUERY;
+import static rs117.hd.renderer.zone.SceneManager.NUM_ZONES;
 import static rs117.hd.utils.MathUtils.*;
 
 @Slf4j
@@ -140,8 +143,10 @@ public class ParticleManager {
 	}
 
 	public void addEmitter(ParticleEmitter emitter) {
-		if (emitter != null && !sceneEmitters.contains(emitter))
+		if (emitter != null && !sceneEmitters.contains(emitter)) {
+			emitter.randomizeSpeedScale();
 			sceneEmitters.add(emitter);
+		}
 	}
 
 	public void removeEmitter(ParticleEmitter emitter) {
@@ -256,6 +261,7 @@ public class ParticleManager {
 
 			final ParticleEmitter emitter = createEmitterFromDefinition(def, wp);
 			emitter.particleId(def.id);
+			emitter.randomizeSpeedScale();
 
 			sceneEmitters.add(emitter);
 			definitionEmitters.add(emitter);
@@ -481,11 +487,12 @@ public class ParticleManager {
 				e.setSizeX(go.sizeX());
 				e.setSizeY(go.sizeY());
 			} else {
-				e.setSizeX(1);
-				e.setSizeY(1);
-			}
-			sceneEmitters.add(e);
-			created.add(e);
+			e.setSizeX(1);
+			e.setSizeY(1);
+		}
+		e.randomizeSpeedScale();
+		sceneEmitters.add(e);
+		created.add(e);
 			if (def.texture != null && !def.texture.isEmpty())
 				particleTextureLoader.setActiveTextureName(def.texture);
 		}
@@ -539,20 +546,18 @@ public class ParticleManager {
 		handleObjectDespawn(e.getGroundObject());
 	}
 
-	public void update(@Nullable SceneContext ctx, float dt) {
+	public void update(@Nullable SceneContext ctx, float dt, @Nullable WorldViewContext worldView) {
 		emittersCulledThisFrame.clear();
 		if (ctx != null && ctx.sceneBase != null) {
-			float drawDistance = (float) (plugin.getDrawDistance() * LOCAL_TILE_SIZE);
-			final float halfTile = LOCAL_TILE_SIZE / 2f;
 			final long gameCycle = client.getGameCycle();
 			final int maxParticles = MAX_PARTICLES;
-			final int[] cameraShift = plugin.cameraShift;
-			final float[][] cameraFrustum = plugin.cameraFrustum;
 			ParticleBuffer buf = particleBuffer;
 			float[] pos = new float[3];
 			int[] planeOut = new int[1];
+			int sceneOffset = ctx.sceneOffset;
 
-			// Iterate over a copy to avoid ConcurrentModificationException if emitters are added/removed during tick
+			// Iterate over a copy to avoid ConcurrentModificationException if emitters are added/removed during tick.
+			// Cull emitters first by occlusion (no tick = no particles); then particle pass culls by camera.
 			for (ParticleEmitter emitter : new ArrayList<>(sceneEmitters)) {
 				ParticleEmitterDefinition def = emitter.getDefinition();
 				boolean skipCulling = def != null && def.displayWhenCulled;
@@ -561,33 +566,19 @@ public class ParticleManager {
 					if (!skipCulling) emittersCulledThisFrame.add(emitter);
 					continue;
 				}
+				// Emitter-level occlusion: skip ticking if emitter's zone is not visible
+				if (!skipCulling && worldView != null && worldView.zones != null) {
+					int tileExX = (int) pos[0] / LOCAL_TILE_SIZE + sceneOffset;
+					int tileExZ = (int) pos[2] / LOCAL_TILE_SIZE + sceneOffset;
+					int zx = Math.max(0, Math.min(NUM_ZONES - 1, tileExX >> 3));
+					int zz = Math.max(0, Math.min(NUM_ZONES - 1, tileExZ >> 3));
+					Zone zone = worldView.zones[zx][zz];
+					if (zone.occlusionQuery == null || zone.occlusionQuery.isFullyOccluded() || !zone.occlusionQuery.isVisible(SCENE_QUERY)) {
+						emittersCulledThisFrame.add(emitter);
+						continue;
+					}
+				}
 				int plane = planeOut[0];
-
-				// Culling: same as LightManager (distance from cameraFocalPoint, then frustum with cameraShift)
-				boolean visible = true;
-				float distX = plugin.cameraFocalPoint[0] - pos[0];
-				float distZ = plugin.cameraFocalPoint[1] - pos[2];
-				float distanceSquared = distX * distX + distZ * distZ;
-				float maxRadius = halfTile * 2;
-				float near = -maxRadius * maxRadius;
-				float far = drawDistance + halfTile + maxRadius;
-				far *= far;
-				if (distanceSquared <= near || distanceSquared >= far)
-					visible = false;
-				if (visible) {
-					visible = isSphereIntersectingFrustum(
-						pos[0] + cameraShift[0],
-						pos[1],
-						pos[2] + cameraShift[1],
-						maxRadius,
-						cameraFrustum,
-						4
-					);
-				}
-				if (!visible) {
-					if (!skipCulling) emittersCulledThisFrame.add(emitter);
-					continue;
-				}
 
 				if (buf.count >= maxParticles) continue;
 				if (def != null && def.hasLevelBounds) {

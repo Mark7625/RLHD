@@ -1217,7 +1217,8 @@ public class ZoneRenderer implements Renderer {
 		ScenePassContext passCtx = new ScenePassContext(
 			renderState,
 			frameTimer,
-			root != null ? root.sceneContext : null
+			root != null ? root.sceneContext : null,
+			root
 		);
 
 		frameTimer.begin(Timer.DRAW_SUBMIT);
@@ -1226,7 +1227,7 @@ public class ZoneRenderer implements Renderer {
 			depthPrePass();
 			tiledLightingPass();
 			directionalShadowPass();
-			
+
 			scenePass(passCtx);
 			occlusionManager.occlusionDebugPass();
 

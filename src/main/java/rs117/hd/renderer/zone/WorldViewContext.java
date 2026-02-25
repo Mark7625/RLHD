@@ -56,7 +56,7 @@ public class WorldViewContext {
 	@Nullable
 	WorldViewStruct uboWorldViewStruct;
 	ZoneSceneContext sceneContext;
-	Zone[][] zones;
+	public Zone[][] zones;
 	GLBuffer vboM;
 	boolean isLoading = true;
 

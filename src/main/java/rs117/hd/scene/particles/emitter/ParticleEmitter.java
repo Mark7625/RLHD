@@ -74,6 +74,10 @@ public class ParticleEmitter {
 	private float speedTransition = 2f;
 	private float emissionAccum;
 	@Builder.Default
+	private float speedScale = 1f;
+	@Builder.Default
+	private boolean varySpeedPerEmitter = true;
+	@Builder.Default
 	private float particleLifeMin = 0.5f;
 	@Builder.Default
 	private float particleLifeMax = 1.5f;
@@ -281,7 +285,7 @@ public class ParticleEmitter {
 		ThreadLocalRandom rng = ThreadLocalRandom.current();
 		randomDirectionFromRanges(TMP_DIR, rng);
 		float speed = speedMin + (speedMax - speedMin) * rng.nextFloat();
-		float speedWorld = speed / 16384f;
+		float speedWorld = (speed / 16384f) * speedScale;
 		float vx = TMP_DIR[0] * speedWorld;
 		float vy = TMP_DIR[1] * speedWorld;
 		float vz = TMP_DIR[2] * speedWorld;
@@ -315,6 +319,17 @@ public class ParticleEmitter {
 		into.colorTransitionPct = colorTransitionPct;
 		into.alphaTransitionPct = alphaTransitionPct;
 		return true;
+	}
+
+	public void randomizeSpeedScale() {
+		if (!varySpeedPerEmitter) return;
+		speedScale = 0.92f + 0.16f * ThreadLocalRandom.current().nextFloat();
+	}
+
+	/** When true, this emitter's particles use a slightly different speed so it doesn't look identical to others. When false, speed matches. */
+	public ParticleEmitter varySpeedPerEmitter(boolean enable) {
+		this.varySpeedPerEmitter = enable;
+		return this;
 	}
 
 	public int advanceEmission(float dt) {

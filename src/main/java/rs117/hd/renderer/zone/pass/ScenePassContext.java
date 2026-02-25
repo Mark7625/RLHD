@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import rs117.hd.overlays.FrameTimer;
 import rs117.hd.overlays.Timer;
+import rs117.hd.renderer.zone.WorldViewContext;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.utils.RenderState;
 
@@ -25,6 +26,9 @@ public class ScenePassContext {
 	/** Current scene context for the root world view, or null if not available. */
 	@Nullable
 	private final SceneContext sceneContext;
+
+	@Nullable
+	private final WorldViewContext worldViewContext;
 
 	public void beginTimer(Timer timer) {
 		frameTimer.begin(timer);

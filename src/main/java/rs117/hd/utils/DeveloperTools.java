@@ -196,6 +196,7 @@ public class DeveloperTools implements KeyListener {
 					plugin.client.addChatMessage(ChatMessageType.GAMEMESSAGE, "117 HD",
 						"<col=ffff00>[117 HD] Spawned " + n + " particle test emitters.</col>", "117 HD");
 				});
+				break;
 			case "occlusion":
 				occlusionManager.toggleWireframe();
 				break;

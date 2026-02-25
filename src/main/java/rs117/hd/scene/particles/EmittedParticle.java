@@ -27,7 +27,7 @@ public final class EmittedParticle {
 	 */
 	public static boolean tick(ParticleBuffer buf, int i, int tickDelta, ParticleManager manager) {
 		if (buf.emitter[i] != null && manager.getEmittersCulledThisFrame().contains(buf.emitter[i])) {
-			return true;
+			return false;
 		}
 		buf.remainingTicks[i] -= tickDelta;
 		if (buf.remainingTicks[i] <= 0) {
