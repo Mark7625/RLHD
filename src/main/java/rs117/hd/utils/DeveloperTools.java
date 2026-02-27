@@ -16,7 +16,6 @@ import net.runelite.client.input.KeyManager;
 import rs117.hd.HdPlugin;
 import rs117.hd.overlays.FrameTimerOverlay;
 import rs117.hd.overlays.LightGizmoOverlay;
-import rs117.hd.scene.particles.debug.ParticleDebugOverlay;
 import rs117.hd.overlays.ShadowMapOverlay;
 import rs117.hd.overlays.TileInfoOverlay;
 import rs117.hd.overlays.TiledLightingOverlay;
@@ -71,9 +70,6 @@ public class DeveloperTools implements KeyListener {
 
 	@Inject
 	private TiledLightingOverlay tiledLightingOverlay;
-
-	@Inject
-	private ParticleDebugOverlay particleDebugOverlay;
 
 	private boolean keyBindingsEnabled;
 	private boolean tileInfoOverlayEnabled;
@@ -132,7 +128,6 @@ public class DeveloperTools implements KeyListener {
 		tileInfoOverlay.setActive(false);
 		frameTimerOverlay.setActive(false);
 		shadowMapOverlay.setActive(false);
-		particleDebugOverlay.setActive(false);
 		lightGizmoOverlay.setActive(false);
 		tiledLightingOverlay.setActive(false);
 		hideUiEnabled = false;

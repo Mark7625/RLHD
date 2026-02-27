@@ -329,6 +329,17 @@ public class ParticleManager {
 	}
 
 	/**
+	 * Update the definition for the given id and apply to all emitters using it.
+	 * Used when debug plugin sends definition updates via plugin message.
+	 */
+	public void updateDefinitionAndApply(String particleId, ParticleDefinition def) {
+		if (particleId == null || particleId.isEmpty() || def == null) return;
+		def.id = particleId;
+		particleDefinitions.getDefinitions().put(particleId, def);
+		applyDefinitionToEmittersWithId(particleId);
+	}
+
+	/**
 	 * Apply the current definition for the given particle id to all emitters that use that id,
 	 * including both tile emitters (from emitters.json) and object emitters (bound to game objects).
 	 * Use after editing the definition in the panel so emitters update in-game.
@@ -402,6 +413,16 @@ public class ParticleManager {
 
 	public List<String> getAvailableTextureNames() {
 		return particleDefinitions.getAvailableTextureNames();
+	}
+
+	/**
+	 * Open an input stream for a particle texture file. Use from external plugins (e.g. debug panel)
+	 * to ensure correct classloader resolution for resources in the 117 HD JAR.
+	 */
+	@Nullable
+	public java.io.InputStream openParticleTextureStream(String filename) throws java.io.IOException {
+		if (filename == null || filename.isEmpty()) return null;
+		return ParticleTextureLoader.getParticleTexturesPath().resolve(filename).toInputStream();
 	}
 
 	public ParticleEmitter placeEmitter(WorldPoint worldPoint) {
@@ -765,7 +786,7 @@ public class ParticleManager {
 
 	/**
 	 * Computes the spawn position (local x, y, z) for an emitter — same as used in update().
-	 * Used by ParticleGizmoOverlay to draw the gizmo where particles start.
+	 * Used by ParticleSceneFrameBroadcaster (for debug plugin overlays) to project emitter positions.
 	 */
 	public boolean getEmitterSpawnPosition(@Nullable SceneContext ctx, ParticleEmitter emitter, float[] outPos, int[] outPlane) {
 		if (ctx == null || ctx.sceneBase == null || outPos == null || outPos.length < 3)

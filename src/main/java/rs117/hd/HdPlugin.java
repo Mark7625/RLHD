@@ -62,6 +62,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PluginMessage;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -114,8 +115,8 @@ import rs117.hd.scene.ModelOverrideManager;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.particles.ParticleManager;
-import rs117.hd.scene.particles.debug.ParticleGizmoOverlay;
-import rs117.hd.scene.particles.debug.ParticleSidebarPanel;
+import rs117.hd.scene.particles.emitter.ParticleEmitter;
+import rs117.hd.scene.particles.debug.ParticleSceneFrameBroadcaster;
 import rs117.hd.scene.TextureManager;
 import rs117.hd.scene.TileOverrideManager;
 import rs117.hd.scene.WaterTypeManager;
@@ -297,16 +298,12 @@ public class HdPlugin extends Plugin {
 	@Inject
 	private ClientToolbar clientToolbar;
 
-	@Getter
-	private ParticleSidebarPanel particleSidebarPanel;
-
 	@Inject
-	private ParticleGizmoOverlay particleGizmoOverlay;
+	private ParticleSceneFrameBroadcaster particleSceneFrameBroadcaster;
 
 	@Inject
 	private ColorPickerManager colorPickerManager;
 
-	private NavigationButton particleNavButton;
 
 	@Inject
 	private FrameTimer frameTimer;
@@ -713,6 +710,7 @@ public class HdPlugin extends Plugin {
 				modelOverrideManager.startUp();
 				lightManager.startUp();
 				particleManager.startUp();
+				eventBus.register(particleSceneFrameBroadcaster);
 				environmentManager.startUp();
 				fishingSpotReplacer.startUp();
 				gammaCalibrationOverlay.initialize();
@@ -730,19 +728,6 @@ public class HdPlugin extends Plugin {
 				checkGLErrors();
 
 				clientThread.invokeLater(this::displayUpdateMessage);
-
-				SwingUtilities.invokeLater(() -> {
-					particleSidebarPanel = new ParticleSidebarPanel(this, particleManager, clientThread, client, colorPickerManager, particleGizmoOverlay);
-					if (particleNavButton == null) {
-						BufferedImage icon = ImageUtil.loadImageResource(HdPlugin.class, "icon.png");
-						particleNavButton = NavigationButton.builder()
-							.tooltip("117 HD Particles")
-							.icon(icon)
-							.panel(particleSidebarPanel)
-							.build();
-						clientToolbar.addNavigation(particleNavButton);
-					}
-				});
 
 			} catch (Throwable err) {
 				log.error("Error while starting 117 HD", err);
@@ -789,13 +774,9 @@ public class HdPlugin extends Plugin {
 			}
 
 			developerTools.deactivate();
-			particleGizmoOverlay.setActive(false);
-			SwingUtilities.invokeLater(() -> {
-				if (particleNavButton != null) {
-					clientToolbar.removeNavigation(particleNavButton);
-					particleNavButton = null;
-				}
-			});
+			eventBus.unregister(particleSceneFrameBroadcaster);
+			particleSceneFrameBroadcaster.setGizmoOverlayActive(false);
+			particleSceneFrameBroadcaster.setDebugOverlayActive(false);
 			groundMaterialManager.shutDown();
 			modelOverrideManager.shutDown();
 			lightManager.shutDown();
@@ -850,18 +831,6 @@ public class HdPlugin extends Plugin {
 	@Nullable
 	public SceneContext getSceneContext() {
 		return renderer == null ? null : renderer.getSceneContext();
-	}
-
-	/** Open the particle sidebar panel to the Particles tab and select the given particle definition. */
-	public void openParticleConfig(String particleId) {
-		SwingUtilities.invokeLater(() -> {
-			if (particleNavButton != null) {
-				clientToolbar.openPanel(particleNavButton);
-			}
-			if (particleSidebarPanel != null && particleId != null) {
-				particleSidebarPanel.openToParticleConfig(particleId);
-			}
-		});
 	}
 
 	public void toggleFreezeFrame() {
@@ -2042,6 +2011,105 @@ public class HdPlugin extends Plugin {
 	@Subscribe
 	public void onFocusChanged(FocusChanged event) {
 		isClientInFocus = event.isFocused();
+	}
+
+	@Subscribe
+	public void onPluginMessage(PluginMessage message) {
+		if (!isActive || !pluginManager.isPluginEnabled(this))
+			return;
+		if (!"117hd".equals(message.getNamespace()))
+			return;
+		String name = message.getName();
+		var data = message.getData();
+		if ("gizmo-overlay".equals(name)) {
+			Boolean active = data != null && data.containsKey("active")
+				? (Boolean) data.get("active")
+				: null;
+			if (active != null)
+				particleSceneFrameBroadcaster.setGizmoOverlayActive(active);
+		} else if ("debug-overlay".equals(name)) {
+			Boolean active = data != null && data.containsKey("active")
+				? (Boolean) data.get("active")
+				: null;
+			if (active != null)
+				particleSceneFrameBroadcaster.setDebugOverlayActive(active);
+		} else if ("performance-test".equals(name)) {
+			Object actionObj = data != null ? data.get("action") : null;
+			String action = actionObj instanceof String ? (String) actionObj : null;
+			if ("spawn".equals(action))
+				clientThread.invoke(particleManager::spawnPerformanceTestEmitters);
+			else if ("despawn".equals(action))
+				clientThread.invoke(particleManager::despawnPerformanceTestEmitters);
+		} else if ("toggle-emitter".equals(name) && data != null && data.containsKey("index")) {
+			Object idxObj = data.get("index");
+			if (idxObj instanceof Number) {
+				int idx = ((Number) idxObj).intValue();
+				var emitters = particleManager.getSceneEmitters();
+				if (idx >= 0 && idx < emitters.size()) {
+					ParticleEmitter em = emitters.get(idx);
+					em.active(!em.isActive());
+				}
+			}
+		} else if ("texture-list-request".equals(name)) {
+			clientThread.invoke(() -> {
+				var names = particleManager.getAvailableTextureNames();
+				var payload = new java.util.HashMap<String, Object>();
+				payload.put("names", names);
+				eventBus.post(new PluginMessage("117hd", "texture-list", payload));
+			});
+		} else if ("texture-data-request".equals(name) && data != null && data.containsKey("filename")) {
+			Object fn = data.get("filename");
+			if (fn instanceof String) {
+				String filename = (String) fn;
+				clientThread.invoke(() -> {
+					byte[] bytes = null;
+					try (var is = particleManager.openParticleTextureStream(filename)) {
+						if (is != null)
+							bytes = is.readAllBytes();
+					} catch (Exception ex) {
+						log.warn("[Particles] Failed to load texture for plugin message", ex);
+					}
+					var payload = new java.util.HashMap<String, Object>();
+					payload.put("filename", filename);
+					payload.put("bytes", bytes != null ? bytes : new byte[0]);
+					eventBus.post(new PluginMessage("117hd", "texture-data", payload));
+				});
+			}
+		} else if ("particle-init-request".equals(name)) {
+			clientThread.invoke(() -> {
+				var ids = particleManager.getDefinitionIdsOrdered();
+				var defsMap = new java.util.HashMap<String, String>();
+				for (String id : ids) {
+					var def = particleManager.getDefinition(id);
+					if (def != null)
+						defsMap.put(id, gson.toJson(def));
+				}
+				var payload = new java.util.HashMap<String, Object>();
+				payload.put("definitionIds", ids);
+				payload.put("definitions", defsMap);
+				eventBus.post(new PluginMessage("117hd", "particle-definitions", payload));
+			});
+		} else if ("apply-definition".equals(name) && data != null && data.containsKey("particleId") && data.containsKey("definitionJson")) {
+			Object pidObj = data.get("particleId");
+			Object jsonObj = data.get("definitionJson");
+			if (pidObj instanceof String && jsonObj instanceof String) {
+				String particleId = (String) pidObj;
+				String json = (String) jsonObj;
+				clientThread.invoke(() -> {
+					try {
+						rs117.hd.scene.particles.ParticleDefinition def = gson.fromJson(json, rs117.hd.scene.particles.ParticleDefinition.class);
+						if (def != null) {
+							def.parseHexColours();
+							def.postDecode();
+							particleManager.updateDefinitionAndApply(particleId, def);
+						}
+					} catch (Exception ex) {
+						log.warn("[Particles] Failed to apply definition from plugin message", ex);
+					}
+				});
+			}
+		}
+		// open-config is handled by 117 HD Debug Tools plugin
 	}
 
 	@SuppressWarnings("StatementWithEmptyBody")
