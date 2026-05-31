@@ -20,6 +20,7 @@ import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import rs117.hd.opengl.uniforms.UBOMaterials;
 import rs117.hd.scene.MaterialManager;
+import rs117.hd.scene.lava_types.LavaType;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.scene.model_overrides.UvType;
 import rs117.hd.utils.ColorUtils;
@@ -52,6 +53,8 @@ public class Material {
 	private Material ambientOcclusionMap;
 	@JsonAdapter(Reference.Adapter.class)
 	private Material flowMap;
+	@JsonAdapter(LavaType.Adapter.class)
+	private LavaType lavaType;
 	@JsonAdapter(Reference.Adapter.class)
 	private Material shadowAlphaMap;
 	public boolean hasTransparency;
@@ -79,6 +82,10 @@ public class Material {
 	public static final int MAX_MATERIAL_INDEX = (1 << 12) - 1;
 	public static final Material NONE = new Material().name("NONE");
 	public static final Material[] REQUIRED_MATERIALS = { NONE };
+
+	public boolean hasShaderLava() {
+		return lavaType != null && lavaType.index > 0;
+	}
 
 	public static int getTextureLayer(@Nullable Material material) {
 		return material == null ? -1 : material.textureLayer;
@@ -207,6 +214,7 @@ public class Material {
 		struct.roughnessMap.set(getTextureLayer(roughnessMap));
 		struct.ambientOcclusionMap.set(getTextureLayer(ambientOcclusionMap));
 		struct.flowMap.set(getTextureLayer(flowMap));
+		struct.lavaType.set(lavaType == null ? 0 : lavaType.index);
 		struct.shadowAlphaMap.set(getTextureLayer(shadowAlphaMap));
 		struct.flags.set(
 			(overrideBaseColor ? 1 : 0) << 2 |

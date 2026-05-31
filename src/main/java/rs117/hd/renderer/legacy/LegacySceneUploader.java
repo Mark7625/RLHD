@@ -682,6 +682,7 @@ public class LegacySceneUploader {
 					groundMaterial = override.groundMaterial;
 				}
 
+
 				if (useBlendedMaterialAndColor) {
 					// get the vertices' colors and textures from hashmaps
 					swColor = sceneContext.vertexTerrainColor.getOrDefault(swVertexKey, swColor);
@@ -1036,6 +1037,7 @@ public class LegacySceneUploader {
 						// Fall back to the default ground material if the tile is untextured
 						groundMaterial = override.groundMaterial;
 					}
+
 
 					if (useBlendedMaterialAndColor) {
 						// get the vertices' colors and textures from hashmaps

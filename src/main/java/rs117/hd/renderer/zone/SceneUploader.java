@@ -919,6 +919,7 @@ public class SceneUploader implements AutoCloseable {
 				groundMaterial = override.groundMaterial;
 			}
 
+
 			if (useBlendedMaterialAndColor) {
 				// get the vertices' colors and textures from hashmaps
 				swColor = ctx.vertexTerrainColor.getOrDefault(swVertexKey, swColor);
@@ -1208,6 +1209,7 @@ public class SceneUploader implements AutoCloseable {
 					// Fall back to the default ground material if the tile is untextured
 					groundMaterial = override.groundMaterial;
 				}
+
 
 				if (useBlendedMaterialAndColor) {
 					// get the vertices' colors and textures from hashmaps

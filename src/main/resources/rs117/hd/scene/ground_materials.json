@@ -394,6 +394,12 @@
     ]
   },
   {
+    "name": "LAVA",
+    "materials": [
+      "LAVA"
+    ]
+  },
+  {
     "name": "HD_LAVA",
     "materials": [
       "HD_LAVA_1",

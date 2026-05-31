@@ -2223,6 +2223,7 @@
   },
   {
     "name": "HD_LAVA_1",
+    "lavaType": "LAVA",
     "flowMap": "LAVA_FLOW_MAP",
     "overrideBaseColor": true,
     "unlit": true,
@@ -2234,6 +2235,7 @@
   },
   {
     "name": "HD_LAVA_2",
+    "lavaType": "LAVA",
     "flowMap": "LAVA_FLOW_MAP",
     "overrideBaseColor": true,
     "unlit": true,
@@ -2245,6 +2247,7 @@
   },
   {
     "name": "HD_MAGMA_1",
+    "lavaType": "MAGMA",
     "flowMap": "LAVA_FLOW_MAP",
     "overrideBaseColor": true,
     "unlit": true,
@@ -2256,6 +2259,7 @@
   },
   {
     "name": "HD_MAGMA_2",
+    "lavaType": "MAGMA",
     "flowMap": "LAVA_FLOW_MAP",
     "overrideBaseColor": true,
     "unlit": true,
@@ -2581,6 +2585,7 @@
   },
   {
     "name": "HD_LAVA_3",
+    "lavaType": "LAVA",
     "flowMap": "LAVA_FLOW_MAP",
     "overrideBaseColor": true,
     "unlit": true,

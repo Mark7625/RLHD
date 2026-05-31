@@ -42,6 +42,10 @@
         "type": [ "string", "null" ],
         "description": "A material whose texture should be used as this material's flow map. Setting this to `null` will remove the flow map inherited from the parent."
       },
+      "lavaType": {
+        "type": "string",
+        "description": "If set, this material is rendered with the procedural lava shader instead of sampling its color texture."
+      },
       "shadowAlphaMap": {
         "type": [ "string", "null" ],
         "description": "A material whose texture should be used as this material's shadow alpha map. Setting this to `null` will remove the alpha map inherited from the parent."

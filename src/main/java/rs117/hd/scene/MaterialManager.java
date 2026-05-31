@@ -88,6 +88,9 @@ public class MaterialManager {
 	private WaterTypeManager waterTypeManager;
 
 	@Inject
+	private LavaTypeManager lavaTypeManager;
+
+	@Inject
 	private GroundMaterialManager groundMaterialManager;
 
 	@Inject
@@ -443,12 +446,13 @@ public class MaterialManager {
 				uboMaterials.destroy();
 			uboMaterials = new UBOMaterials(MATERIALS.length);
 //		}
-		uboMaterials.update(MATERIALS, vanillaTextures);
+		uboMaterials.update(MATERIALS, vanillaTextures, plugin.configLavaMode);
 
 		if (isFirstLoad)
 			return;
 
 		// Reload anything which depends on Material instances
+		lavaTypeManager.restart();
 		waterTypeManager.restart();
 		groundMaterialManager.restart();
 		tileOverrideManager.reload(true);

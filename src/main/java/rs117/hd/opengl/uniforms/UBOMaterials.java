@@ -3,6 +3,8 @@ package rs117.hd.opengl.uniforms;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import rs117.hd.HdPlugin;
+import rs117.hd.HdPlugin;
+import rs117.hd.config.LavaMode;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.utils.buffer.GLBuffer;
 
@@ -18,6 +20,7 @@ public class UBOMaterials extends UniformBuffer<GLBuffer> {
 		public Property roughnessMap = addProperty(PropertyType.Int, "roughnessMap");
 		public Property ambientOcclusionMap = addProperty(PropertyType.Int, "ambientOcclusionMap");
 		public Property flowMap = addProperty(PropertyType.Int, "flowMap");
+		public Property lavaType = addProperty(PropertyType.Int, "lavaType");
 		public Property shadowAlphaMap = addProperty(PropertyType.Int, "shadowAlphaMap");
 		public Property flags = addProperty(PropertyType.Int, "flags");
 		public Property brightness = addProperty(PropertyType.Float, "brightness");
@@ -41,7 +44,7 @@ public class UBOMaterials extends UniformBuffer<GLBuffer> {
 		initialize(HdPlugin.UNIFORM_BLOCK_MATERIALS);
 	}
 
-	public void update(Material[] materials, Texture[] vanillaTextures) {
+	public void update(Material[] materials, Texture[] vanillaTextures, LavaMode lavaMode) {
 		this.materials = materials;
 
 		for (int i = 0; i < materials.length; i++) {
@@ -64,6 +67,8 @@ public class UBOMaterials extends UniformBuffer<GLBuffer> {
 				}
 			}
 			mat.fillMaterialStruct(uboStructs[i], vanillaScrollX, vanillaScrollY);
+			if (lavaMode != LavaMode.MODERN)
+				uboStructs[i].lavaType.set(0);
 		}
 
 		upload();

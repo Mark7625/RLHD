@@ -37,6 +37,9 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.client.util.OSType;
 import rs117.hd.data.ObjectType;
+import rs117.hd.HdPlugin;
+import rs117.hd.scene.SceneContext;
+import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
 import rs117.hd.scene.water_types.WaterType;
@@ -540,4 +543,5 @@ public final class HDUtils {
 			return Long.MAX_VALUE;
 		}
 	}
+
 }

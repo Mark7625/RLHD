@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lava_types.schema.json",
+  "title": "Lava Types",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "name"
+    ],
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Identifier used to refer to the lava type."
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional description of what this applies to or is used for."
+      },
+      "crustColor": {
+        "type": [ "string", "array" ],
+        "description": "Cooled crust color in sRGB.",
+        "pattern": "^#[A-Fa-f0-9]{6}$",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+          "type": "number"
+        }
+      },
+      "magmaColor": {
+        "type": [ "string", "array" ],
+        "description": "Molten surface color in sRGB.",
+        "pattern": "^#[A-Fa-f0-9]{6}$",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+          "type": "number"
+        }
+      },
+      "hotColor": {
+        "type": [ "string", "array" ],
+        "description": "Hottest vein color in sRGB.",
+        "pattern": "^#[A-Fa-f0-9]{6}$",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+          "type": "number"
+        }
+      },
+      "duration": {
+        "type": "number",
+        "description": "Animation speed multiplier. Smaller values scroll faster."
+      },
+      "scale": {
+        "type": "number",
+        "description": "World-space pattern scale. Larger values yield bigger features."
+      },
+      "crustThreshold": {
+        "type": "number",
+        "description": "Heat level below which crust tones dominate."
+      },
+      "crustAmount": {
+        "type": "number",
+        "description": "How much secondary crust noise darkens the surface."
+      },
+      "crustSharpness": {
+        "type": "number",
+        "description": "Contrast of crust vs molten regions."
+      },
+      "flowStrength": {
+        "type": "number",
+        "description": "Strength of procedural domain-warp flow."
+      },
+      "emissiveStrength": {
+        "type": "number",
+        "description": "Emission intensity of hot areas on the lava surface and on nearby geometry."
+      },
+      "specularStrength": {
+        "type": "number",
+        "description": "Specular highlight strength on molten ripples."
+      },
+      "specularGloss": {
+        "type": "number",
+        "description": "Specular highlight gloss."
+      },
+      "waveStrength": {
+        "type": "number",
+        "description": "Height of close-up normal ripples on the lava surface."
+      },
+      "surfaceGlow": {
+        "type": "number",
+        "description": "Multiplier for molten glow on the lava surface itself."
+      },
+      "irradianceStrength": {
+        "type": "number",
+        "description": "How strongly this lava type lights up nearby terrain and objects."
+      },
+      "animSpeed": {
+        "type": "number",
+        "description": "Animation speed multiplier. Stacks with duration (higher = faster motion)."
+      }
+    }
+  }
+}

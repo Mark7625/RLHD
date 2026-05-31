@@ -41,6 +41,7 @@ import rs117.hd.config.DefaultSkyColor;
 import rs117.hd.config.DynamicLights;
 import rs117.hd.config.FogDepthMode;
 import rs117.hd.config.InfernalCape;
+import rs117.hd.config.LavaMode;
 import rs117.hd.config.Saturation;
 import rs117.hd.config.SceneScalingMode;
 import rs117.hd.config.SeasonalHemisphere;
@@ -786,12 +787,27 @@ public interface HdPluginConfig extends Config
 	)
 	default boolean hideVanillaWaterEffects() { return true; }
 
+	String KEY_LAVA_MODE = "lavaMode";
+	@ConfigItem(
+		keyName = KEY_LAVA_MODE,
+		name = "Lava",
+		description =
+			"Choose how lava is rendered.<br>" +
+			"Classic - HD animated lava textures.<br>" +
+			"Modern - procedural shader lava.",
+		position = 16,
+		section = environmentSettings
+	)
+	default LavaMode lavaMode() {
+		return LavaMode.MODERN;
+	}
+
 	String KEY_POH_THEME_ENVIRONMENTS = "pohThemeEnvironments";
 	@ConfigItem(
 		keyName = KEY_POH_THEME_ENVIRONMENTS,
 		name = "Player-owned house themes",
 		description = "Change the environmental lighting based on the POH style.",
-		position = 16,
+		position = 17,
 		section = environmentSettings
 	)
 	default boolean pohThemeEnvironments() { return true; }

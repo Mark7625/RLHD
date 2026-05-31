@@ -1,0 +1,42 @@
+[
+  {
+    "name": "LAVA",
+    "description": "Standard wilderness and dungeon lava flats.",
+    "crustColor": "#1a0804",
+    "magmaColor": "#e85a10",
+    "hotColor": "#ee7018",
+    "duration": 14.0,
+    "animSpeed": 1.0,
+    "scale": 3.35,
+    "crustThreshold": 0.38,
+    "crustAmount": 0.2,
+    "crustSharpness": 0.72,
+    "flowStrength": 1.45,
+    "waveStrength": 0.26,
+    "emissiveStrength": 1.35,
+    "surfaceGlow": 0.75,
+    "irradianceStrength": 1.0,
+    "specularStrength": 0.1,
+    "specularGloss": 10.0
+  },
+  {
+    "name": "MAGMA",
+    "description": "Hotter, faster-moving magma pools.",
+    "crustColor": "#1a0804",
+    "magmaColor": "#e85a10",
+    "hotColor": "#ee7018",
+    "duration": 10.5,
+    "animSpeed": 1.15,
+    "scale": 2.85,
+    "crustThreshold": 0.32,
+    "crustAmount": 0.32,
+    "crustSharpness": 0.58,
+    "flowStrength": 1.25,
+    "waveStrength": 0.32,
+    "emissiveStrength": 1.2,
+    "surfaceGlow": 0.8,
+    "irradianceStrength": 1.1,
+    "specularStrength": 0.08,
+    "specularGloss": 8.0
+  }
+]

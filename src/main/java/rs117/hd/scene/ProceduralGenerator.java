@@ -30,7 +30,10 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
+import rs117.hd.HdPlugin;
+import rs117.hd.config.LavaMode;
 import rs117.hd.renderer.legacy.LegacySceneContext;
+import rs117.hd.scene.ground_materials.GroundMaterial;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.scene.model_overrides.TzHaarRecolorType;
@@ -72,6 +75,9 @@ public class ProceduralGenerator {
 
 	@Inject
 	private TileOverrideManager tileOverrideManager;
+
+	@Inject
+	private HdPlugin plugin;
 
 	@Inject
 	private WaterTypeManager waterTypeManager;
@@ -389,7 +395,12 @@ public class ProceduralGenerator {
 
 						int[] worldPos = sceneContext.extendedSceneToWorld(x, y, tile.getRenderLevel());
 						var override = tileOverrideManager.getOverride(sceneContext, tile, worldPos);
-						if (seasonalWaterType(override, tile.getSceneTilePaint().getTexture()) == WaterType.NONE) {
+						if (isLavaOverride(override)) {
+							sceneContext.underwaterDepthLevels[z][x][y] = 0;
+							sceneContext.underwaterDepthLevels[z][x + 1][y] = 0;
+							sceneContext.underwaterDepthLevels[z][x][y + 1] = 0;
+							sceneContext.underwaterDepthLevels[z][x + 1][y + 1] = 0;
+						} else if (seasonalWaterType(override, tile.getSceneTilePaint().getTexture()) == WaterType.NONE) {
 							for (int vertexKey : vertexKeys)
 								if (tile.getSceneTilePaint().getNeColor() != HIDDEN_HSL || override.forced)
 									sceneContext.vertexIsLand.put(vertexKey, true);
@@ -495,6 +506,9 @@ public class ProceduralGenerator {
 							var override = ProceduralGenerator.isOverlayFace(tile, face) ? overlayOverride : underlayOverride;
 							int textureId = model.getTriangleTextureId() == null ? -1 :
 								model.getTriangleTextureId()[face];
+							if (isLavaOverride(override) && ProceduralGenerator.isOverlayFace(tile, face)) {
+								continue;
+							}
 							if (seasonalWaterType(override, textureId) == WaterType.NONE)
 							{
 								for (int vertex = 0; vertex < VERTICES_PER_FACE; vertex++)
@@ -1059,4 +1073,12 @@ public class ProceduralGenerator {
 
 		return tzHaarRecolored;
 	}
+
+	private boolean isLavaOverride(TileOverride override) {
+		if (override == null || override == TileOverride.NONE || plugin.configLavaMode != LavaMode.MODERN)
+			return false;
+
+		return override.groundMaterial != null && "HD_LAVA".equals(override.groundMaterial.name);
+	}
+
 }
