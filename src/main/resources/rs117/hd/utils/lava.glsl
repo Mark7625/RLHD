@@ -57,6 +57,8 @@ float lavaFbmOctaves2(vec2 p) {
 }
 
 float lavaToonHeat(float heat) {
+    if (LAVA_TOON_BLEND <= 0.0)
+        return heat;
     const float bands = 4.0;
     float stepped = (floor(heat * bands + 0.32) + 0.5) / bands;
     return mix(heat, stepped, LAVA_TOON_BLEND);
@@ -100,6 +102,11 @@ float sampleLavaHeatAt(vec2 flowUv, float time, LavaType lavaType) {
     float crustMask = smoothstep(lavaType.crustSharpness, 1.0, crustNoise * lavaType.crustAmount + heat * 0.2);
     heat = mix(heat, heat * (1.0 - crustMask * 0.55), lavaType.crustAmount);
     return lavaToonHeat(heat);
+}
+
+float sampleLavaHeightAt(vec2 flowUv) {
+    vec2 detailUv = flowUv * lavaEffectiveDetail();
+    return lavaFbmOctaves4(detailUv);
 }
 
 float lavaWaveDetail(vec2 p, float time) {
@@ -156,20 +163,19 @@ vec3 sampleLavaEmissiveLighting(vec3 worldPos, vec3 normals) {
     if (irradianceLod <= 0.01)
         return vec3(0.0);
 
-    float warpLod = irradianceLod * 0.35;
+    float upFacing = max(dot(normals, vec3(0.0, 1.0, 0.0)), 0.0);
+    float fill = mix(0.32, 1.0, upFacing);
     vec3 emission = vec3(0.0);
 
     for (int lavaTypeIndex = 1; lavaTypeIndex < LAVA_TYPE_COUNT; lavaTypeIndex++) {
         LavaType lavaType = getLavaType(lavaTypeIndex);
         float time = lavaAnimTime(lavaType);
-        float heat = sampleLavaHeatIrradianceAt(worldPos, time, lavaType, warpLod);
+        float heat = sampleLavaHeatIrradianceAt(worldPos, time, lavaType, 0.0);
         float hotMask = smoothstep(0.7, 0.96, heat);
         hotMask *= hotMask;
 
         vec3 emissionColor = lavaHeatTint(lavaType, hotMask * 0.35);
         float strength = lavaType.emissiveStrength * lavaType.irradianceStrength * hotMask * irradianceLod * 0.42;
-        float upFacing = max(dot(normals, vec3(0.0, 1.0, 0.0)), 0.0);
-        float fill = mix(0.32, 1.0, upFacing);
         emission = max(emission, emissionColor * strength * fill);
     }
 
@@ -197,22 +203,16 @@ vec4 sampleLava(int lavaTypeIndex, vec3 viewDir) {
     vec3 normals = vec3(0.0, 1.0, 0.0);
     if (fullNormals || heatNormals) {
         float eps = 0.013 / lavaType.scale;
-        float height = heat;
-        float heightX;
-        float heightY;
-        float waveLod = 0.0;
+        float height = sampleLavaHeightAt(flowUv);
+        float heightX = sampleLavaHeightAt(flowUv + vec2(eps, 0.0));
+        float heightY = sampleLavaHeightAt(flowUv + vec2(0.0, eps));
 
         if (fullNormals) {
-            waveLod = 1.0 - smoothstep(LAVA_NORMAL_WAVE_FADE_START_SQ, LAVA_NORMAL_FULL_SQ, cameraDistSq);
+            float waveLod = 1.0 - smoothstep(LAVA_NORMAL_WAVE_FADE_START_SQ, LAVA_NORMAL_FULL_SQ, cameraDistSq);
             float wave = lavaType.waveStrength * waveLod;
             height += lavaWaveDetail(flowUv, time) * wave;
-            heightX = sampleLavaHeatAt(flowUv + vec2(eps, 0.0), time, lavaType)
-                + lavaWaveDetail(flowUv + vec2(eps, 0.0), time) * wave;
-            heightY = sampleLavaHeatAt(flowUv + vec2(0.0, eps), time, lavaType)
-                + lavaWaveDetail(flowUv + vec2(0.0, eps), time) * wave;
-        } else {
-            heightX = sampleLavaHeatAt(flowUv + vec2(eps, 0.0), time, lavaType);
-            heightY = sampleLavaHeatAt(flowUv + vec2(0.0, eps), time, lavaType);
+            heightX += lavaWaveDetail(flowUv + vec2(eps, 0.0), time) * wave;
+            heightY += lavaWaveDetail(flowUv + vec2(0.0, eps), time) * wave;
         }
 
         normals = lavaNormalsFromHeights(height, heightX, heightY, eps);
