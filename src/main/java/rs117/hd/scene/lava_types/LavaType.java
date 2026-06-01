@@ -42,6 +42,7 @@ public class LavaType {
 	private float[] magmaColor = rgb(232, 90, 16);
 	@JsonAdapter(ColorUtils.SrgbToLinearAdapter.class)
 	private float[] hotColor = rgb(255, 208, 64);
+	public LavaLightDefinition light;
 
 	public transient int index;
 
@@ -61,6 +62,12 @@ public class LavaType {
 			magmaColor = NONE.magmaColor;
 		if (hotColor == null)
 			hotColor = NONE.hotColor;
+		if (light != null)
+			light.normalize();
+	}
+
+	public boolean hasLight() {
+		return light != null;
 	}
 
 	@Override

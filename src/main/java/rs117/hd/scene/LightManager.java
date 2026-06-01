@@ -96,6 +96,9 @@ public class LightManager {
 	private ModelOverrideManager modelOverrideManager;
 
 	@Inject
+	private LavaLightManager lavaLightManager;
+
+	@Inject
 	private EntityHiderPlugin entityHiderPlugin;
 
 	private final ArrayList<Light> WORLD_LIGHTS = new ArrayList<>();
@@ -653,6 +656,8 @@ public class LightManager {
 				}
 			}
 		}
+
+		lavaLightManager.loadLavaLights(sceneContext);
 	}
 
 	public void swapSceneLights(SceneContext sceneContext, @Nullable SceneContext oldSceneContext) {

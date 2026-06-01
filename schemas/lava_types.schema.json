@@ -99,6 +99,80 @@
       "animSpeed": {
         "type": "number",
         "description": "Animation speed multiplier. Stacks with duration (higher = faster motion)."
+      },
+      "light": {
+        "type": "object",
+        "description": "Optional dynamic light spawned automatically on tiles using this lava type.",
+        "additionalProperties": false,
+        "properties": {
+          "alignment": {
+            "type": "string",
+            "enum": [
+              "CUSTOM",
+              "CENTER",
+              "NORTH",
+              "NORTHEAST",
+              "NORTHEAST_CORNER",
+              "EAST",
+              "SOUTHEAST",
+              "SOUTHEAST_CORNER",
+              "SOUTH",
+              "SOUTHWEST",
+              "SOUTHWEST_CORNER",
+              "WEST",
+              "NORTHWEST",
+              "NORTHWEST_CORNER",
+              "BACK",
+              "BACKLEFT",
+              "BACKLEFT_CORNER",
+              "LEFT",
+              "FRONTLEFT",
+              "FRONTLEFT_CORNER",
+              "FRONT",
+              "FRONTRIGHT",
+              "FRONTRIGHT_CORNER",
+              "RIGHT",
+              "BACKRIGHT",
+              "BACKRIGHT_CORNER"
+            ]
+          },
+          "height": {
+            "type": "integer",
+            "description": "Height above the tile surface in local units."
+          },
+          "radius": {
+            "type": "number",
+            "description": "Light reach in local units. Also drives default auto-placement spacing."
+          },
+          "strength": {
+            "type": "number"
+          },
+          "color": {
+            "type": [ "string", "array" ],
+            "pattern": "^#[A-Fa-f0-9]{6}$",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          },
+          "type": {
+            "type": "string",
+            "enum": [ "STATIC", "FLICKER", "PULSE" ]
+          },
+          "duration": {
+            "type": "number",
+            "description": "Pulse period in milliseconds."
+          },
+          "range": {
+            "type": "number",
+            "description": "Flicker or pulse intensity multiplier (percentage)."
+          },
+          "spacing": {
+            "type": "number",
+            "description": "Grid spacing between auto-placed lights in local units. Defaults to radius."
+          }
+        }
       }
     }
   }

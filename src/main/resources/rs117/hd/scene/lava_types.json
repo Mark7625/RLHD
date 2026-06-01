@@ -17,7 +17,21 @@
     "surfaceGlow": 0.75,
     "irradianceStrength": 1.0,
     "specularStrength": 0.1,
-    "specularGloss": 10.0
+    "specularGloss": 10.0,
+    "light": {
+      "radius": 800,
+      "strength": 30,
+      "height": 20,
+      "color": [
+        254,
+        182,
+        34
+      ],
+      "type": "PULSE",
+      "duration": 7000,
+      "range": 10,
+      "spacing": 1024
+    }
   },
   {
     "name": "MAGMA",
@@ -37,6 +51,20 @@
     "surfaceGlow": 0.8,
     "irradianceStrength": 1.1,
     "specularStrength": 0.08,
-    "specularGloss": 8.0
+    "specularGloss": 8.0,
+    "light": {
+      "alignment": "CENTER",
+      "radius": 200,
+      "strength": 7.5,
+      "color": [
+        252,
+        122,
+        3
+      ],
+      "type": "FLICKER",
+      "duration": 0,
+      "range": 20,
+      "spacing": 512
+    }
   }
 ]

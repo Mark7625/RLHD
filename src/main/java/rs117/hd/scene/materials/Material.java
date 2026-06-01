@@ -87,6 +87,10 @@ public class Material {
 		return lavaType != null && lavaType.index > 0;
 	}
 
+	public LavaType getLavaType() {
+		return lavaType;
+	}
+
 	public static int getTextureLayer(@Nullable Material material) {
 		return material == null ? -1 : material.textureLayer;
 	}
