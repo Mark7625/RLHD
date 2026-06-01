@@ -48,6 +48,7 @@ import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.opengl.uniforms.UBOMaterials;
 import rs117.hd.renderer.zone.SceneManager;
+import rs117.hd.scene.lava.LavaTypeManager;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.utils.ExpressionParser;
 import rs117.hd.utils.FileWatcher;

@@ -20,7 +20,7 @@ import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import rs117.hd.opengl.uniforms.UBOMaterials;
 import rs117.hd.scene.MaterialManager;
-import rs117.hd.scene.lava_types.LavaType;
+import rs117.hd.scene.lava.LavaType;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.scene.model_overrides.UvType;
 import rs117.hd.utils.ColorUtils;

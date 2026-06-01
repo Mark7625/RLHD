@@ -1,7 +1,7 @@
 package rs117.hd.opengl.uniforms;
 
 import rs117.hd.HdPlugin;
-import rs117.hd.scene.lava_types.LavaType;
+import rs117.hd.scene.lava.LavaType;
 import rs117.hd.utils.buffer.GLBuffer;
 
 import static org.lwjgl.opengl.GL33C.*;

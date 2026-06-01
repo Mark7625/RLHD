@@ -114,7 +114,7 @@ import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.TextureManager;
 import rs117.hd.scene.TileOverrideManager;
-import rs117.hd.scene.LavaTypeManager;
+import rs117.hd.scene.lava.LavaTypeManager;
 import rs117.hd.scene.WaterTypeManager;
 import rs117.hd.utils.ColorUtils;
 import rs117.hd.utils.DestructibleHandler;
