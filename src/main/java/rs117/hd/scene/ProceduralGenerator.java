@@ -108,6 +108,7 @@ public class ProceduralGenerator {
 	public void clearSceneData(SceneContext sceneContext) {
 		sceneContext.tileIsWater = null;
 		sceneContext.vertexIsWater = null;
+		sceneContext.vertexIsLava = null;
 		sceneContext.vertexIsLand = null;
 		sceneContext.vertexIsOverlay = null;
 		sceneContext.vertexIsUnderlay = null;
@@ -345,8 +346,10 @@ public class ProceduralGenerator {
 		sceneContext.tileIsWater = new boolean[MAX_Z][sizeX][sizeY];
 		// true if a vertex is part of a face which qualifies as water; non-existent if not
 		sceneContext.vertexIsWater = new HashMap<>();
+		sceneContext.vertexIsLava = new HashMap<>();
 		// true if a vertex is part of a face which qualifies as land; non-existent if not
 		// tiles along the shoreline will be true for both vertexIsWater and vertexIsLand
+		// (and similarly vertexIsLava and vertexIsLand for lava edges)
 		sceneContext.vertexIsLand = new HashMap<>();
 		// if true, the tile will be skipped when the scene is drawn
 		// this is due to certain edge cases with water on the same X/Y on different planes
@@ -401,6 +404,8 @@ public class ProceduralGenerator {
 							sceneContext.hasShaderLava = true;
 						if (isLavaOverride(override)) {
 							sceneContext.hasShaderLava = true;
+							for (int vertexKey : vertexKeys)
+								sceneContext.vertexIsLava.put(vertexKey, true);
 							sceneContext.underwaterDepthLevels[z][x][y] = 0;
 							sceneContext.underwaterDepthLevels[z][x + 1][y] = 0;
 							sceneContext.underwaterDepthLevels[z][x][y + 1] = 0;
@@ -513,6 +518,8 @@ public class ProceduralGenerator {
 								model.getTriangleTextureId()[face];
 							if (isLavaOverride(override) && ProceduralGenerator.isOverlayFace(tile, face)) {
 								sceneContext.hasShaderLava = true;
+								for (int vertex = 0; vertex < VERTICES_PER_FACE; vertex++)
+									sceneContext.vertexIsLava.put(vertexKeys[vertex], true);
 								continue;
 							}
 							if (seasonalWaterType(override, textureId) == WaterType.NONE)

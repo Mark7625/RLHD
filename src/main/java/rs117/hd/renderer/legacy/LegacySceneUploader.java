@@ -36,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
+import rs117.hd.config.LavaMode;
 import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.MaterialManager;
 import rs117.hd.scene.ModelOverrideManager;
@@ -701,6 +702,22 @@ public class LegacySceneUploader {
 					nwMaterial = groundMaterial.getRandomMaterial(worldPos[0], worldPos[1] + 1, worldPos[2]);
 					neMaterial = groundMaterial.getRandomMaterial(worldPos[0] + 1, worldPos[1] + 1, worldPos[2]);
 				}
+
+				if (plugin.configLavaMode == LavaMode.MODERN) {
+					int[] colorHolder = { 0 };
+					colorHolder[0] = swColor;
+					HDUtils.applyLavaShorelineColor(sceneContext, swMaterial, swVertexKey, colorHolder);
+					swColor = colorHolder[0];
+					colorHolder[0] = seColor;
+					HDUtils.applyLavaShorelineColor(sceneContext, seMaterial, seVertexKey, colorHolder);
+					seColor = colorHolder[0];
+					colorHolder[0] = nwColor;
+					HDUtils.applyLavaShorelineColor(sceneContext, nwMaterial, nwVertexKey, colorHolder);
+					nwColor = colorHolder[0];
+					colorHolder[0] = neColor;
+					HDUtils.applyLavaShorelineColor(sceneContext, neMaterial, neVertexKey, colorHolder);
+					neColor = colorHolder[0];
+				}
 			}
 			else
 			{
@@ -1064,6 +1081,19 @@ public class LegacySceneUploader {
 							worldPos[1] + (localVertices[2][1] >> LOCAL_COORD_BITS),
 							worldPos[2]
 						);
+					}
+
+					if (plugin.configLavaMode == LavaMode.MODERN) {
+						int[] colorHolder = { 0 };
+						colorHolder[0] = colorA;
+						HDUtils.applyLavaShorelineColor(sceneContext, materialA, vertexKeyA, colorHolder);
+						colorA = colorHolder[0];
+						colorHolder[0] = colorB;
+						HDUtils.applyLavaShorelineColor(sceneContext, materialB, vertexKeyB, colorHolder);
+						colorB = colorHolder[0];
+						colorHolder[0] = colorC;
+						HDUtils.applyLavaShorelineColor(sceneContext, materialC, vertexKeyC, colorHolder);
+						colorC = colorHolder[0];
 					}
 				} else {
 					// set colors for the shoreline to create a foam effect in the water shader

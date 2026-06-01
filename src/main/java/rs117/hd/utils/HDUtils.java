@@ -30,6 +30,7 @@ import java.awt.Frame;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.lang.management.ManagementFactory;
+import java.util.HashMap;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import javax.swing.JFrame;
@@ -37,8 +38,10 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.client.util.OSType;
 import rs117.hd.data.ObjectType;
+import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
+import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.water_types.WaterType;
 
 import static net.runelite.api.Constants.*;
@@ -457,6 +460,32 @@ public final class HDUtils {
 		int terrainData = (waterDepth & 0xFFF) << 11 | waterType.index << 3 | plane << 1 | (isTerrain ? 1 : 0);
 		assert (terrainData & ~0xFFFFFF) == 0 : "Only the lower 24 bits are usable, since we pass this into shaders as a float";
 		return terrainData;
+	}
+
+	public static final int SHORELINE_INTERIOR_HSL = 127;
+
+	public static int shorelineMaskVertexColor(
+		SceneContext ctx,
+		@Nullable HashMap<Integer, Boolean> vertexIsFluid,
+		int vertexKey
+	) {
+		if (vertexIsFluid != null &&
+			vertexIsFluid.containsKey(vertexKey) &&
+			ctx.vertexIsLand.containsKey(vertexKey))
+			return 0;
+		return SHORELINE_INTERIOR_HSL;
+	}
+
+	public static void applyLavaShorelineColor(
+		SceneContext ctx,
+		Material material,
+		int vertexKey,
+		int[] colorHolder
+	) {
+		if (!material.hasShaderLava())
+			return;
+		ctx.vertexIsLava.put(vertexKey, true);
+		colorHolder[0] = shorelineMaskVertexColor(ctx, ctx.vertexIsLava, vertexKey);
 	}
 
 	private static final ThreadLocal<StringBuilder> threadLocalStringBuilder = ThreadLocal.withInitial(StringBuilder::new);

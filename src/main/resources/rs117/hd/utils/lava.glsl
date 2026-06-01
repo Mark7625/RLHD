@@ -177,6 +177,19 @@ vec4 sampleLava(int lavaTypeIndex, vec3 viewDir) {
     vec3 baseColor = sampleLavaColor(heat, lavaType);
     vec3 surfaceEmission = sampleLavaSurfaceEmission(heat, lavaType);
 
+    float shoreLineMask = 1.0 - dot(IN.texBlend, (fAlphaBiasHsl & 127) / 127.0);
+    if (shoreLineMask > 0.001) {
+        float edgeCrustAmount = min(shoreLineMask, 0.85);
+        edgeCrustAmount = clamp(pow(1.0 - ((1.0 - edgeCrustAmount) / 0.65), 3.0), 0.0, 1.0);
+        float edgeCrustNoise = lavaFbmOctaves3(uv * 1.15 + vec2(4.3, 9.2) - vec2(time * 0.045, time * 0.032));
+        edgeCrustAmount *= smoothstep(0.3, 0.78, edgeCrustNoise + shoreLineMask * 0.35);
+        if (edgeCrustAmount > 0.001) {
+            float cooledHeat = mix(heat, heat * (1.0 - edgeCrustAmount * 0.82), edgeCrustAmount);
+            baseColor = mix(sampleLavaColor(cooledHeat, lavaType), lavaType.crustColor, edgeCrustAmount * 0.55);
+            surfaceEmission = mix(sampleLavaSurfaceEmission(cooledHeat, lavaType), vec3(0.0), edgeCrustAmount * 0.8);
+        }
+    }
+
     float eps = 0.013 / lavaType.scale;
     float height = sharpHeight;
     float heightX = sampleLavaHeightAt(flowUv + vec2(eps, 0.0));

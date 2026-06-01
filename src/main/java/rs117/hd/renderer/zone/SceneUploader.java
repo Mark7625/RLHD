@@ -31,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.client.callback.RenderCallbackManager;
 import rs117.hd.HdPlugin;
+import rs117.hd.config.LavaMode;
 import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.MaterialManager;
 import rs117.hd.scene.ModelOverrideManager;
@@ -947,6 +948,22 @@ public class SceneUploader implements AutoCloseable {
 				seVertexIsOverlay = true;
 			if (ctx.vertexIsOverlay.containsKey(swVertexKey) && ctx.vertexIsUnderlay.containsKey(swVertexKey))
 				swVertexIsOverlay = true;
+
+			if (plugin.configLavaMode == LavaMode.MODERN) {
+				int[] colorHolder = { 0 };
+				colorHolder[0] = swColor;
+				HDUtils.applyLavaShorelineColor(ctx, swMaterial, swVertexKey, colorHolder);
+				swColor = colorHolder[0];
+				colorHolder[0] = seColor;
+				HDUtils.applyLavaShorelineColor(ctx, seMaterial, seVertexKey, colorHolder);
+				seColor = colorHolder[0];
+				colorHolder[0] = nwColor;
+				HDUtils.applyLavaShorelineColor(ctx, nwMaterial, nwVertexKey, colorHolder);
+				nwColor = colorHolder[0];
+				colorHolder[0] = neColor;
+				HDUtils.applyLavaShorelineColor(ctx, neMaterial, neVertexKey, colorHolder);
+				neColor = colorHolder[0];
+			}
 		} else if (onlyWaterSurface) {
 			// set colors for the shoreline to create a foam effect in the water shader
 			swColor = seColor = nwColor = neColor = 127;
@@ -1236,6 +1253,19 @@ public class SceneUploader implements AutoCloseable {
 						worldPos[1] + (vertices[2][1] >> LOCAL_COORD_BITS),
 						worldPos[2]
 					);
+				}
+
+				if (plugin.configLavaMode == LavaMode.MODERN) {
+					int[] colorHolder = { 0 };
+					colorHolder[0] = colorA;
+					HDUtils.applyLavaShorelineColor(ctx, materialA, vertexKeyA, colorHolder);
+					colorA = colorHolder[0];
+					colorHolder[0] = colorB;
+					HDUtils.applyLavaShorelineColor(ctx, materialB, vertexKeyB, colorHolder);
+					colorB = colorHolder[0];
+					colorHolder[0] = colorC;
+					HDUtils.applyLavaShorelineColor(ctx, materialC, vertexKeyC, colorHolder);
+					colorC = colorHolder[0];
 				}
 			} else if (onlyWaterSurface) {
 				// set colors for the shoreline to create a foam effect in the water shader

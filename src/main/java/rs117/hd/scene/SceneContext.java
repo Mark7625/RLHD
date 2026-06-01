@@ -63,6 +63,7 @@ public class SceneContext {
 	// Water-related data
 	public boolean[][][] tileIsWater;
 	public HashMap<Integer, Boolean> vertexIsWater;
+	public HashMap<Integer, Boolean> vertexIsLava;
 	public HashMap<Integer, Boolean> vertexIsLand;
 	public HashMap<Integer, Boolean> vertexIsOverlay;
 	public HashMap<Integer, Boolean> vertexIsUnderlay;
