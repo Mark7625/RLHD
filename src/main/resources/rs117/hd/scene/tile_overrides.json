@@ -11033,6 +11033,15 @@
     "blended": false
   },
   {
+    "name": "TZHAAR_LAVA",
+    "area": "TZHAAR",
+    "overlayIds": [
+      19
+    ],
+    "groundMaterial": "TZHAAR_LAVA",
+    "blended": false
+  },
+  {
     "name": "LAVA",
     "area": "ALL",
     "overlayIds": [

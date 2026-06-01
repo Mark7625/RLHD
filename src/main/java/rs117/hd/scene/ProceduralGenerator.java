@@ -1078,7 +1078,7 @@ public class ProceduralGenerator {
 		if (override == null || override == TileOverride.NONE || plugin.configLavaMode != LavaMode.MODERN)
 			return false;
 
-		return override.groundMaterial != null && "HD_LAVA".equals(override.groundMaterial.name);
+		return override.groundMaterial != null && override.groundMaterial.hasShaderLava();
 	}
 
 }

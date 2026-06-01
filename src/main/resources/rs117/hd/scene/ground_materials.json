@@ -412,6 +412,12 @@
     ]
   },
   {
+    "name": "TZHAAR_LAVA",
+    "materials": [
+      "HD_TZHAAR_LAVA"
+    ]
+  },
+  {
     "name": "STONE_PATTERN",
     "materials": [
       "STONE_PATTERN"

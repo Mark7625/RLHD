@@ -30,7 +30,7 @@
       "type": "PULSE",
       "duration": 7000,
       "range": 10,
-      "spacing": 1024
+      "spacing": 1536
     }
   },
   {
@@ -64,7 +64,41 @@
       "type": "FLICKER",
       "duration": 0,
       "range": 20,
-      "spacing": 512
+      "spacing": 768
+    }
+  },
+  {
+    "name": "TZHAAR_LAVA",
+    "description": "TzHaar city and Fight Caves lava (used via TZHAAR_LAVA ground material).",
+    "crustColor": "#0c0202",
+    "magmaColor": "#d41008",
+    "hotColor": "#ff2818",
+    "duration": 12.0,
+    "animSpeed": 1.05,
+    "scale": 3.0,
+    "crustThreshold": 0.3,
+    "crustAmount": 0.22,
+    "crustSharpness": 0.75,
+    "flowStrength": 1.35,
+    "waveStrength": 0.28,
+    "emissiveStrength": 1.5,
+    "surfaceGlow": 0.88,
+    "irradianceStrength": 1.1,
+    "specularStrength": 0.1,
+    "specularGloss": 9.0,
+    "light": {
+      "radius": 900,
+      "strength": 28,
+      "height": 20,
+      "color": [
+        255,
+        32,
+        16
+      ],
+      "type": "PULSE",
+      "duration": 6000,
+      "range": 12,
+      "spacing": 1536
     }
   }
 ]

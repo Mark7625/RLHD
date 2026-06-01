@@ -2270,6 +2270,18 @@
     ]
   },
   {
+    "name": "HD_TZHAAR_LAVA",
+    "lavaType": "TZHAAR_LAVA",
+    "flowMap": "LAVA_FLOW_MAP",
+    "overrideBaseColor": true,
+    "unlit": true,
+    "flowMapStrength": 0.04,
+    "flowMapDuration": [
+      36.0,
+      12.0
+    ]
+  },
+  {
     "name": "BARK_N"
   },
   {

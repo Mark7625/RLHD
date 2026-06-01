@@ -1,5 +1,7 @@
 package rs117.hd.scene;
 
+import java.util.ArrayList;
+import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -15,17 +17,13 @@ import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.tile_overrides.TileOverride;
 
-import static net.runelite.api.Constants.EXTENDED_SCENE_SIZE;
-import static net.runelite.api.Constants.MAX_Z;
 import static net.runelite.api.Perspective.LOCAL_HALF_TILE_SIZE;
 import static net.runelite.api.Perspective.LOCAL_TILE_SIZE;
-import static rs117.hd.utils.MathUtils.max;
+import static rs117.hd.scene.tile_overrides.TileOverride.OVERLAY_FLAG;
 
 @Slf4j
 @Singleton
 public class LavaLightManager {
-	private static final String LAVA_GROUND_MATERIAL = "HD_LAVA";
-
 	@Inject
 	private HdPlugin plugin;
 
@@ -47,63 +45,61 @@ public class LavaLightManager {
 			return;
 
 		Scene scene = sceneContext.scene;
-		Tile[][][] tiles = scene.getExtendedTiles();
 		int[][][] tileHeights = scene.getTileHeights();
 		int sceneOffset = sceneContext.sceneOffset;
 
-		for (int plane = 0; plane < MAX_Z; plane++) {
-			for (LavaType lavaType : LavaTypeManager.LAVA_TYPES) {
-				if (!lavaType.hasLight())
-					continue;
+		for (LavaType lavaType : LavaTypeManager.LAVA_TYPES) {
+			if (!lavaType.hasLight())
+				continue;
 
-				LavaLightDefinition templateDef = lavaType.light;
-				LavaLightDefinition lightDef = templateDef.instantiate(lavaType.name);
-				int spacingTiles = max(1, templateDef.getSpacing() / LOCAL_TILE_SIZE);
+			LavaLightDefinition templateDef = lavaType.light;
+			LavaLightDefinition lightDef = templateDef.instantiate(lavaType.name);
+			int spacing = templateDef.getSpacing();
+			int spacingSq = spacing * spacing;
+			List<int[]> placedLights = new ArrayList<>();
 
-				for (int tileExY = 0; tileExY < EXTENDED_SCENE_SIZE; tileExY += spacingTiles) {
-					for (int tileExX = 0; tileExX < EXTENDED_SCENE_SIZE; tileExX += spacingTiles) {
-						int sumLocalX = 0;
-						int sumLocalZ = 0;
-						int lavaTileCount = 0;
-						int tileZ = 0;
-						int heightSum = 0;
-
-						for (int dy = 0; dy < spacingTiles && tileExY + dy < EXTENDED_SCENE_SIZE; dy++) {
-							for (int dx = 0; dx < spacingTiles && tileExX + dx < EXTENDED_SCENE_SIZE; dx++) {
-								int x = tileExX + dx;
-								int y = tileExY + dy;
-								Tile tile = tiles[plane][x][y];
-								if (tile == null)
-									continue;
-
-								if (tile.getBridge() != null)
-									tile = tile.getBridge();
-
-								if (getLavaType(sceneContext, tile, x, y) != lavaType)
-									continue;
-
-								tileZ = tile.getRenderLevel();
-								int tileX = x - sceneOffset;
-								int tileY = y - sceneOffset;
-								sumLocalX += tileX * LOCAL_TILE_SIZE + LOCAL_HALF_TILE_SIZE;
-								sumLocalZ += tileY * LOCAL_TILE_SIZE + LOCAL_HALF_TILE_SIZE;
-								heightSum += tileHeights[tileZ][x][y];
-								lavaTileCount++;
-							}
-						}
-
-						if (lavaTileCount == 0)
+			for (Tile[][] plane : scene.getExtendedTiles()) {
+				for (Tile[] column : plane) {
+					for (Tile tile : column) {
+						if (tile == null)
 							continue;
 
-						int localX = sumLocalX / lavaTileCount;
-						int localZ = sumLocalZ / lavaTileCount;
-						int height = heightSum / lavaTileCount;
+						if (tile.getBridge() != null)
+							tile = tile.getBridge();
+
+						var pos = tile.getSceneLocation();
+						int tileExX = pos.getX() + sceneOffset;
+						int tileExY = pos.getY() + sceneOffset;
+
+						LavaType tileLavaType = getLavaType(sceneContext, tile, tileExX, tileExY);
+						if (tileLavaType != lavaType)
+							continue;
+
+						int tileZ = tile.getRenderLevel();
+						int tileX = tileExX - sceneOffset;
+						int tileY = tileExY - sceneOffset;
+						int localX = tileX * LOCAL_TILE_SIZE + LOCAL_HALF_TILE_SIZE;
+						int localZ = tileY * LOCAL_TILE_SIZE + LOCAL_HALF_TILE_SIZE;
+
+						boolean tooClose = false;
+						for (int[] placed : placedLights) {
+							int dx = localX - placed[0];
+							int dz = localZ - placed[1];
+							if (dx * dx + dz * dz < spacingSq) {
+								tooClose = true;
+								break;
+							}
+						}
+						if (tooClose)
+							continue;
+
+						placedLights.add(new int[] { localX, localZ });
 
 						Light light = new Light(lightDef);
 						light.persistent = true;
 						light.plane = tileZ;
 						light.origin[0] = localX;
-						light.origin[1] = height - lightDef.height - 1;
+						light.origin[1] = tileHeights[tileZ][tileExX][tileExY] - lightDef.height - 1;
 						light.origin[2] = localZ;
 						sceneContext.lights.add(light);
 					}
@@ -113,11 +109,11 @@ public class LavaLightManager {
 	}
 
 	private LavaType getLavaType(SceneContext sceneContext, Tile tile, int tileExX, int tileExY) {
-		int[] worldPos = sceneContext.extendedSceneToWorld(tileExX, tileExY, tile.getRenderLevel());
-		TileOverride override = tileOverrideManager.getOverride(sceneContext, tile, worldPos);
-		if (!isLavaOverride(override))
+		TileOverride override = getLavaTileOverride(sceneContext, tile, tileExX, tileExY);
+		if (!isLavaGroundMaterial(override))
 			return null;
 
+		int[] worldPos = sceneContext.extendedSceneToWorld(tileExX, tileExY, tile.getRenderLevel());
 		Material material = override.groundMaterial.getRandomMaterial(worldPos);
 		if (material == null || !material.hasShaderLava())
 			return null;
@@ -125,13 +121,29 @@ public class LavaLightManager {
 		return material.getLavaType();
 	}
 
-	private boolean isLavaOverride(TileOverride override) {
+	/**
+	 * Lava is applied via overlay tile overrides (e.g. overlay id 19), not underlay.
+	 */
+	private TileOverride getLavaTileOverride(SceneContext sceneContext, Tile tile, int tileExX, int tileExY) {
+		int tileZ = tile.getRenderLevel();
+		int overlayId = OVERLAY_FLAG | sceneContext.scene.getOverlayIds()[tileZ][tileExX][tileExY];
+		int[] worldPos = sceneContext.extendedSceneToWorld(tileExX, tileExY, tileZ);
+		return tileOverrideManager.getOverrideBeforeReplacements(worldPos, overlayId);
+	}
+
+	private boolean isLavaGroundMaterial(TileOverride override) {
 		if (override == null || override == TileOverride.NONE)
 			return false;
 
 		GroundMaterial groundMaterial = override.groundMaterial;
-		return groundMaterial != null &&
-			groundMaterial != GroundMaterial.NONE &&
-			LAVA_GROUND_MATERIAL.equals(groundMaterial.name);
+		if (groundMaterial == null || groundMaterial == GroundMaterial.NONE)
+			return false;
+
+		if (groundMaterial.hasShaderLava())
+			return true;
+
+		// Fallback for ground materials that use lava materials but failed to resolve at load time
+		String name = groundMaterial.name;
+		return name != null && name.contains("LAVA");
 	}
 }
