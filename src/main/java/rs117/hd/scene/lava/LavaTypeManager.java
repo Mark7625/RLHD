@@ -1,4 +1,4 @@
-package rs117.hd.scene;
+package rs117.hd.scene.lava;
 
 import java.io.IOException;
 import javax.inject.Inject;
@@ -8,7 +8,7 @@ import net.runelite.client.callback.ClientThread;
 import rs117.hd.HdPlugin;
 import rs117.hd.opengl.uniforms.UBOLavaTypes;
 import rs117.hd.renderer.zone.SceneManager;
-import rs117.hd.scene.lava_types.LavaType;
+import rs117.hd.scene.LightManager;
 import rs117.hd.utils.FileWatcher;
 import rs117.hd.utils.Props;
 import rs117.hd.utils.ResourcePath;
@@ -19,7 +19,7 @@ import static rs117.hd.utils.ResourcePath.path;
 @Singleton
 public class LavaTypeManager {
 	private static final ResourcePath LAVA_TYPES_PATH = Props
-		.getFile("rlhd.lava-types-path", () -> path(LavaTypeManager.class, "lava_types.json"));
+		.getFile("rlhd.lava-types-path", () -> path(LightManager.class, "lava_types.json"));
 
 	@Inject
 	private ClientThread clientThread;

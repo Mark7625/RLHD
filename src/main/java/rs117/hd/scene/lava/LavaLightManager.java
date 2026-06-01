@@ -1,4 +1,4 @@
-package rs117.hd.scene;
+package rs117.hd.scene.lava;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,9 +10,9 @@ import net.runelite.api.Tile;
 import rs117.hd.HdPlugin;
 import rs117.hd.config.DynamicLights;
 import rs117.hd.config.LavaMode;
+import rs117.hd.scene.SceneContext;
+import rs117.hd.scene.TileOverrideManager;
 import rs117.hd.scene.ground_materials.GroundMaterial;
-import rs117.hd.scene.lava_types.LavaLightDefinition;
-import rs117.hd.scene.lava_types.LavaType;
 import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.tile_overrides.TileOverride;
@@ -52,8 +52,8 @@ public class LavaLightManager {
 			if (!lavaType.hasLight())
 				continue;
 
-			LavaLightDefinition templateDef = lavaType.light;
-			LavaLightDefinition lightDef = templateDef.instantiate(lavaType.name);
+			LavaType.LavaLightDefinition templateDef = lavaType.light;
+			LavaType.LavaLightDefinition lightDef = templateDef.instantiate(lavaType.name);
 			int spacing = templateDef.getSpacing();
 			int spacingSq = spacing * spacing;
 			List<int[]> placedLights = new ArrayList<>();

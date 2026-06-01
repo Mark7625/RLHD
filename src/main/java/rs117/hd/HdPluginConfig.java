@@ -790,11 +790,11 @@ public interface HdPluginConfig extends Config
 	String KEY_LAVA_MODE = "lavaMode";
 	@ConfigItem(
 		keyName = KEY_LAVA_MODE,
-		name = "Lava",
+		name = "Lava Style",
 		description =
-			"Choose how lava is rendered.<br>" +
-			"Classic - HD animated lava textures.<br>" +
-			"Modern - procedural shader lava.",
+			"Choose a lava rendering style.<br>" +
+			"Classic - Original 117 HD lava visuals.<br>" +
+			"Modern - Procedural shader lava with improved animation and detail.",
 		position = 16,
 		section = environmentSettings
 	)

@@ -103,6 +103,7 @@ void main() {
         waterDepth2 * IN.texBlend.y +
         waterDepth3 * IN.texBlend.z;
     int waterTypeIndex = isTerrain ? fTerrainData[0] >> 3 & 0xFF : 0;
+    WaterType waterType = getWaterType(waterTypeIndex);
 
     // set initial texture map ids
     int colorMap1 = material1.colorMap;
@@ -164,7 +165,6 @@ void main() {
         outputColor = lavaColor;
     #endif
     } else {
-        WaterType waterType = getWaterType(waterTypeIndex);
         vec2 blendedUv = IN.uv;
 
         float mipBias = 0;

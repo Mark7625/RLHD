@@ -1,7 +1,3 @@
-/*
- * Copyright (c) 2021, 117 <https://twitter.com/117scape>
- * All rights reserved.
- */
 #include <uniforms/global.glsl>
 #include <uniforms/lava_types.glsl>
 
