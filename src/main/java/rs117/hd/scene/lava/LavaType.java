@@ -32,7 +32,7 @@ public class LavaType {
 		public int getSpacing() {
 			if (spacing > 0)
 				return (int) spacing;
-			return max(LOCAL_TILE_SIZE * 4, (int) (radius * 1.5f));
+			return max(LOCAL_TILE_SIZE * 3, (int) (radius * 1.5f));
 		}
 
 		public LavaLightDefinition instantiate(String lavaTypeName) {
