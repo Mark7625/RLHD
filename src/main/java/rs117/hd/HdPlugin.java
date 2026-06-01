@@ -860,6 +860,13 @@ public class HdPlugin extends Plugin {
 		return renderer == null ? null : renderer.getSceneContext();
 	}
 
+	public void updateLavaIrradianceUniform(@Nullable SceneContext sceneContext) {
+		boolean enabled = configLavaMode == LavaMode.MODERN
+			&& sceneContext != null
+			&& sceneContext.hasShaderLava;
+		uboGlobal.lavaIrradianceEnabled.set(enabled ? 1f : 0f);
+	}
+
 	public void toggleFreezeFrame() {
 		clientThread.invoke(() -> {
 			enableFreezeFrame = !enableFreezeFrame;

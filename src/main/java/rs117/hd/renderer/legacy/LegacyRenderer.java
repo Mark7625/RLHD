@@ -1063,6 +1063,7 @@ public class LegacyRenderer implements Renderer {
 			plugin.uboGlobal.underwaterCausticsColor.set(environmentManager.currentUnderwaterCausticsColor);
 			plugin.uboGlobal.underwaterCausticsStrength.set(environmentManager.currentUnderwaterCausticsStrength);
 			plugin.uboGlobal.elapsedTime.set((float) (plugin.elapsedTime % MAX_FLOAT_WITH_128TH_PRECISION));
+			plugin.updateLavaIrradianceUniform(sceneContext);
 
 			float[] lightViewMatrix = Mat4.rotateX(environmentManager.currentSunAngles[0]);
 			Mat4.mul(lightViewMatrix, Mat4.rotateY(PI - environmentManager.currentSunAngles[1]));

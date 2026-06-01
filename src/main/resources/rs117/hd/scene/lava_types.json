@@ -5,13 +5,13 @@
     "crustColor": "#1f0603",
     "magmaColor": "#e0440c",
     "hotColor": "#f05518",
-    "duration": 14.0,
-    "animSpeed": 1.0,
+    "duration": 8.5,
+    "animSpeed": 1.65,
     "scale": 3.35,
-    "crustThreshold": 0.38,
-    "crustAmount": 0.2,
-    "crustSharpness": 0.72,
-    "flowStrength": 1.45,
+    "crustThreshold": 0.42,
+    "crustAmount": 0.38,
+    "crustSharpness": 0.86,
+    "flowStrength": 1.85,
     "waveStrength": 0.26,
     "emissiveStrength": 1.35,
     "surfaceGlow": 0.75,
@@ -19,8 +19,8 @@
     "specularStrength": 0.1,
     "specularGloss": 10.0,
     "light": {
-      "radius": 800,
-      "strength": 30,
+      "radius": 400,
+      "strength": 34,
       "height": 20,
       "color": [
         254,
@@ -30,7 +30,7 @@
       "type": "PULSE",
       "duration": 7000,
       "range": 10,
-      "spacing": 1536
+      "spacing": 640
     }
   },
   {
@@ -39,13 +39,13 @@
     "crustColor": "#1f0603",
     "magmaColor": "#e0440c",
     "hotColor": "#f05518",
-    "duration": 10.5,
-    "animSpeed": 1.15,
+    "duration": 6.5,
+    "animSpeed": 1.85,
     "scale": 2.85,
-    "crustThreshold": 0.32,
-    "crustAmount": 0.32,
-    "crustSharpness": 0.58,
-    "flowStrength": 1.25,
+    "crustThreshold": 0.36,
+    "crustAmount": 0.44,
+    "crustSharpness": 0.8,
+    "flowStrength": 1.6,
     "waveStrength": 0.32,
     "emissiveStrength": 1.2,
     "surfaceGlow": 0.8,
@@ -54,8 +54,8 @@
     "specularGloss": 8.0,
     "light": {
       "alignment": "CENTER",
-      "radius": 200,
-      "strength": 7.5,
+      "radius": 108,
+      "strength": 9,
       "color": [
         252,
         122,
@@ -64,7 +64,7 @@
       "type": "FLICKER",
       "duration": 0,
       "range": 20,
-      "spacing": 768
+      "spacing": 416
     }
   },
   {
@@ -73,13 +73,13 @@
     "crustColor": "#0c0202",
     "magmaColor": "#d41008",
     "hotColor": "#ff2818",
-    "duration": 12.0,
-    "animSpeed": 1.05,
+    "duration": 7.5,
+    "animSpeed": 1.7,
     "scale": 3.0,
-    "crustThreshold": 0.3,
-    "crustAmount": 0.22,
-    "crustSharpness": 0.75,
-    "flowStrength": 1.35,
+    "crustThreshold": 0.34,
+    "crustAmount": 0.36,
+    "crustSharpness": 0.88,
+    "flowStrength": 1.75,
     "waveStrength": 0.28,
     "emissiveStrength": 1.5,
     "surfaceGlow": 0.88,
@@ -87,8 +87,8 @@
     "specularStrength": 0.1,
     "specularGloss": 9.0,
     "light": {
-      "radius": 900,
-      "strength": 28,
+      "radius": 425,
+      "strength": 32,
       "height": 20,
       "color": [
         255,
@@ -98,7 +98,7 @@
       "type": "PULSE",
       "duration": 6000,
       "range": 12,
-      "spacing": 1536
+      "spacing": 640
     }
   }
 ]

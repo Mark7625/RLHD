@@ -601,6 +601,7 @@ public class ZoneRenderer implements Renderer {
 		plugin.uboGlobal.underwaterCausticsColor.set(environmentManager.currentUnderwaterCausticsColor);
 		plugin.uboGlobal.underwaterCausticsStrength.set(environmentManager.currentUnderwaterCausticsStrength);
 		plugin.uboGlobal.elapsedTime.set((float) (plugin.elapsedTime % MAX_FLOAT_WITH_128TH_PRECISION));
+		plugin.updateLavaIrradianceUniform(ctx.sceneContext);
 
 		if (plugin.configColorFilter != ColorFilter.NONE) {
 			plugin.uboGlobal.colorFilter.set(plugin.configColorFilter.ordinal());

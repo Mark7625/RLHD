@@ -150,17 +150,51 @@ void main() {
             mergedLavaType3 = 0;
         }
 
-        vec4 lavaColor = vec4(0.0);
-        if (mergedLavaType1 > 0 && lavaWeight1 > 0.0)
-            lavaColor += sampleLava(mergedLavaType1, viewDir) * lavaWeight1;
-        if (mergedLavaType2 > 0 && lavaWeight2 > 0.0)
-            lavaColor += sampleLava(mergedLavaType2, viewDir) * lavaWeight2;
-        if (mergedLavaType3 > 0 && lavaWeight3 > 0.0)
-            lavaColor += sampleLava(mergedLavaType3, viewDir) * lavaWeight3;
+        const float LAVA_BLEND_MIN_WEIGHT = 0.08;
+        if (mergedLavaType1 > 0 && lavaWeight1 < LAVA_BLEND_MIN_WEIGHT) {
+            lavaWeight1 = 0.0;
+            mergedLavaType1 = 0;
+        }
+        if (mergedLavaType2 > 0 && lavaWeight2 < LAVA_BLEND_MIN_WEIGHT) {
+            lavaWeight2 = 0.0;
+            mergedLavaType2 = 0;
+        }
+        if (mergedLavaType3 > 0 && lavaWeight3 < LAVA_BLEND_MIN_WEIGHT) {
+            lavaWeight3 = 0.0;
+            mergedLavaType3 = 0;
+        }
 
-        float totalLavaWeight = lavaWeight1 + lavaWeight2 + lavaWeight3;
-        if (totalLavaWeight > 0.001)
-            lavaColor.rgb /= totalLavaWeight;
+        int lavaSampleCount = 0;
+        int singleLavaType = 0;
+        if (mergedLavaType1 > 0) {
+            lavaSampleCount++;
+            singleLavaType = mergedLavaType1;
+        }
+        if (mergedLavaType2 > 0) {
+            lavaSampleCount++;
+            singleLavaType = mergedLavaType2;
+        }
+        if (mergedLavaType3 > 0) {
+            lavaSampleCount++;
+            singleLavaType = mergedLavaType3;
+        }
+
+        vec4 lavaColor;
+        if (lavaSampleCount == 1) {
+            lavaColor = sampleLava(singleLavaType, viewDir);
+        } else {
+            lavaColor = vec4(0.0);
+            if (mergedLavaType1 > 0)
+                lavaColor += sampleLava(mergedLavaType1, viewDir) * lavaWeight1;
+            if (mergedLavaType2 > 0)
+                lavaColor += sampleLava(mergedLavaType2, viewDir) * lavaWeight2;
+            if (mergedLavaType3 > 0)
+                lavaColor += sampleLava(mergedLavaType3, viewDir) * lavaWeight3;
+
+            float totalLavaWeight = lavaWeight1 + lavaWeight2 + lavaWeight3;
+            if (totalLavaWeight > 0.001)
+                lavaColor.rgb /= totalLavaWeight;
+        }
 
         outputColor = lavaColor;
     #endif
@@ -489,7 +523,8 @@ void main() {
         underglowOut + pointLightsOut + pointLightsSpecularOut + surfaceColorOut;
 
         #if LAVA_MODE == LAVA_MODE_MODERN
-        compositeLight += sampleLavaEmissiveLighting(IN.position, normals);
+        if (lavaIrradianceEnabled > 0.0)
+            compositeLight += sampleLavaEmissiveLighting(IN.position, normals);
         #endif
 
         #if DISPLAY_LIGHTING

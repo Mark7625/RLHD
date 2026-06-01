@@ -53,6 +53,8 @@ import static rs117.hd.utils.MathUtils.*;
 @Slf4j
 @Singleton
 public class ProceduralGenerator {
+	private static final int VANILLA_LAVA_TEXTURE_ID = 31;
+
 	public static final int[] DEPTH_LEVEL_SLOPE = new int[] { 150, 300, 470, 610, 700, 750, 820, 920, 1080, 1300, 1350, 1380 };
 	public static final int MAX_DEPTH = DEPTH_LEVEL_SLOPE[DEPTH_LEVEL_SLOPE.length - 1];
 
@@ -395,7 +397,10 @@ public class ProceduralGenerator {
 
 						int[] worldPos = sceneContext.extendedSceneToWorld(x, y, tile.getRenderLevel());
 						var override = tileOverrideManager.getOverride(sceneContext, tile, worldPos);
+						if (tile.getSceneTilePaint().getTexture() == VANILLA_LAVA_TEXTURE_ID)
+							sceneContext.hasShaderLava = true;
 						if (isLavaOverride(override)) {
+							sceneContext.hasShaderLava = true;
 							sceneContext.underwaterDepthLevels[z][x][y] = 0;
 							sceneContext.underwaterDepthLevels[z][x + 1][y] = 0;
 							sceneContext.underwaterDepthLevels[z][x][y + 1] = 0;
@@ -507,6 +512,7 @@ public class ProceduralGenerator {
 							int textureId = model.getTriangleTextureId() == null ? -1 :
 								model.getTriangleTextureId()[face];
 							if (isLavaOverride(override) && ProceduralGenerator.isOverlayFace(tile, face)) {
+								sceneContext.hasShaderLava = true;
 								continue;
 							}
 							if (seasonalWaterType(override, textureId) == WaterType.NONE)
