@@ -2,7 +2,7 @@
   {
     "name": "LAVA",
     "description": "Standard wilderness and dungeon lava flats.",
-    "crustColor": "#1f0603",
+    "crustColor": "#1a1a1a",
     "magmaColor": "#e0440c",
     "hotColor": "#f05518",
     "duration": 8.5,
@@ -36,7 +36,7 @@
   {
     "name": "MAGMA",
     "description": "Hotter, faster-moving magma pools.",
-    "crustColor": "#1f0603",
+    "crustColor": "#1a1a1a",
     "magmaColor": "#e0440c",
     "hotColor": "#f05518",
     "duration": 6.5,
@@ -70,7 +70,7 @@
   {
     "name": "TZHAAR_LAVA",
     "description": "TzHaar city and Fight Caves lava (used via TZHAAR_LAVA ground material).",
-    "crustColor": "#0c0202",
+    "crustColor": "#121212",
     "magmaColor": "#d41008",
     "hotColor": "#ff2818",
     "duration": 7.5,
