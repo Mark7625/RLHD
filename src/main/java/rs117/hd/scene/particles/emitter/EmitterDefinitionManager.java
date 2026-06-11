@@ -14,10 +14,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
 import rs117.hd.HdPlugin;
 import rs117.hd.scene.AreaManager;
@@ -67,6 +69,9 @@ public class EmitterDefinitionManager {
 	private final List<WeatherCylinderConfig> weatherCylinderConfigs = new ArrayList<>();
 
 	@Getter
+	private final List<ModelAttachmentConfig> modelAttachmentConfigs = new ArrayList<>();
+
+	@Getter
 	private final Map<String, List<String>> controllerBindings = new LinkedHashMap<>();
 
 	private FileWatcher.UnregisterCallback watcher;
@@ -106,10 +111,12 @@ public class EmitterDefinitionManager {
 			objectBindingsByType.clear();
 			weatherAreaConfigs.clear();
 			weatherCylinderConfigs.clear();
+			modelAttachmentConfigs.clear();
 			controllerBindings.clear();
 			if (entries != null) {
 				var objects = gamevalManager.getObjects();
 				for (EmitterConfigEntry entry : entries) {
+					loadModelAttachments(entry);
 					List<String> pids = getParticleIds(entry);
 					if (pids.isEmpty()) continue;
 					if (entry.controller != null && !entry.controller.isEmpty()) {
@@ -194,7 +201,61 @@ public class EmitterDefinitionManager {
 			objectBindingsByType.clear();
 			weatherAreaConfigs.clear();
 			weatherCylinderConfigs.clear();
+			modelAttachmentConfigs.clear();
 			controllerBindings.clear();
+		}
+	}
+
+	private void loadModelAttachments(EmitterConfigEntry entry) {
+		if (entry.modelAttachments == null || entry.modelAttachments.isEmpty())
+			return;
+
+		for (EmitterConfigEntry.ModelAttachmentEntry attachmentEntry : entry.modelAttachments) {
+			if (attachmentEntry == null || attachmentEntry.item == null || attachmentEntry.item.isEmpty())
+				continue;
+			Integer itemId = resolveItemId(attachmentEntry.item);
+			if (itemId == null) {
+				log.warn("[Particles] Unknown item gameval in emitters.json modelAttachments: {}", attachmentEntry.item);
+				continue;
+			}
+
+			List<ModelAttachmentVertexBinding> bindings = new ArrayList<>();
+			if (attachmentEntry.attachments != null) {
+				for (EmitterConfigEntry.ModelAttachmentVertexEntry vertexEntry : attachmentEntry.attachments) {
+					if (vertexEntry == null || vertexEntry.particleId == null || vertexEntry.particleId.isEmpty())
+						continue;
+					bindings.add(new ModelAttachmentVertexBinding(
+						vertexEntry.vertexIndex,
+						vertexEntry.particleId.toUpperCase()
+					));
+				}
+			}
+			if (bindings.isEmpty())
+				continue;
+
+			modelAttachmentConfigs.add(new ModelAttachmentConfig(
+				itemId,
+				EmitterConfigEntry.parseKitType(attachmentEntry.kitType),
+				attachmentEntry.wearModelId,
+				upperCaseList(attachmentEntry.globalEffectors),
+				upperCaseList(attachmentEntry.embeddedEffectors),
+				upperCaseList(attachmentEntry.localEffectorFilter),
+				bindings
+			));
+			log.info("[Particles] Registered model attachment for item {} (wearModelId={})", itemId, attachmentEntry.wearModelId);
+		}
+	}
+
+	@Nullable
+	private Integer resolveItemId(String itemName) {
+		try {
+			return Integer.parseInt(itemName);
+		} catch (NumberFormatException ignored) {
+		}
+		try {
+			return (Integer) ItemID.class.getField(itemName).get(null);
+		} catch (ReflectiveOperationException ex) {
+			return null;
 		}
 	}
 

@@ -87,5 +87,26 @@
     "globalEffectors": [],
     "embeddedEffectors": [],
     "localEffectorFilter": []
+  },
+  {
+    "description": "FIREMAKING_CAPE model attachment test",
+    "modelAttachments": [
+      {
+        "item": "9804",
+        "kitType": "CAPE",
+        "wearModelId": 18932,
+        "attachments": [
+          { "vertexIndex": 240, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 241, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 249, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 250, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 242, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 248, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 261, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 20, "particleId": "FIREMAKING_CAPE_SMOKE" },
+          { "vertexIndex": 10, "particleId": "FIREMAKING_CAPE_SMOKE" }
+        ]
+      }
+    ]
   }
 ]

@@ -422,5 +422,99 @@
     "texture": {
       "file": "718.png"
     }
+  },
+  {
+    "id": "CAPE_TRAIL_SMOKE",
+    "description": "Straight downward smoke trail for cape attachment testing",
+    "general": {
+      "randomYawRotation": 0,
+      "directionPitch": 1536,
+      "directionYaw": 1024
+    },
+    "spread": {
+      "yawMin": -18,
+      "yawMax": 18,
+      "pitchMin": -10,
+      "pitchMax": 10
+    },
+    "speed": {
+      "minSpeed": 32768,
+      "maxSpeed": 65536,
+      "targetSpeed": 49152,
+      "speedTransitionPercent": 70
+    },
+    "scale": {
+      "minScale": 5,
+      "maxScale": 8,
+      "targetScale": 20,
+      "scaleTransitionPercent": 80
+    },
+    "colours": {
+      "minColour": "#b0b0b088",
+      "maxColour": "#dcdcdca8",
+      "targetColour": "#70707044",
+      "colourTransitionPercent": 60,
+      "useSceneAmbientLight": false,
+      "uniformColourVariation": true
+    },
+    "emission": {
+      "minDelay": 220,
+      "maxDelay": 320,
+      "minSpawn": 1,
+      "maxSpawn": 2,
+      "initialSpawn": 3,
+      "emissionTimeThreshold": 32767,
+      "emissionCycleDuration": 32767
+    },
+    "texture": {
+      "file": "850.png"
+    }
+  },
+  {
+    "id": "FIREMAKING_CAPE_SMOKE",
+    "description": "Continuous cape attachment smoke — steady stream along worn cape vertices",
+    "general": {
+      "randomYawRotation": 0,
+      "directionPitch": 1536,
+      "directionYaw": 1024
+    },
+    "spread": {
+      "yawMin": -12,
+      "yawMax": 12,
+      "pitchMin": -8,
+      "pitchMax": 8
+    },
+    "speed": {
+      "minSpeed": 24576,
+      "maxSpeed": 49152,
+      "targetSpeed": 32768,
+      "speedTransitionPercent": 50
+    },
+    "scale": {
+      "minScale": 4,
+      "maxScale": 6,
+      "targetScale": 10,
+      "scaleTransitionPercent": 55
+    },
+    "colours": {
+      "minColour": "#b8b8b870",
+      "maxColour": "#dcdcdc90",
+      "targetColour": "#80808028",
+      "colourTransitionPercent": 55,
+      "useSceneAmbientLight": false,
+      "uniformColourVariation": true
+    },
+    "emission": {
+      "minDelay": 96,
+      "maxDelay": 140,
+      "minSpawn": 5,
+      "maxSpawn": 9,
+      "initialSpawn": 2,
+      "emissionTimeThreshold": 32767,
+      "emissionCycleDuration": 32767
+    },
+    "texture": {
+      "file": "850.png"
+    }
   }
 ]

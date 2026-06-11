@@ -50,6 +50,7 @@ import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.areas.Area;
 import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.model_overrides.ModelOverride;
+import rs117.hd.scene.particles.emitter.ModelAttachmentManager;
 import rs117.hd.utils.ColorUtils;
 import rs117.hd.utils.HDUtils;
 import rs117.hd.utils.Mat4;
@@ -117,6 +118,9 @@ public class LegacyRenderer implements Renderer {
 
 	@Inject
 	private ModelHasher modelHasher;
+
+	@Inject
+	private ModelAttachmentManager modelAttachmentManager;
 
 	@Inject
 	private FishingSpotReplacer fishingSpotReplacer;
@@ -1771,6 +1775,18 @@ public class LegacyRenderer implements Renderer {
 
 		if (plugin.enableDetailedTimers)
 			frameTimer.end(Timer.DRAW_RENDERABLE);
+
+		if (renderable instanceof Player && model != null && model.getFaceCount() > 0) {
+			modelAttachmentManager.onPlayerModelUploaded(
+				(Player) renderable,
+				model,
+				orientation,
+				x,
+				y,
+				z,
+				plane
+			);
+		}
 
 		if (eightIntWrite[0] == -1)
 			return; // Hidden model

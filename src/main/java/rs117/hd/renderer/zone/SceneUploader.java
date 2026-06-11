@@ -139,6 +139,11 @@ public class SceneUploader implements AutoCloseable {
 
 	private final float[] modelLocal = new float[MAX_VERTEX_COUNT * 3];
 	private final int[] modelLocalI = new int[MAX_VERTEX_COUNT * 3];
+
+	/** World-space vertex positions from the latest {@link #preprocessTempModel} call. */
+	public float[] getTransformedVertices() {
+		return modelLocal;
+	}
 	private final boolean[] visibility = new boolean[MAX_VERTEX_COUNT];
 
 	private final ModelOverride[] faceOverrides = new ModelOverride[MAX_FACE_COUNT];
