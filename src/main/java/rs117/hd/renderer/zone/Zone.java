@@ -15,6 +15,7 @@ import org.lwjgl.system.MemoryStack;
 import rs117.hd.HdPlugin;
 import rs117.hd.scene.MaterialManager;
 import rs117.hd.scene.SceneContext;
+import rs117.hd.scene.ModelReplacer;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.utils.Camera;
@@ -89,6 +90,8 @@ public class Zone implements Destructible {
 	public boolean inSceneFrustum; // whether the zone is visible to the scene camera
 	public boolean inShadowFrustum; // whether the zone casts shadows into the visible scene
 	public boolean isFirstLoadingAttempt = true;
+
+	public final List<ModelReplacer.TimeOfDayMarker> timeOfDayMarkers = new ArrayList<>(0);
 
 	public IntHashSet animatedDynamicObjectIds = new IntHashSet();
 
@@ -207,6 +210,7 @@ public class Zone implements Destructible {
 		// don't add permanent alphamodels to the cache as permanent alphamodels are always allocated
 		// to avoid having to synchronize the cache
 		alphaModels.clear();
+		timeOfDayMarkers.clear();
 	}
 
 	@Override

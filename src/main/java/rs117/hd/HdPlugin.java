@@ -108,6 +108,7 @@ import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.GroundMaterialManager;
 import rs117.hd.scene.LightManager;
 import rs117.hd.scene.MaterialManager;
+import rs117.hd.scene.ModelDefinitionManager;
 import rs117.hd.scene.ModelOverrideManager;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.SceneContext;
@@ -227,6 +228,7 @@ public class HdPlugin extends Plugin {
 		LightManager.class,
 		MaterialManager.class,
 		ModelOverrideManager.class,
+		ModelDefinitionManager.class,
 		ProceduralGenerator.class,
 		TextureManager.class,
 		TileOverrideManager.class,
@@ -284,6 +286,9 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private ModelOverrideManager modelOverrideManager;
+
+	@Inject
+	private ModelDefinitionManager modelDefinitionManager;
 
 	@Inject
 	private FishingSpotReplacer fishingSpotReplacer;
@@ -720,6 +725,7 @@ public class HdPlugin extends Plugin {
 				areaManager.startUp();
 				groundMaterialManager.startUp();
 				tileOverrideManager.startUp();
+				modelDefinitionManager.startUp();
 				modelOverrideManager.startUp();
 				lightManager.startUp();
 				environmentManager.startUp();
@@ -790,6 +796,7 @@ public class HdPlugin extends Plugin {
 			tileOverrideManager.shutDown();
 			groundMaterialManager.shutDown();
 			modelOverrideManager.shutDown();
+			modelDefinitionManager.shutDown();
 			lightManager.shutDown();
 			environmentManager.shutDown();
 			fishingSpotReplacer.shutDown();

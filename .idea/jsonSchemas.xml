@@ -67,6 +67,22 @@
             </SchemaInfo>
           </value>
         </entry>
+        <entry key="Replacement Models">
+          <value>
+            <SchemaInfo>
+              <option name="name" value="Replacement Models" />
+              <option name="relativePathToSchema" value="schemas/replacement_models.schema.json" />
+              <option name="schemaVersion" value="JSON Schema 7" />
+              <option name="patterns">
+                <list>
+                  <Item>
+                    <option name="path" value="src/main/resources/rs117/hd/scene/replacement_models.json" />
+                  </Item>
+                </list>
+              </option>
+            </SchemaInfo>
+          </value>
+        </entry>
         <entry key="Model Overrides">
           <value>
             <SchemaInfo>

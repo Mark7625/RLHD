@@ -112,6 +112,10 @@ public abstract class Job {
 		JOB_SYSTEM.invokeClientCallback(callback);
 	}
 
+	public static void runOnClientThread(Runnable callback) throws InterruptedException {
+		JOB_SYSTEM.invokeClientCallback(callback);
+	}
+
 	public final void workerHandleCancel() throws InterruptedException {
 		if (handle == null)
 			return;

@@ -488,6 +488,9 @@
             }
           }
         }
+      },
+      "modelReplacement": {
+        "$ref": "model_replacement.schema.json"
       }
     }
   }

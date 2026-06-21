@@ -59,6 +59,7 @@ import rs117.hd.overlays.Timer;
 import rs117.hd.renderer.Renderer;
 import rs117.hd.scene.EnvironmentManager;
 import rs117.hd.scene.LightManager;
+import rs117.hd.scene.ModelReplacer;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.TimeOfDay;
@@ -301,6 +302,11 @@ public class ZoneRenderer implements Renderer {
 	}
 
 	@Override
+	public void clearCaches() {
+		ModelReplacer.releaseCaches();
+	}
+
+	@Override
 	public void processConfigChanges(Set<String> keys) {
 		if (keys.contains(KEY_ASYNC_MODEL_PROCESSING))
 			modelStreamingManager.reinitialize();
@@ -416,6 +422,10 @@ public class ZoneRenderer implements Renderer {
 				frameTimer.begin(Timer.UPDATE_ENVIRONMENT);
 				environmentManager.update(ctx.sceneContext);
 				frameTimer.end(Timer.UPDATE_ENVIRONMENT);
+
+				frameTimer.begin(Timer.UPDATE_SCENE);
+				sceneManager.updateTimeOfDayModelSwaps();
+				frameTimer.end(Timer.UPDATE_SCENE);
 
 				frameTimer.begin(Timer.UPDATE_LIGHTS);
 				lightManager.update(ctx.sceneContext, plugin.cameraShift, plugin.cameraFrustum);

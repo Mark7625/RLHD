@@ -44,6 +44,7 @@ public final class ZoneUploadJob extends Job {
 				if (shouldUnmap)
 					invokeClientCallback(zone::unmap);
 			}
+			sceneUploader.flushModelReplacementTiming();
 			zone.initialized = true;
 		}
 	}

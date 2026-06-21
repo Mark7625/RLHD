@@ -28,6 +28,7 @@ import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.EnvironmentManager;
 import rs117.hd.scene.FishingSpotReplacer;
 import rs117.hd.scene.LightManager;
+import rs117.hd.scene.ModelReplacer;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
@@ -90,6 +91,9 @@ public class SceneManager {
 
 	@Inject
 	private FrameTimer frameTimer;
+
+	@Inject
+	private ModelReplacer modelReplacer;
 
 	private UBOWorldViews uboWorldViews;
 
@@ -242,6 +246,41 @@ public class SceneManager {
 		}
 
 		root.completeInvalidation();
+	}
+
+	public void updateTimeOfDayModelSwaps() {
+		if (root.sceneContext == null)
+			return;
+
+		checkTimeOfDayZoneInvalidations(root);
+
+		WorldView wv = client.getTopLevelWorldView();
+		if (wv != null) {
+			for (WorldEntity we : wv.worldEntities()) {
+				WorldViewContext ctx = getContext(we.getWorldView());
+				if (ctx != null)
+					checkTimeOfDayZoneInvalidations(ctx);
+			}
+		}
+
+		modelReplacer.finishTimeOfDaySwapUpdate();
+	}
+
+	private void checkTimeOfDayZoneInvalidations(WorldViewContext ctx) {
+		if (ctx == null || ctx.isLoading || ctx.sceneContext == null)
+			return;
+
+		for (int zx = 0; zx < ctx.sizeX; ++zx) {
+			for (int zz = 0; zz < ctx.sizeZ; ++zz) {
+				Zone zone = ctx.zones[zx][zz];
+				if (zone.timeOfDayMarkers.isEmpty())
+					continue;
+
+				if (modelReplacer.needsTimeOfDayInvalidation(zone.timeOfDayMarkers)) {
+					ctx.invalidateZone(zx, zz);
+				}
+			}
+		}
 	}
 
 	private void updateAreaHiding() {
@@ -429,6 +468,8 @@ public class SceneManager {
 	public synchronized void loadScene(WorldView worldView, Scene scene) {
 		try {
 			loadingLock.lock();
+			ModelReplacer.releaseCaches();
+			modelReplacer.resetTimeOfDayState();
 			if (scene.getWorldViewId() != WorldView.TOPLEVEL) {
 				loadSubScene(worldView, scene);
 				return;

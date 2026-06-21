@@ -26,13 +26,18 @@ package rs117.hd.renderer.zone;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.callback.RenderCallbackManager;
 import rs117.hd.HdPlugin;
+import rs117.hd.overlays.FrameTimer;
+import rs117.hd.overlays.Timer;
 import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.MaterialManager;
 import rs117.hd.scene.ModelOverrideManager;
+import rs117.hd.scene.ModelReplacer;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.areas.Area;
 import rs117.hd.scene.ground_materials.GroundMaterial;
@@ -108,6 +113,12 @@ public class SceneUploader implements AutoCloseable {
 	private ModelOverrideManager modelOverrideManager;
 
 	@Inject
+	private ModelReplacer modelReplacer;
+
+	@Inject
+	private FrameTimer frameTimer;
+
+	@Inject
 	private ProceduralGenerator proceduralGenerator;
 
 	@FunctionalInterface
@@ -136,6 +147,7 @@ public class SceneUploader implements AutoCloseable {
 
 	private int[] modelVertices;
 	public int tempModelAlphaFaces = 0;
+	private long modelReplacementNanos;
 
 	private final PooledObjectArray<ModelOverride> faceOverrides = new PooledObjectArray<>();
 	private final PooledObjectArray<Material> faceMaterials = new PooledObjectArray<>();
@@ -182,7 +194,18 @@ public class SceneUploader implements AutoCloseable {
 		modelVertices = PooledArrayType.INT.ensureCapacity(modelVertices, vertexCount * 3);
 	}
 
+	public void resetModelReplacementTiming() {
+		modelReplacementNanos = 0;
+	}
+
+	public void flushModelReplacementTiming() {
+		if (modelReplacementNanos > 0)
+			frameTimer.add(Timer.MODEL_REPLACEMENT, modelReplacementNanos);
+	}
+
 	public void estimateZoneSize(ZoneSceneContext ctx, Zone zone, int mzx, int mzz) throws InterruptedException {
+		resetModelReplacementTiming();
+
 		// Initialize the zone as containing only water, until a non-water tile is found
 		zone.onlyWater = true;
 
@@ -370,7 +393,7 @@ public class SceneUploader implements AutoCloseable {
 		}
 	}
 
-	private void estimateZoneTileSize(ZoneSceneContext ctx, Zone z, Tile t) {
+	private void estimateZoneTileSize(ZoneSceneContext ctx, Zone z, Tile t) throws InterruptedException {
 		var tilePoint = t.getSceneLocation();
 		ctx.sceneToWorld(tilePoint.getX(), tilePoint.getY(), t.getPlane(), worldPos);
 
@@ -433,8 +456,8 @@ public class SceneUploader implements AutoCloseable {
 		if (wallObject != null) {
 			ModelOverride modelOverride = modelOverrideManager.getOverride(wallObject, worldPos);
 			if (!modelOverride.hide) {
-				estimateRenderableSize(z, wallObject.getRenderable1(), modelOverride);
-				estimateRenderableSize(z, wallObject.getRenderable2(), modelOverride);
+				estimateRenderableSize(z, wallObject.getRenderable1(), modelOverride, wallObject.getId(), wallObject.getConfig(), t.getPlane(), wallObject.getLocalLocation());
+				estimateRenderableSize(z, wallObject.getRenderable2(), modelOverride, wallObject.getId(), wallObject.getConfig(), t.getPlane(), wallObject.getLocalLocation());
 			}
 		}
 
@@ -442,8 +465,8 @@ public class SceneUploader implements AutoCloseable {
 		if (decorativeObject != null) {
 			ModelOverride modelOverride = modelOverrideManager.getOverride(decorativeObject, worldPos);
 			if (!modelOverride.hide) {
-				estimateRenderableSize(z, decorativeObject.getRenderable(), modelOverride);
-				estimateRenderableSize(z, decorativeObject.getRenderable2(), modelOverride);
+				estimateRenderableSize(z, decorativeObject.getRenderable(), modelOverride, decorativeObject.getId(), decorativeObject.getConfig(), t.getPlane(), decorativeObject.getLocalLocation());
+				estimateRenderableSize(z, decorativeObject.getRenderable2(), modelOverride, decorativeObject.getId(), decorativeObject.getConfig(), t.getPlane(), decorativeObject.getLocalLocation());
 			}
 		}
 
@@ -451,7 +474,7 @@ public class SceneUploader implements AutoCloseable {
 		if (groundObject != null) {
 			ModelOverride modelOverride = modelOverrideManager.getOverride(groundObject, worldPos);
 			if (!modelOverride.hide)
-				estimateRenderableSize(z, groundObject.getRenderable(), modelOverride);
+				estimateRenderableSize(z, groundObject.getRenderable(), modelOverride, groundObject.getId(), groundObject.getConfig(), t.getPlane(), groundObject.getLocalLocation());
 		}
 
 		GameObject[] gameObjects = t.getGameObjects();
@@ -467,7 +490,7 @@ public class SceneUploader implements AutoCloseable {
 			if (modelOverride.hide)
 				continue;
 
-			estimateRenderableSize(z, gameObject.getRenderable(), modelOverride);
+			estimateRenderableSize(z, gameObject.getRenderable(), modelOverride, gameObject.getId(), gameObject.getConfig(), t.getPlane(), gameObject.getLocalLocation());
 		}
 
 		Tile bridge = t.getBridge();
@@ -484,7 +507,7 @@ public class SceneUploader implements AutoCloseable {
 		GpuIntBuffer vertexBuffer,
 		GpuIntBuffer alphaBuffer,
 		GpuIntBuffer textureBuffer
-	) {
+	) throws InterruptedException {
 		var tilePoint = t.getSceneLocation();
 		int tileExX = tilePoint.getX() + ctx.sceneOffset;
 		int tileExY = tilePoint.getY() + ctx.sceneOffset;
@@ -530,10 +553,13 @@ public class SceneUploader implements AutoCloseable {
 		GpuIntBuffer vertexBuffer,
 		GpuIntBuffer alphaBuffer,
 		GpuIntBuffer textureBuffer
-	) {
+	) throws InterruptedException {
 		WallObject wallObject = t.getWallObject();
 		if (wallObject != null && renderCallbackManager.drawObject(ctx.scene, wallObject)) {
 			int uuid = ModelHash.packUuid(ModelHash.TYPE_WALL_OBJECT, wallObject.getId());
+			LocalPoint wallLocal = wallObject.getLocalLocation();
+			int staggerX = wallLocal.getX();
+			int staggerZ = wallLocal.getY();
 			Renderable renderable1 = wallObject.getRenderable1();
 			uploadZoneRenderable(
 				ctx,
@@ -551,7 +577,10 @@ public class SceneUploader implements AutoCloseable {
 				-1,
 				-1,
 				wallObject.getId(),
+				wallObject.getConfig(),
 				tileExX, tileExY, tileZ,
+				staggerX,
+				staggerZ,
 				vertexBuffer,
 				alphaBuffer,
 				textureBuffer
@@ -574,7 +603,10 @@ public class SceneUploader implements AutoCloseable {
 				-1,
 				-1,
 				wallObject.getId(),
+				wallObject.getConfig(),
 				tileExX, tileExY, tileZ,
+				staggerX,
+				staggerZ,
 				vertexBuffer,
 				alphaBuffer,
 				textureBuffer
@@ -585,6 +617,9 @@ public class SceneUploader implements AutoCloseable {
 		if (decorativeObject != null && renderCallbackManager.drawObject(ctx.scene, decorativeObject)) {
 			int uuid = ModelHash.packUuid(ModelHash.TYPE_DECORATIVE_OBJECT, decorativeObject.getId());
 			int preOrientation = HDUtils.getModelPreOrientation(decorativeObject.getConfig());
+			LocalPoint decorativeLocal = decorativeObject.getLocalLocation();
+			int staggerX = decorativeLocal.getX();
+			int staggerZ = decorativeLocal.getY();
 			Renderable renderable = decorativeObject.getRenderable();
 			uploadZoneRenderable(
 				ctx,
@@ -602,7 +637,10 @@ public class SceneUploader implements AutoCloseable {
 				-1,
 				-1,
 				decorativeObject.getId(),
+				decorativeObject.getConfig(),
 				tileExX, tileExY, tileZ,
+				staggerX,
+				staggerZ,
 				vertexBuffer,
 				alphaBuffer,
 				textureBuffer
@@ -625,7 +663,10 @@ public class SceneUploader implements AutoCloseable {
 				-1,
 				-1,
 				decorativeObject.getId(),
+				decorativeObject.getConfig(),
 				tileExX, tileExY, tileZ,
+				staggerX,
+				staggerZ,
 				vertexBuffer,
 				alphaBuffer,
 				textureBuffer
@@ -634,6 +675,9 @@ public class SceneUploader implements AutoCloseable {
 
 		GroundObject groundObject = t.getGroundObject();
 		if (groundObject != null && renderCallbackManager.drawObject(ctx.scene, groundObject)) {
+			LocalPoint groundLocal = groundObject.getLocalLocation();
+			int staggerX = groundLocal.getX();
+			int staggerZ = groundLocal.getY();
 			Renderable renderable = groundObject.getRenderable();
 			uploadZoneRenderable(
 				ctx,
@@ -648,7 +692,10 @@ public class SceneUploader implements AutoCloseable {
 				-1, -1,
 				-1,
 				groundObject.getId(),
+				groundObject.getConfig(),
 				tileExX, tileExY, tileZ,
+				staggerX,
+				staggerZ,
 				vertexBuffer,
 				alphaBuffer,
 				textureBuffer
@@ -669,6 +716,9 @@ public class SceneUploader implements AutoCloseable {
 				continue;
 
 			Point max = gameObject.getSceneMaxLocation();
+			LocalPoint gameLocal = gameObject.getLocalLocation();
+			int staggerX = gameLocal.getX();
+			int staggerZ = gameLocal.getY();
 			Renderable renderable = gameObject.getRenderable();
 			uploadZoneRenderable(
 				ctx,
@@ -683,7 +733,10 @@ public class SceneUploader implements AutoCloseable {
 				min.getY(), max.getX(),
 				max.getY(),
 				gameObject.getId(),
+				gameObject.getConfig(),
 				tileExX, tileExY, tileZ,
+				staggerX,
+				staggerZ,
 				vertexBuffer,
 				alphaBuffer,
 				textureBuffer
@@ -691,7 +744,17 @@ public class SceneUploader implements AutoCloseable {
 		}
 	}
 
-	private void estimateRenderableSize(Zone z, Renderable r, ModelOverride modelOverride) {
+	private void estimateRenderableSize(
+		Zone z,
+		Renderable r,
+		ModelOverride modelOverride,
+		int id,
+		int objectConfig,
+		int plane,
+		LocalPoint localPoint
+	) throws InterruptedException {
+		int staggerX = localPoint.getX();
+		int staggerZ = localPoint.getY();
 		boolean mightHaveTransparency = modelOverride.mightHaveTransparency;
 		Model m = null;
 		if (r instanceof Model) {
@@ -705,6 +768,9 @@ public class SceneUploader implements AutoCloseable {
 		if (m == null)
 			return;
 
+		m = replaceModelTimed(modelOverride, m, id, objectConfig, worldPos, plane, staggerX, staggerZ);
+		mightHaveTransparency |= modelOverride.mightHaveTransparency;
+
 		int faceCount = m.getFaceCount();
 		byte[] transparencies = m.getFaceTransparencies();
 		short[] faceTextures = m.getFaceTextures();
@@ -715,6 +781,45 @@ public class SceneUploader implements AutoCloseable {
 			z.sizeA += faceCount;
 		}
 		z.sizeF += faceCount;
+	}
+
+	private Model replaceModelTimed(
+		ModelOverride modelOverride,
+		Model model,
+		int id,
+		int objectConfig,
+		int[] worldPos,
+		int plane,
+		int staggerX,
+		int staggerZ
+	) throws InterruptedException {
+		long start = System.nanoTime();
+		try {
+			return modelReplacer.replaceModel(modelOverride, model, id, objectConfig, worldPos, plane, staggerX, staggerZ);
+		} finally {
+			modelReplacementNanos += System.nanoTime() - start;
+		}
+	}
+
+	private Model replaceModelForUploadTimed(
+		ModelOverride modelOverride,
+		Model model,
+		int id,
+		int objectConfig,
+		int[] worldPos,
+		int plane,
+		int staggerX,
+		int staggerZ,
+		List<ModelReplacer.TimeOfDayMarker> markers
+	) throws InterruptedException {
+		long start = System.nanoTime();
+		try {
+			return modelReplacer.replaceModelForUpload(
+				modelOverride, model, id, objectConfig, worldPos, plane, staggerX, staggerZ, markers
+			);
+		} finally {
+			modelReplacementNanos += System.nanoTime() - start;
+		}
 	}
 
 	private void uploadZoneRenderable(
@@ -733,11 +838,14 @@ public class SceneUploader implements AutoCloseable {
 		int ux,
 		int uz,
 		int id,
+		int objectConfig,
 		int tileExX, int tileExY, int tileZ,
+		int staggerX,
+		int staggerZ,
 		GpuIntBuffer opaqueBuffer,
 		GpuIntBuffer alphaBuffer,
 		GpuIntBuffer textureBuffer
-	) {
+	) throws InterruptedException {
 		Model model;
 		if (r instanceof Model) {
 			model = (Model) r;
@@ -761,6 +869,10 @@ public class SceneUploader implements AutoCloseable {
 		ModelOverride modelOverride = modelOverrideManager.getOverride(uuid, worldPos);
 		if (modelOverride.hide)
 			return;
+
+		model = replaceModelForUploadTimed(
+			modelOverride, model, id, objectConfig, worldPos, tile.getPlane(), staggerX, staggerZ, zone.timeOfDayMarkers
+		);
 
 		int alphaStart = alphaBuffer != null ? alphaBuffer.position() : 0;
 		try {

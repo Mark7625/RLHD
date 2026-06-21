@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "model_replacement.schema.json",
+  "title": "Model Replacement",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "model": {
+      "type": "string",
+      "description": "Name of a replacement model defined in replacement_models.json."
+    },
+    "nightModel": {
+      "type": "string",
+      "description": "Name of a replacement model to merge or swap in during the configured time-of-day phase."
+    },
+    "mergeWithOriginal": {
+      "type": "boolean",
+      "description": "When true, overlay models are merged onto the scene model instead of replacing it. Defaults to false."
+    },
+    "timeOfDay": {
+      "type": "string",
+      "enum": [ "DAY", "DAWN", "DUSK", "TWILIGHT", "NIGHT", "DEEP_NIGHT" ],
+      "description": "Cycle phase when nightModel should start applying."
+    },
+    "timeOfDayOff": {
+      "type": "string",
+      "enum": [ "DAY", "DAWN", "DUSK", "TWILIGHT", "NIGHT", "DEEP_NIGHT" ],
+      "description": "Optional cycle phase when nightModel starts turning off at dawn. Omitted = mirror timeOfDay."
+    },
+    "staggered": {
+      "type": "boolean",
+      "description": "When true, each instance swaps at a different time within the timeOfDay / timeOfDayOff phases based on its world position. Requires timeOfDay. Defaults to false."
+    },
+    "dayNightOnly": {
+      "type": "boolean",
+      "description": "When true, time-of-day replacements only apply in the overworld with the daylight cycle enabled. Defaults to false."
+    }
+  }
+}

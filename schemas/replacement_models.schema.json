@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "replacement_models.schema.json",
+  "title": "Replacement Models",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "name",
+      "modelIds"
+    ],
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Identifier used to refer to the replacement model from model overrides."
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional description of what this model applies to or is used for."
+      },
+      "modelIds": {
+        "type": "array",
+        "description": "Vanilla model IDs to load and merge together.",
+        "minItems": 1,
+        "items": {
+          "type": "integer"
+        }
+      },
+      "contrast": {
+        "type": "integer",
+        "description": "Lighting contrast passed to ModelData.light. Defaults to 0."
+      },
+      "ambient": {
+        "type": "integer",
+        "description": "Lighting ambient passed to ModelData.light. Defaults to 0."
+      },
+      "offsetX": {
+        "type": "integer",
+        "description": "Local X offset applied before object orientation. Defaults to 0."
+      },
+      "offsetY": {
+        "type": "integer",
+        "description": "Local Y offset applied before object orientation. Defaults to 0."
+      },
+      "offsetZ": {
+        "type": "integer",
+        "description": "Local Z offset applied before object orientation. Defaults to 0."
+      },
+      "modelSizeX": {
+        "type": "integer",
+        "description": "Scale factor for the X axis. 128 is unscaled. Defaults to 128."
+      },
+      "modelSizeY": {
+        "type": "integer",
+        "description": "Scale factor for the Y axis. 128 is unscaled. Defaults to 128."
+      },
+      "modelHeight": {
+        "type": "integer",
+        "description": "Scale factor for the height axis. 128 is unscaled. Defaults to 128."
+      },
+      "rotated": {
+        "type": "boolean",
+        "description": "Whether source models should be rotated 90 degrees before merging. Defaults to false."
+      },
+      "recolorFrom": {
+        "type": "array",
+        "description": "HSL colors to recolor from.",
+        "items": {
+          "type": "integer"
+        }
+      },
+      "recolorTo": {
+        "type": "array",
+        "description": "HSL colors to recolor to. Must match recolorFrom length.",
+        "items": {
+          "type": "integer"
+        }
+      },
+      "retextureFrom": {
+        "type": "array",
+        "description": "Texture IDs to retexture from.",
+        "items": {
+          "type": "integer"
+        }
+      },
+      "retextureTo": {
+        "type": "array",
+        "description": "Texture IDs to retexture to. Must match retextureFrom length.",
+        "items": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

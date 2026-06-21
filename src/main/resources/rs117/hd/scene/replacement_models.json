@@ -1,0 +1,28 @@
+[
+  {
+    "name": "VARROCK_OIL_LAMP",
+    "description": "Varrock fancy oil lamp base overlay",
+    "modelIds": [ 2467 ],
+    "contrast": 10,
+    "ambient": 20,
+    "modelSizeX": 90,
+    "modelSizeY": 90,
+    "modelHeight": 75,
+    "offsetX": -27,
+    "offsetY": -1,
+    "offsetZ": -143
+  },
+  {
+    "name": "VARROCK_OIL_LAMP_LIT",
+    "description": "Varrock fancy oil lamp flame overlay",
+    "modelIds": [ 2575 ],
+    "contrast": 10,
+    "ambient": 20,
+    "modelSizeX": 90,
+    "modelSizeY": 90,
+    "modelHeight": 75,
+    "offsetX": -27,
+    "offsetY": -1,
+    "offsetZ": -143
+  }
+]

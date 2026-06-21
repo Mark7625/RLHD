@@ -87,6 +87,7 @@ public class ModelOverride
 
 	public Map<Material, ModelOverride> materialOverrides;
 	public ModelOverride[] colorOverrides;
+	public ModelReplacement modelReplacement;
 
 	private JsonElement colors;
 
@@ -264,6 +265,7 @@ public class ModelOverride
 			hideInAreas,
 			materialOverrides,
 			colorOverrides,
+			modelReplacement,
 			colors,
 			isDummy,
 			isGenerated,

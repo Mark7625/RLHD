@@ -54,59 +54,7 @@ public class ModelOverrideManager {
 	private FileWatcher.UnregisterCallback fileWatcher;
 
 	public void startUp() {
-		fileWatcher = MODEL_OVERRIDES_PATH.watch((path, first) -> clientThread.invoke(() -> {
-			try (var gamevals = gamevalManager.obtainHandle()) {
-				sceneManager.getLoadingLock().lock();
-				sceneManager.completeAllStreaming();
-
-				ModelOverride[] parsedOverrides = path.loadJson(plugin.getGson(), ModelOverride[].class);
-				if (parsedOverrides == null)
-					throw new IOException("Empty or invalid: " + path);
-
-				modelOverrides.clear();
-				for (ModelOverride override : parsedOverrides) {
-					try {
-						override.normalize(plugin);
-					} catch (IllegalStateException ex) {
-						log.error("Invalid model override '{}': {}", override.description, ex.getMessage());
-						continue;
-					}
-
-					addOverride(override, gamevals);
-
-					if (override.hideInAreas.length > 0) {
-						var hider = override.copy();
-						hider.hide = true;
-						hider.areas = override.hideInAreas;
-						addOverride(hider, gamevals);
-					}
-				}
-
-				addOverride(fishingSpotReplacer.getModelOverride(), gamevals);
-				addSailingCullingOverrides(gamevals);
-
-				detailCullingBlacklist.clear();
-				for (var entry : modelOverrides) {
-					final ModelOverride override = entry.getValue();
-					if (entry.getValue().disableDetailCulling)
-						detailCullingBlacklist.add(entry.getKey());
-					override.clearIds();
-				}
-
-				log.debug("Loaded {} model overrides", modelOverrides.size());
-
-				if (first)
-					return;
-
-				plugin.renderer.clearCaches();
-				plugin.renderer.reloadScene();
-			} catch (Exception ex) {
-				log.error("Failed to load model overrides:", ex);
-			} finally {
-				sceneManager.getLoadingLock().unlock();
-				log.trace("loadingLock unlocked - holdCount: {}", sceneManager.getLoadingLock().getHoldCount());
-			}
-		}));
+		fileWatcher = MODEL_OVERRIDES_PATH.watch((path, first) -> clientThread.invoke(() -> loadFromPath(path, first)));
 	}
 
 	public void shutDown() {
@@ -124,6 +72,70 @@ public class ModelOverrideManager {
 	public void reload() {
 		shutDown();
 		startUp();
+	}
+
+	public void reloadFromDisk() {
+		if (!client.isClientThread()) {
+			clientThread.invoke(this::reloadFromDisk);
+			return;
+		}
+
+		loadFromPath(MODEL_OVERRIDES_PATH, false);
+	}
+
+	private void loadFromPath(ResourcePath path, boolean first) {
+		try (var gamevals = gamevalManager.obtainHandle()) {
+			sceneManager.getLoadingLock().lock();
+			sceneManager.completeAllStreaming();
+
+			ModelOverride[] parsedOverrides = path.loadJson(plugin.getGson(), ModelOverride[].class);
+			if (parsedOverrides == null)
+				throw new IOException("Empty or invalid: " + path);
+
+			modelOverrides.clear();
+			for (ModelOverride override : parsedOverrides) {
+				try {
+					override.normalize(plugin);
+				} catch (IllegalStateException ex) {
+					log.error("Invalid model override '{}': {}", override.description, ex.getMessage());
+					continue;
+				}
+
+				addOverride(override, gamevals);
+
+				if (override.hideInAreas.length > 0) {
+					var hider = override.copy();
+					hider.hide = true;
+					hider.areas = override.hideInAreas;
+					addOverride(hider, gamevals);
+				}
+			}
+
+			addOverride(fishingSpotReplacer.getModelOverride(), gamevals);
+			addSailingCullingOverrides(gamevals);
+
+			detailCullingBlacklist.clear();
+			for (var entry : modelOverrides) {
+				final ModelOverride override = entry.getValue();
+				if (entry.getValue().disableDetailCulling)
+					detailCullingBlacklist.add(entry.getKey());
+				override.clearIds();
+			}
+
+			log.debug("Loaded {} model overrides", modelOverrides.size());
+
+			ModelReplacer.releaseCaches();
+
+			if (!first) {
+				plugin.renderer.clearCaches();
+				plugin.renderer.reloadScene();
+			}
+		} catch (Exception ex) {
+			log.error("Failed to load model overrides:", ex);
+		} finally {
+			sceneManager.getLoadingLock().unlock();
+			log.trace("loadingLock unlocked - holdCount: {}", sceneManager.getLoadingLock().getHoldCount());
+		}
 	}
 
 	private void addOverride(@Nullable ModelOverride override, GamevalManager.Handle gamevals) {
