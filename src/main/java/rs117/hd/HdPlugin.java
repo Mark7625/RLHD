@@ -1835,6 +1835,7 @@ public class HdPlugin extends Plugin {
 					boolean reloadModelOverrides = false;
 					boolean reloadTileOverrides = false;
 					boolean reloadScene = false;
+					boolean invalidateTimeOfDayModels = false;
 
 					for (var key : pendingConfigChanges) {
 						switch (key) {
@@ -1903,10 +1904,12 @@ public class HdPlugin extends Plugin {
 								recompilePrograms = true;
 								recreateShadowMapFbo = true;
 								break;
+							case KEY_ENABLE_DAYLIGHT_CYCLE:
+								invalidateTimeOfDayModels = true;
+								// fall-through
 							case KEY_ATMOSPHERIC_LIGHTING:
 							case KEY_POH_THEME_ENVIRONMENTS:
 							case KEY_LEGACY_TOB_ENVIRONMENT:
-							case KEY_ENABLE_DAYLIGHT_CYCLE:
 							case KEY_DAYLIGHT_CYCLE:
 							case KEY_CYCLE_DURATION:
 							case KEY_DAY_LENGTH:
@@ -1989,6 +1992,9 @@ public class HdPlugin extends Plugin {
 
 					if (reloadEnvironments)
 						environmentManager.reload();
+
+					if (invalidateTimeOfDayModels)
+						sceneManager.onDayNightCycleToggled();
 				}
 			} catch (Throwable ex) {
 				log.error("Error while changing settings:", ex);

@@ -6,6 +6,10 @@ import rs117.hd.scene.lights.LightTimeOfDay;
 
 @Data
 public class ModelReplacement {
+	/** Shared overlay merged with the scene model before day/night variants are chosen. */
+	@JsonAdapter(ModelDefinition.Adapter.class)
+	public ModelDefinition baseModel;
+
 	@JsonAdapter(ModelDefinition.Adapter.class)
 	public ModelDefinition model;
 
@@ -18,7 +22,6 @@ public class ModelReplacement {
 	@JsonAdapter(LightTimeOfDay.Adapter.class)
 	public LightTimeOfDay timeOfDayOff;
 
-	public boolean staggered;
 	public boolean dayNightOnly;
 
 	/** When true, overlay models are merged onto the scene model instead of replacing it. */

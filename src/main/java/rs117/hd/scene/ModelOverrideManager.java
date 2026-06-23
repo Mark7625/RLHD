@@ -46,6 +46,9 @@ public class ModelOverrideManager {
 	private SceneManager sceneManager;
 
 	@Inject
+	private ModelReplacer modelReplacer;
+
+	@Inject
 	private FishingSpotReplacer fishingSpotReplacer;
 
 	private final Int2ObjectHashMap<ModelOverride> modelOverrides = new Int2ObjectHashMap<>();
@@ -125,6 +128,10 @@ public class ModelOverrideManager {
 			log.debug("Loaded {} model overrides", modelOverrides.size());
 
 			ModelReplacer.releaseCaches();
+			var overridesWithReplacements = new java.util.ArrayList<ModelOverride>(modelOverrides.size());
+			for (var entry : modelOverrides)
+				overridesWithReplacements.add(entry.getValue());
+			modelReplacer.preloadReplacementModelsForOverrides(overridesWithReplacements);
 
 			if (!first) {
 				plugin.renderer.clearCaches();

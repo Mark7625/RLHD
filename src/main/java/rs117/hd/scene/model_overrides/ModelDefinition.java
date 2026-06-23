@@ -6,7 +6,9 @@ import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +18,7 @@ import net.runelite.api.ModelData;
 import net.runelite.api.Perspective;
 import rs117.hd.scene.ModelDefinitionManager;
 import rs117.hd.utils.GsonUtils;
+import rs117.hd.utils.collections.Int2ObjectHashMap;
 
 @Slf4j
 @NoArgsConstructor
@@ -42,30 +45,89 @@ public class ModelDefinition {
 	public short[] retextureFrom;
 	public short[] retextureTo;
 
+	/** Named sub-models merged together. Each entry inherits unset fields from this definition. */
+	public Map<String, ModelPartDefinition> models;
+
 	private static final int[] ROTATE_TYPE_INDICES = { 6, 7, 8, 9, 13, 14, 19 };
+	public static final int[] PRELOAD_TYPES = { 0, 2, 4, 6, 7, 8, 9, 10, 11, 13, 14, 19, 22 };
 
-	private static final int DATA_CACHE_SIZE = 240;
-	private static final Map<Integer, ModelData> modelDataCache = new LinkedHashMap<>(DATA_CACHE_SIZE, 0.75f, true) {
-		@Override
-		protected boolean removeEldestEntry(Map.Entry<Integer, ModelData> eldest) {
-			return size() > DATA_CACHE_SIZE;
-		}
-	};
+	private static final Int2ObjectHashMap<ModelData> modelDataCache = new Int2ObjectHashMap<>();
+	private static final Int2ObjectHashMap<Model> orientedModelCache = new Int2ObjectHashMap<>();
 
-	private static final Map<Long, Model> rotatedModelCache = new LinkedHashMap<>(DATA_CACHE_SIZE, 0.75f, true) {
-		@Override
-		protected boolean removeEldestEntry(Map.Entry<Long, Model> eldest) {
-			return size() > DATA_CACHE_SIZE;
+	public static void preloadModelData(Client client) {
+		synchronized (modelDataCache) {
+			for (ModelDefinition def : ModelDefinitionManager.MODEL_MAP.values()) {
+				for (int modelId : def.collectModelIds()) {
+					if (modelDataCache.containsKey(modelId))
+						continue;
+
+					ModelData model = client.loadModelData(modelId);
+					if (model == null)
+						continue;
+
+					modelDataCache.put(modelId, model);
+				}
+			}
 		}
-	};
+	}
 
 	public static void release() {
 		synchronized (modelDataCache) {
 			modelDataCache.clear();
+			modelDataCache.trimToSize();
 		}
-		synchronized (rotatedModelCache) {
-			rotatedModelCache.clear();
+		synchronized (orientedModelCache) {
+			orientedModelCache.clear();
+			orientedModelCache.trimToSize();
 		}
+	}
+
+	public int[] collectModelIds() {
+		var ids = new LinkedHashMap<Integer, Boolean>();
+		for (int modelId : modelIds)
+			ids.put(modelId, true);
+
+		if (models != null) {
+			for (ModelPartDefinition part : models.values()) {
+				if (part.modelIds == null)
+					continue;
+				for (int modelId : part.modelIds)
+					ids.put(modelId, true);
+			}
+		}
+
+		return ids.keySet().stream().mapToInt(Integer::intValue).toArray();
+	}
+
+	public void validate(String path) throws IOException {
+		if (hasCompositeParts()) {
+			if (models.isEmpty())
+				throw new IOException("Replacement model '" + name + "' has an empty models map in " + path);
+
+			for (var entry : models.entrySet()) {
+				ModelDefinition merged = entry.getValue().mergeInto(this, entry.getKey());
+				if (merged.modelIds == null || merged.modelIds.length == 0)
+					throw new IOException(
+						"Replacement model '" + name + "' part '" + entry.getKey() + "' has no modelIds in " + path
+					);
+			}
+		} else if (modelIds == null || modelIds.length == 0) {
+			throw new IOException("Replacement model '" + name + "' is missing modelIds in " + path);
+		}
+	}
+
+	private boolean hasCompositeParts() {
+		return models != null && !models.isEmpty();
+	}
+
+	private List<ModelDefinition> resolveParts() {
+		if (!hasCompositeParts())
+			return List.of(this);
+
+		var resolved = new ArrayList<ModelDefinition>(models.size());
+		for (var entry : models.entrySet())
+			resolved.add(entry.getValue().mergeInto(this, entry.getKey()));
+		return resolved;
 	}
 
 	private static boolean shouldRotateType(int type) {
@@ -76,17 +138,12 @@ public class ModelDefinition {
 		return false;
 	}
 
-	public final Model getModel(Client client, int type, int orientation, int seed) {
+	public final Model getModel(Client client, int type, int orientation) {
 		boolean rotate45 = shouldRotateType(type);
+		int cacheKey = packOrientedModelCacheKey(type, orientation, rotate45);
 
-		long cacheKey = ((long) System.identityHashCode(this) << 32)
-			| ((long) (type & 0xFF) << 24)
-			| ((long) (orientation & 0xF) << 20)
-			| (rotate45 ? 1L << 19 : 0)
-			| ((long) (seed & 0x7FFFF));
-
-		synchronized (rotatedModelCache) {
-			Model cached = rotatedModelCache.get(cacheKey);
+		synchronized (orientedModelCache) {
+			Model cached = orientedModelCache.get(cacheKey);
 			if (cached != null)
 				return cached;
 
@@ -95,12 +152,52 @@ public class ModelDefinition {
 				return null;
 
 			Model model = data.shallowCopy().light(ambient + 64, contrast + 768, -50, -10, -50);
-			rotatedModelCache.put(cacheKey, model);
+			orientedModelCache.put(cacheKey, model);
 			return model;
 		}
 	}
 
+	private int packOrientedModelCacheKey(int type, int orientation, boolean rotate45) {
+		int definitionKey = name != null ? name.hashCode() : System.identityHashCode(this);
+		return definitionKey
+			^ (type << 24)
+			^ (orientation << 20)
+			^ (rotate45 ? 1 << 19 : 0);
+	}
+
 	private ModelData loadAndMergeWithRotation(Client client, int type, int orientation, boolean rotate45) {
+		List<ModelDefinition> parts = resolveParts();
+		if (parts.isEmpty())
+			return null;
+
+		ModelData[] partDatas = new ModelData[parts.size()];
+		for (int i = 0; i < parts.size(); i++) {
+			partDatas[i] = parts.get(i).buildPartModelData(client, type, orientation, rotate45);
+			if (partDatas[i] == null)
+				return null;
+		}
+
+		ModelData result = partDatas.length == 1 ? partDatas[0] : client.mergeModels(partDatas);
+
+		if (rotate45)
+			result = rotate(result, 256).translate(45, 0, -45);
+
+		switch (orientation & 3) {
+			case 1:
+				result.rotateY90Ccw();
+				break;
+			case 2:
+				result.rotateY180Ccw();
+				break;
+			case 3:
+				result.rotateY270Ccw();
+				break;
+		}
+
+		return result;
+	}
+
+	private ModelData buildPartModelData(Client client, int type, int orientation, boolean rotate45) {
 		if (modelIds.length == 0)
 			return null;
 
@@ -130,30 +227,15 @@ public class ModelDefinition {
 
 		ModelData result = client.mergeModels(datas);
 
-		if (rotate45)
-			result = rotate(result, 256).translate(45, 0, -45);
-
 		if (modelSizeX != 128 || modelHeight != 128 || modelSizeY != 128)
 			result.scale(modelSizeX, modelHeight, modelSizeY);
 
 		if (offsetX != 0 || offsetY != 0 || offsetZ != 0)
 			result.translate(offsetX, offsetZ, offsetY);
 
-		switch (orientation & 3) {
-			case 1:
-				result.rotateY90Ccw();
-				break;
-			case 2:
-				result.rotateY180Ccw();
-				break;
-			case 3:
-				result.rotateY270Ccw();
-				break;
-		}
-
 		if (recolorFrom != null && recolorTo != null) {
 			if (recolorFrom.length != recolorTo.length) {
-				log.error("Mismatched recolor arrays: from={}, to={}", recolorFrom.length, recolorTo.length);
+				log.error("Mismatched recolor arrays in {}: from={}, to={}", name, recolorFrom.length, recolorTo.length);
 			} else {
 				for (int i = 0; i < recolorFrom.length; i++)
 					result.recolor((short) recolorFrom[i], (short) recolorTo[i]);
@@ -162,7 +244,12 @@ public class ModelDefinition {
 
 		if (retextureFrom != null && retextureTo != null) {
 			if (retextureFrom.length != retextureTo.length) {
-				log.error("Mismatched retexture arrays: from={}, to={}", retextureFrom.length, retextureTo.length);
+				log.error(
+					"Mismatched retexture arrays in {}: from={}, to={}",
+					name,
+					retextureFrom.length,
+					retextureTo.length
+				);
 			} else {
 				for (int i = 0; i < retextureFrom.length; i++)
 					result.retexture(retextureFrom[i], retextureTo[i]);

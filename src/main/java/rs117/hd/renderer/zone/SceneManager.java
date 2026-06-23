@@ -252,18 +252,44 @@ public class SceneManager {
 		if (root.sceneContext == null)
 			return;
 
-		checkTimeOfDayZoneInvalidations(root);
+		if (modelReplacer.consumeTimeOfDayReplacementToggle()) {
+			invalidateTimeOfDayModelZones();
+			modelReplacer.finishTimeOfDaySwapUpdate();
+			return;
+		}
 
-		WorldView wv = client.getTopLevelWorldView();
-		if (wv != null) {
-			for (WorldEntity we : wv.worldEntities()) {
-				WorldViewContext ctx = getContext(we.getWorldView());
-				if (ctx != null)
-					checkTimeOfDayZoneInvalidations(ctx);
+		if (modelReplacer.shouldCheckTimeOfDaySwaps()) {
+			checkTimeOfDayZoneInvalidations(root);
+
+			WorldView wv = client.getTopLevelWorldView();
+			if (wv != null) {
+				for (WorldEntity we : wv.worldEntities()) {
+					WorldViewContext ctx = getContext(we.getWorldView());
+					if (ctx != null)
+						checkTimeOfDayZoneInvalidations(ctx);
+				}
 			}
 		}
 
 		modelReplacer.finishTimeOfDaySwapUpdate();
+	}
+
+	public void onDayNightCycleToggled() {
+		modelReplacer.onDayNightCycleToggled();
+		invalidateTimeOfDayModelZones();
+	}
+
+	private void invalidateTimeOfDayModelZones() {
+		if (root.sceneContext == null)
+			return;
+
+		log.debug("Invalidating zones to rebuild day/night model replacements");
+
+		root.invalidate();
+		for (var sub : subs) {
+			if (sub != null)
+				sub.invalidate();
+		}
 	}
 
 	private void checkTimeOfDayZoneInvalidations(WorldViewContext ctx) {
@@ -418,6 +444,12 @@ public class SceneManager {
 		task -> lightManager.loadSceneLights(nextSceneContext)
 	);
 
+	@Getter
+	private final GenericJob preloadReplacementModelsTask = GenericJob.build(
+		"ModelReplacer::preloadReplacementModels",
+		task -> modelReplacer.preloadReplacementModels()
+	);
+
 	private final GenericJob calculateRoofChangesTask = GenericJob.build(
 		"calculateRoofChanges",
 		(task) -> {
@@ -470,6 +502,7 @@ public class SceneManager {
 			loadingLock.lock();
 			ModelReplacer.releaseCaches();
 			modelReplacer.resetTimeOfDayState();
+			modelReplacer.syncTimeOfDayReplacementState();
 			if (scene.getWorldViewId() != WorldView.TOPLEVEL) {
 				loadSubScene(worldView, scene);
 				return;
@@ -522,6 +555,7 @@ public class SceneManager {
 			calculateRoofChangesTask.cancel();
 
 			generateSceneDataTask.queue();
+			preloadReplacementModelsTask.queue();
 			loadSceneLightsTask.queue();
 
 			if (nextSceneContext.enableAreaHiding) {
@@ -629,7 +663,7 @@ public class SceneManager {
 						if (!staggerLoad || dist < ZONE_DEFER_DIST_START) {
 							ZoneUploadJob
 								.build(ctx, nextSceneContext, zone, true, x, z)
-								.queue(ctx.sceneLoadGroup, generateSceneDataTask);
+								.queue(ctx.sceneLoadGroup, generateSceneDataTask, preloadReplacementModelsTask);
 							nextSceneContext.totalMapZones++;
 						} else {
 							sortedZones.add(SortedZone.getZone(zone, x, z, dist));
@@ -654,7 +688,7 @@ public class SceneManager {
 					nextZones[sorted.x][sorted.z] = newZone;
 					ZoneUploadJob
 						.build(ctx, nextSceneContext, newZone, true, sorted.x, sorted.z)
-						.queue(ctx.sceneLoadGroup, generateSceneDataTask);
+						.queue(ctx.sceneLoadGroup, generateSceneDataTask, preloadReplacementModelsTask);
 				}
 				sorted.free();
 			}
@@ -815,11 +849,12 @@ public class SceneManager {
 		ctx.initialize(injector);
 		subs[worldViewId] = ctx;
 
+		preloadReplacementModelsTask.queue();
 		for (int x = 0; x < ctx.sizeX; ++x)
 			for (int z = 0; z < ctx.sizeZ; ++z)
 				ZoneUploadJob
 					.build(ctx, sceneContext, ctx.zones[x][z], true, x, z)
-					.queue(ctx.sceneLoadGroup);
+					.queue(ctx.sceneLoadGroup, preloadReplacementModelsTask);
 
 		ctx.loadTime = sw.elapsed(TimeUnit.NANOSECONDS);
 	}

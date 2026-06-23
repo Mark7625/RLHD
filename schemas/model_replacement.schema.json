@@ -5,6 +5,10 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "baseModel": {
+      "type": "string",
+      "description": "Shared overlay merged with the scene model before choosing day or night variants. Use with nightModel for time-of-day swaps."
+    },
     "model": {
       "type": "string",
       "description": "Name of a replacement model defined in replacement_models.json."
@@ -26,10 +30,6 @@
       "type": "string",
       "enum": [ "DAY", "DAWN", "DUSK", "TWILIGHT", "NIGHT", "DEEP_NIGHT" ],
       "description": "Optional cycle phase when nightModel starts turning off at dawn. Omitted = mirror timeOfDay."
-    },
-    "staggered": {
-      "type": "boolean",
-      "description": "When true, each instance swaps at a different time within the timeOfDay / timeOfDayOff phases based on its world position. Requires timeOfDay. Defaults to false."
     },
     "dayNightOnly": {
       "type": "boolean",

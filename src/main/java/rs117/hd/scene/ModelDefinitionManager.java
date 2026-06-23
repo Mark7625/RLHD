@@ -100,8 +100,7 @@ public class ModelDefinitionManager {
 			if (!names.add(model.name))
 				throw new IOException("Duplicate replacement model name '" + model.name + "' in " + path);
 
-			if (model.modelIds == null || model.modelIds.length == 0)
-				throw new IOException("Replacement model '" + model.name + "' is missing modelIds in " + path);
+			model.validate(path.toString());
 
 			next.put(model.name, model);
 		}

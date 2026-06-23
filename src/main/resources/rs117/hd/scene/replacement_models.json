@@ -5,9 +5,9 @@
     "modelIds": [ 2467 ],
     "contrast": 10,
     "ambient": 20,
-    "modelSizeX": 90,
-    "modelSizeY": 90,
-    "modelHeight": 75,
+    "modelSizeX": 80,
+    "modelSizeY": 80,
+    "modelHeight": 65,
     "offsetX": -27,
     "offsetY": -1,
     "offsetZ": -143
@@ -18,11 +18,37 @@
     "modelIds": [ 2575 ],
     "contrast": 10,
     "ambient": 20,
-    "modelSizeX": 90,
-    "modelSizeY": 90,
-    "modelHeight": 75,
+    "modelSizeX": 80,
+    "modelSizeY": 80,
+    "modelHeight": 65,
     "offsetX": -27,
     "offsetY": -1,
     "offsetZ": -143
+  },
+  {
+    "name": "FAI_VARROCK_POSH_CANDLESTICK",
+    "description": "Varrock posh candlestick flame overlay",
+    "modelIds": [ 2575 ],
+    "contrast": 5,
+    "ambient": 5,
+    "modelSizeX": 80,
+    "modelSizeY": 80,
+    "modelHeight": 65,
+    "offsetZ": -200,
+    "models": {
+      "LEFT": {
+        "offsetX": -29,
+        "offsetY": -18
+      },
+      "CENTER": {
+        "offsetX": -14,
+        "offsetY": 0
+      },
+      "RIGHT": {
+        "offsetX": -29,
+        "offsetY": 18,
+        "offsetZ": -197
+      }
+    }
   }
 ]

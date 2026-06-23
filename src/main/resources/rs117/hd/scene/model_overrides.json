@@ -13105,7 +13105,13 @@
         "uvOrientation": 256,
         "uvScale": 0.1
       }
-    ]
+    ],
+    "modelReplacement": {
+      "nightModel": "FAI_VARROCK_POSH_CANDLESTICK",
+      "mergeWithOriginal": true,
+      "timeOfDay": "NIGHT",
+      "dayNightOnly": true
+    }
   },
   {
     "description": "Candelabra - Gold",
@@ -14051,11 +14057,10 @@
       "FAI_VARROCK_OILLAMP"
     ],
     "modelReplacement": {
-      "model": "VARROCK_OIL_LAMP",
+      "baseModel": "VARROCK_OIL_LAMP",
       "nightModel": "VARROCK_OIL_LAMP_LIT",
       "mergeWithOriginal": true,
       "timeOfDay": "NIGHT",
-      "staggered": true,
       "dayNightOnly": true
     }
   },
@@ -14064,7 +14069,6 @@
     "baseMaterial": "METALLIC_1_LIGHT_GLOSS",
     "objectIds": [
       "HANGINGLANTERN",
-      "FAI_VARROCK_OILLAMP",
       "FAI_VARROCK_SWING_LANTERN_UNLIT",
       "FAI_FALADOR_LANTERN",
       "LANTERN_OFF"

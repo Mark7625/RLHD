@@ -90,6 +90,46 @@
         "items": {
           "type": "integer"
         }
+      },
+      "models": {
+        "type": "object",
+        "description": "Named sub-models merged together. Each entry inherits unset fields from the parent definition.",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "modelIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "integer" }
+            },
+            "contrast": { "type": "integer" },
+            "ambient": { "type": "integer" },
+            "offsetX": { "type": "integer" },
+            "offsetY": { "type": "integer" },
+            "offsetZ": { "type": "integer" },
+            "modelSizeX": { "type": "integer" },
+            "modelSizeY": { "type": "integer" },
+            "modelHeight": { "type": "integer" },
+            "rotated": { "type": "boolean" },
+            "recolorFrom": {
+              "type": "array",
+              "items": { "type": "integer" }
+            },
+            "recolorTo": {
+              "type": "array",
+              "items": { "type": "integer" }
+            },
+            "retextureFrom": {
+              "type": "array",
+              "items": { "type": "integer" }
+            },
+            "retextureTo": {
+              "type": "array",
+              "items": { "type": "integer" }
+            }
+          }
+        }
       }
     }
   }
