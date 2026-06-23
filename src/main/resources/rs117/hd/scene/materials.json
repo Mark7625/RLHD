@@ -1,12 +1,8 @@
 [
   {
-    "name": "UNLIT",
-    "parent": "NONE",
-    "unlit": true
-  },
-  {
     "name": "UNLIT_125",
-    "parent": "UNLIT",
+    "parent": "NONE",
+    "unlit": true,
     "brightness": 1.25
   },
   {
@@ -1721,6 +1717,11 @@
     "name": "ROCK_3_DARK",
     "parent": "ROCK_3",
     "brightness": 0.827
+  },
+  {
+    "name": "ROCK_3_VERY_DARK",
+    "parent": "ROCK_3",
+    "brightness": 0.73
   },
   {
     "name": "ROCK_3_LIGHT",

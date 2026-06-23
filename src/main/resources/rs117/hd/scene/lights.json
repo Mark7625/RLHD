@@ -20439,6 +20439,7 @@
     "alignment": "CENTER",
     "radius": 500,
     "strength": 9,
+    "nightMultiplier": 1.35,
     "color": [
       252,
       148,
@@ -20667,7 +20668,8 @@
       "VM_BASEMENT_WALL_FIRST_FLOOR_LAMP",
       "SLAYER_TORCH",
       "MISTMYST_CANDLE_LIT",
-      "GOLEM_TORCH"
+      "GOLEM_TORCH",
+      "FAI_FALADOR_TORCH"
     ]
   },
   {
@@ -20685,9 +20687,88 @@
     "range": 20,
     "timeOfDay": "DUSK",
     "staggered": true,
+    "dayNightOnly": true,
     "objectIds": [
       "FAI_VARROCK_POSH_CANDLESTICK",
       "FAI_VARROCK_TWO_CANDLES"
+    ]
+  },
+  {
+    "description": "Varrock Rune Shop Sign",
+    "offset": [ 0, 185, 0 ],
+    "radius": 215,
+    "strength": 8,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "PULSE",
+    "duration": 1000,
+    "range": 3,
+    "nightMultiplier": 1.6,
+    "objectIds": [
+      "FAI_VARROCK_RUNE_SHOP_SIGN"
+    ]
+  },
+  {
+    "description": "Varrock Rune Shop Sign Sparkle 1",
+    "offset": [ -30, 135, 0 ],
+    "radius": 40,
+    "strength": 12,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "FLICKER",
+    "range": 60,
+    "timeOfDay": "DUSK",
+    "staggered": true,
+    "dayNightOnly": true,
+    "nightMultiplier": 1.4,
+    "objectIds": [
+      "FAI_VARROCK_RUNE_SHOP_SIGN"
+    ]
+  },
+  {
+    "description": "Varrock Rune Shop Sign Sparkle 2",
+    "offset": [ -30, 53, 0 ],
+    "radius": 30,
+    "strength": 7,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "FLICKER",
+    "range": 50,
+    "timeOfDay": "DUSK",
+    "staggered": true,
+    "dayNightOnly": true,
+    "nightMultiplier": 1.4,
+    "objectIds": [
+      "FAI_VARROCK_RUNE_SHOP_SIGN"
+    ]
+  },
+  {
+    "description": "Varrock Rune Shop Sign Sparkle 3",
+    "offset": [ -30, 87, 0 ],
+    "radius": 30,
+    "strength": 12,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "FLICKER",
+    "range": 60,
+    "timeOfDay": "DUSK",
+    "staggered": true,
+    "dayNightOnly": true,
+    "nightMultiplier": 1.4,
+    "objectIds": [
+      "FAI_VARROCK_RUNE_SHOP_SIGN"
     ]
   },
   {
@@ -20703,7 +20784,7 @@
     "type": "FLICKER",
     "duration": 0,
     "range": 20,
-    "timeOfDay": "NIGHT",
+    "timeOfDay": "DUSK",
     "staggered": true,
     "dayNightOnly": true,
     "nightMultiplier": 1.5,
@@ -20726,6 +20807,7 @@
     "range": 20,
     "timeOfDay": "DUSK",
     "staggered": true,
+    "dayNightOnly": true,
     "nightMultiplier": 1.5,
     "objectIds": [
       "FAI_VARROCK_SWING_LANTERN_UNLIT"
@@ -20733,7 +20815,7 @@
   },
   {
     "description": "Varrock Castle Candelabra",
-    "height": 210,
+    "height": 175,
     "alignment": "CENTER",
     "radius": 500,
     "strength": 5,
@@ -20746,6 +20828,7 @@
     "duration": 0,
     "range": 20,
     "timeOfDay": "DUSK",
+    "dayNightOnly": true,
     "staggered": true,
     "objectIds": [
       "GOLDCANDLES",
@@ -20767,6 +20850,7 @@
     "range": 20,
     "timeOfDay": "DUSK",
     "staggered": true,
+    "dayNightOnly": true,
     "nightMultiplier": 1.5,
     "objectIds": [
       "LANTERN_OFF"
@@ -21039,6 +21123,7 @@
     ],
     "type": "FLICKER",
     "duration": 0,
+    "nightMultiplier": 1.5,
     "range": 20,
     "objectIds": [
       "DRAYNOR_OUTSIDE_LAMP"
@@ -21519,6 +21604,23 @@
     "range": 20,
     "objectIds": [
       "FIREPLACE"
+    ]
+  },
+  {
+    "description": "Falador Party Room Fireplace",
+    "offset": [ 0, 90, 0 ],
+    "radius": 270,
+    "strength": 11.5,
+    "color": [
+      252,
+      148,
+      3
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 20,
+    "objectIds": [
+      "FAI_FALADOR_PARTY_ROOM_FIREPLACE"
     ]
   },
   {
@@ -23014,6 +23116,7 @@
     "alignment": "CENTER",
     "radius": 475,
     "strength": 25,
+    "nightMultiplier": 1.15,
     "color": [
       255,
       200,
@@ -23030,6 +23133,7 @@
     "alignment": "CENTER",
     "radius": 700,
     "strength": 7.5,
+    "nightMultiplier": 2,
     "color": [
       93,
       0,
@@ -23110,6 +23214,7 @@
     "alignment": "CENTER",
     "radius": 235,
     "strength": 3.5,
+    "nightMultiplier": 2,
     "color": [
       255,
       0,
@@ -23146,6 +23251,7 @@
     "alignment": "CENTER",
     "radius": 235,
     "strength": 3.5,
+    "nightMultiplier": 2,
     "color": [
       255,
       179,
@@ -23182,6 +23288,7 @@
     "alignment": "CENTER",
     "radius": 235,
     "strength": 3.5,
+    "nightMultiplier": 2,
     "color": [
       31,
       225,
@@ -23218,6 +23325,7 @@
     "alignment": "CENTER",
     "radius": 225,
     "strength": 2.5,
+    "nightMultiplier": 2,
     "color": [
       255,
       0,
@@ -23275,6 +23383,7 @@
     "alignment": "CENTER",
     "radius": 225,
     "strength": 13.5,
+    "nightMultiplier": 1.5,
     "color": [
       252,
       148,
@@ -23289,7 +23398,7 @@
   },
   {
     "description": "POH_FIERY_ORNATE_REJUVENATION_POOL_RIM",
-    "height": 160,
+    "height": 180,
     "alignment": "CENTER",
     "radius": 75,
     "strength": 200,
@@ -23350,6 +23459,7 @@
     "alignment": "CENTER",
     "radius": 250,
     "strength": 15,
+    "nightMultiplier": 1.15,
     "color": [
       253.63197,
       182.39111,
@@ -23368,6 +23478,7 @@
     "alignment": "CENTER",
     "radius": 275,
     "strength": 20,
+    "nightMultiplier": 1.15,
     "color": [
       253.63197,
       182.39111,
@@ -23423,6 +23534,7 @@
     "offset": [ 0, 75, 0 ],
     "radius": 200,
     "strength": 15,
+    "nightMultiplier": 1.35,
     "color": [
       255,
       0,
@@ -26536,13 +26648,13 @@
   },
   {
     "description": "TUNNEL_EXIT",
-    "height": 50,
-    "alignment": "FRONT",
-    "radius": 800,
-    "strength": 12.5,
+    "offset": [ 0, 70, -80 ],
+    "radius": 450,
+    "strength": 10,
+    "followDayNight": true,
     "color": [
-      150,
-      220,
+      255,
+      255,
       255
     ],
     "type": "STATIC",
@@ -27792,7 +27904,7 @@
       255
     ],
     "type": "PULSE",
-    "duration": 500,
+    "duration": 1500,
     "range": 20,
     "objectIds": [
       "NZONE_LOBBY_WALLBLOCK"
@@ -27802,15 +27914,16 @@
     "description": "MAGIC_GUILD_ORBS",
     "height": 250,
     "alignment": "CENTER",
-    "radius": 350,
-    "strength": 20,
+    "radius": 375,
+    "strength": 15,
     "color": [
       255,
       255,
       255
     ],
     "type": "PULSE",
-    "duration": 800,
+    "duration": 1200,
+    "nightMultiplier": 1.5,
     "range": 5,
     "objectIds": [
       "RUNETEMPLE_STANDINGSTONE_GLOW"
@@ -28087,9 +28200,52 @@
     ],
     "type": "STATIC",
     "duration": 0,
+    "nightMultiplier": 1.5,
     "range": 20,
+    "visibleFromOtherPlanes": true,
     "objectIds": [
       "LANTERN"
+    ]
+  },
+  {
+    "description": "Lantern with Glass - Ardougne Spotlight",
+    "offset": [ 20, 110, 0 ],
+    "areas": [ "EAST_ARDOUGNE_LANTERNS" ],
+    "radius": 450,
+    "strength": 7.5,
+    "timeOfDay": "DAWN",
+    "staggered": true,
+    "color": [
+      255,
+      180,
+      103
+    ],
+    "type": "STATIC",
+    "duration": 0,
+    "nightMultiplier": 1.5,
+    "range": 20,
+    "visibleFromOtherPlanes": true,
+    "objectIds": [
+      "LANTERN"
+    ]
+  },
+  {
+    "description": "Round Lantern with Flame",
+    "offset": [ -5, 220, 0 ],
+    "radius": 350,
+    "strength": 7.5,
+    "color": [
+      255,
+      180,
+      103
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "nightMultiplier": 1.5,
+    "range": 20,
+    "visibleFromOtherPlanes": true,
+    "objectIds": [
+      "LANTERN_GLOWS"
     ]
   },
   {
@@ -35788,6 +35944,25 @@
     ]
   },
   {
+    "description": "MM2_REMATCH_BRAZIER",
+    "height": 115,
+    "alignment": "CENTER",
+    "radius": 270,
+    "strength": 15,
+    "color": [
+      252,
+      148,
+      3
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 20,
+    "objectIds": [
+      "MM2_POSTQUEST_BRAZIER_LIT"
+    ],
+    "visibleFromOtherPlanes": true
+  },
+  {
     "description": "LITHKREN_LAVA_1",
     "worldX": 3531,
     "worldY": 4013,
@@ -37569,6 +37744,24 @@
     ]
   },
   {
+    "description": "GNOME_LAMP_HIGHLIGHT",
+    "offset": [ -30, 125, 40 ],
+    "radius": 50,
+    "strength": 20,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "FLICKER",
+    "duration": 600,
+    "nightMultiplier": 2.5,
+    "range": 10,
+    "objectIds": [
+      "GNOME_LAMP2"
+    ]
+  },
+  {
     "description": "PENGUIN_BASE_LAMP",
     "height": 140,
     "radius": 140,
@@ -37601,6 +37794,24 @@
     "range": 60,
     "objectIds": [
       "FAIRY_SPARKLE"
+    ]
+  },
+  {
+    "description": "Will o' the Wisp",
+    "height": 80,
+    "alignment": "CENTER",
+    "radius": 160,
+    "strength": 6.25,
+    "color": [
+      255,
+      255,
+      195
+    ],
+    "type": "PULSE",
+    "duration": 1250,
+    "range": 20,
+    "npcIds": [
+      "WILLOTHEWISP"
     ]
   },
   {
@@ -37853,6 +38064,7 @@
     ],
     "type": "FLICKER",
     "duration": 0,
+    "nightMultiplier": 1.25,
     "range": 24,
     "objectIds": [
       "FAI_FALADOR_LANTERN"
@@ -38375,6 +38587,23 @@
     ]
   },
   {
+    "description": "POTTERY_OVEN_GLOW_BRICKS",
+    "offset": [ 70, 165, 0 ],
+    "radius": 300,
+    "strength": 7.5,
+    "color": [
+      252,
+      90,
+      3
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 10,
+    "objectIds": [
+      "POTTERYOVEN"
+    ]
+  },
+  {
     "description": "Mysterious Figure's Hideout - Purple Magic Attack - Projectile",
     "radius": 275,
     "strength": 10,
@@ -38516,7 +38745,8 @@
     "duration": 0,
     "range": 20,
     "objectIds": [
-      "MAGICTRAINING_CANDLE_STAND"
+      "MAGICTRAINING_CANDLE_STAND",
+      "BRAIN_MON_CANDLES"
     ]
   },
   {
@@ -41036,6 +41266,7 @@
     "duration": 0,
     "range": 20,
     "timeOfDay": "DUSK",
+    "dayNightOnly": true,
     "objectIds": [
       "FAI_VARROCK_PRETTY_OILLAMP"
     ]
@@ -46319,7 +46550,45 @@
     ]
   },
   {
-    "description": "Varrock - Great Conch - Metal cooking  Range",
+    "description": "Varrock - Great Conch - Metal cooking  Range 1",
+    "height": 100,
+    "offset": [ 46, -50, -68 ],
+    "radius": 200,
+    "strength": 3,
+    "color": [
+      252,
+      108,
+      3
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 5,
+    "objectIds": [
+      "FAI_VARROCK_RANGE",
+      "KR_SIN_RANGE"
+    ]
+  },
+  {
+    "description": "Varrock - Great Conch - Metal cooking  Range 2",
+    "height": 100,
+    "offset": [ 46, -50, -94 ],
+    "radius": 200,
+    "strength": 3,
+    "color": [
+      252,
+      108,
+      3
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 5,
+    "objectIds": [
+      "FAI_VARROCK_RANGE",
+      "KR_SIN_RANGE"
+    ]
+  },
+  {
+    "description": "Varrock - Great Conch - Metal cooking Range 2",
     "height": 100,
     "offset": [ 20, 0, 64 ],
     "radius": 200,
@@ -47063,6 +47332,42 @@
     "range": 20,
     "objectIds": [
       "FAI_VARROCK_RANGE_WITH_PIPE"
+    ]
+  },
+  {
+    "description": "RIMMINGTON_RANGE_1",
+    "offset": [ 0, 95, -45 ],
+    "alignment": "CENTER",
+    "radius": 125,
+    "strength": 5,
+    "color": [
+      252,
+      100,
+      3
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 20,
+    "objectIds": [
+      "RIMMINGTON_POOR_RANGE"
+    ]
+  },
+  {
+    "description": "RIMMINGTON_RANGE_2",
+    "offset": [ 65, 50, 48 ],
+    "alignment": "CENTER",
+    "radius": 125,
+    "strength": 3,
+    "color": [
+      252,
+      100,
+      3
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 20,
+    "objectIds": [
+      "RIMMINGTON_POOR_RANGE"
     ]
   },
   {
@@ -48055,7 +48360,8 @@
     "description": "Magic Tree Top",
     "offset": [ 10, 600, -10 ],
     "radius": 300,
-    "strength": 5,
+    "strength": 2,
+    "nightMultiplier": 2,
     "fadeInDuration": 200,
     "color": [
       255,
@@ -48073,7 +48379,7 @@
   {
     "description": "Magic Tree North",
     "offset": [ 120, 480, -10 ],
-    "radius": 300,
+    "radius": 250,
     "strength": 3,
     "fadeInDuration": 200,
     "color": [
@@ -48092,7 +48398,7 @@
   {
     "description": "Magic Tree South",
     "offset": [ -170, 500, -10 ],
-    "radius": 300,
+    "radius": 250,
     "strength": 3,
     "fadeInDuration": 200,
     "color": [
@@ -48111,7 +48417,7 @@
   {
     "description": "Magic Tree West",
     "offset": [ 10, 500, 170 ],
-    "radius": 300,
+    "radius": 250,
     "strength": 3,
     "fadeInDuration": 200,
     "color": [
@@ -48130,7 +48436,7 @@
   {
     "description": "Magic Tree East",
     "offset": [ 10, 500, -170 ],
-    "radius": 300,
+    "radius": 250,
     "strength": 3,
     "fadeInDuration": 200,
     "color": [
@@ -48148,7 +48454,7 @@
   },
   {
     "description": "Magic Tree Under North",
-    "offset": [ 170, 280, -10 ],
+    "offset": [ 160, 280, -20 ],
     "radius": 280,
     "strength": 7,
     "fadeInDuration": 200,
@@ -48167,9 +48473,28 @@
   },
   {
     "description": "Magic Tree Under South",
-    "offset": [ -110, 250, -10 ],
-    "radius": 300,
-    "strength": 2,
+    "offset": [ -160, 260, -10 ],
+    "radius": 320,
+    "strength": 3,
+    "fadeInDuration": 200,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 35,
+    "objectIds": [
+      "MAGIC_TREE_FULLYGROWN_2",
+      "MAGICTREE"
+    ]
+  },
+  {
+    "description": "Magic Tree Under South East",
+    "offset": [ -90, 270, -120 ],
+    "radius": 150,
+    "strength": 3,
     "fadeInDuration": 200,
     "color": [
       255,
@@ -48186,8 +48511,46 @@
   },
   {
     "description": "Magic Tree Under West",
-    "offset": [ 10, 250, 100 ],
-    "radius": 300,
+    "offset": [ 10, 280, 140 ],
+    "radius": 250,
+    "strength": 2,
+    "fadeInDuration": 200,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 25,
+    "objectIds": [
+      "MAGIC_TREE_FULLYGROWN_2",
+      "MAGICTREE"
+    ]
+  },
+  {
+    "description": "Magic Tree Under North West",
+    "offset": [ 100, 300, 100 ],
+    "radius": 150,
+    "strength": 2,
+    "fadeInDuration": 200,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 25,
+    "objectIds": [
+      "MAGIC_TREE_FULLYGROWN_2",
+      "MAGICTREE"
+    ]
+  },
+  {
+    "description": "Magic Tree Under South West",
+    "offset": [ -100, 300, 100 ],
+    "radius": 150,
     "strength": 2,
     "fadeInDuration": 200,
     "color": [
@@ -48206,7 +48569,7 @@
   {
     "description": "Magic Tree Under East",
     "offset": [ 50, 290, -150 ],
-    "radius": 300,
+    "radius": 250,
     "strength": 2,
     "fadeInDuration": 200,
     "color": [
@@ -48239,6 +48602,93 @@
     "objectIds": [
       "MAGIC_TREE_FULLYGROWN_2",
       "MAGICTREE"
+    ]
+  },
+  {
+    "description": "Feldip Airstrip Red",
+    "offset": [ 10, 160, 10 ],
+    "radius": 370,
+    "strength": 25,
+    "color": [
+      255,
+      0,
+      0
+    ],
+    "type": "PULSE",
+    "duration": 1500,
+    "range": 10,
+    "objectIds": [
+      "FAVOUR_LANDING_LIGHT_REDTOPAZ"
+    ]
+  },
+  {
+    "description": "Feldip Airstrip White",
+    "offset": [ 10, 160, 10 ],
+    "radius": 310,
+    "strength": 20,
+    "color": [
+      255,
+      255,
+      255
+    ],
+    "type": "PULSE",
+    "duration": 1500,
+    "range": 5,
+    "objectIds": [
+      "FAVOUR_LANDING_LIGHT_OPAL"
+    ]
+  },
+  {
+    "description": "Feldip Airstrip Blue",
+    "offset": [ 10, 160, 10 ],
+    "radius": 360,
+    "strength": 100,
+    "nightMultiplier": 1.5,
+    "color": [
+      0,
+      0,
+      255
+    ],
+    "type": "PULSE",
+    "duration": 1500,
+    "range": 10,
+    "objectIds": [
+      "FAVOUR_LANDING_LIGHT_SAPPHIRE"
+    ]
+  },
+  {
+    "description": "Feldip Airstrip Green",
+    "offset": [ 10, 160, 10 ],
+    "radius": 320,
+    "strength": 15,
+    "color": [
+      0,
+      255,
+      0
+    ],
+    "type": "PULSE",
+    "duration": 1500,
+    "range": 5,
+    "objectIds": [
+      "FAVOUR_LANDING_LIGHT_JADE"
+    ]
+  },
+  {
+    "description": "Green Camp Fire",
+    "height": 175,
+    "alignment": "CENTER",
+    "radius": 400,
+    "strength": 15,
+    "color": [
+      70,
+      242,
+      31
+    ],
+    "type": "FLICKER",
+    "duration": 0,
+    "range": 20,
+    "objectIds": [
+      "SHIPWRECK_COVE_STRANGE_CAMPFIRE"
     ]
   }
 ]
