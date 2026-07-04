@@ -229,7 +229,9 @@ public class HdPlugin extends Plugin {
 		TextureManager.class,
 		TileOverrideManager.class,
 		WaterTypeManager.class,
-		SceneManager.class
+		SceneManager.class,
+		rs117.hd.scene.model.ModelLightManager.class,
+		rs117.hd.scene.model.ModelLightStore.class
 	);
 
 	@Getter

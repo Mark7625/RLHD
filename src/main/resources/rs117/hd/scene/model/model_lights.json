@@ -1,0 +1,23 @@
+{
+  "profiles": {
+    "286v604f-c6236a94526a7f70": {
+      "name": "Firemaking Cape",
+      "meshKey": "286v604f-c6236a94526a7f70",
+      "vertices": {
+        "15": "ABERRANT_SPECTRES"
+      }
+    },
+    "76v167f-7ef9ea240cfe13fc": {
+      "name": "Mining helmet",
+      "meshKey": "76v167f-7ef9ea240cfe13fc",
+      "triangles": {
+        "111": {
+          "light": "Mining helmet light",
+          "bary0": 0.053389832,
+          "bary1": 0.39406782,
+          "bary2": 0.5525424
+        }
+      }
+    }
+  }
+}

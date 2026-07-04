@@ -107,6 +107,18 @@
         "type": "number",
         "description": "The distance range to vary the light's radius by according to the light's animation."
       },
+      "innerConeAngle": {
+        "type": "number",
+        "description": "Inner spotlight cone angle in degrees. Requires outerConeAngle."
+      },
+      "outerConeAngle": {
+        "type": "number",
+        "description": "Outer spotlight cone angle in degrees. When > 0, the light becomes directional."
+      },
+      "conePitch": {
+        "type": "number",
+        "description": "Spotlight pitch in degrees relative to player facing. Negative values tilt downward."
+      },
       "fadeInDuration": {
         "type": "number",
         "description": "The time in milliseconds until the light is fully active after spawning. May overlap with fade-out if overlap is enabled."

@@ -49,6 +49,7 @@ public class Light
 	public float[] origin = new float[3];
 	public float[] offset = new float[3];
 	public float[] pos = new float[3];
+	public float[] direction = new float[3];
 	public int orientation;
 	public float distanceSquared;
 
@@ -62,6 +63,21 @@ public class Light
 
 	public int sizeX = 1;
 	public int sizeY = 1;
+
+	public int modelVertex = -1;
+	public String modelProfileKey;
+	public float modelOffsetX;
+	public float modelOffsetY;
+	public float modelOffsetZ;
+	public int modelFaceV0 = -1;
+	public int modelFaceV1;
+	public int modelFaceV2;
+	public float modelBary0 = 1f / 3f;
+	public float modelBary1 = 1f / 3f;
+	public float modelBary2 = 1f / 3f;
+	public float modelOffsetA;
+	public float modelOffsetB;
+	public float modelOffsetC;
 
 	public Light(LightDefinition def) {
 		this.def = def;

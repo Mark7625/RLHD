@@ -22,6 +22,9 @@ public class LightDefinition {
 	public LightType type = LightType.STATIC;
 	public float duration;
 	public float range;
+	public float innerConeAngle = 0;
+	public float outerConeAngle = 0;
+	public float conePitch = 0;
 	public int fadeInDuration = 50;
 	public int fadeOutDuration = 50;
 	public int spawnDelay;

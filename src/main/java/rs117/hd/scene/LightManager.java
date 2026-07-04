@@ -31,8 +31,12 @@ import com.google.gson.Gson;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeSet;
 import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -52,6 +56,7 @@ import rs117.hd.HdPlugin;
 import rs117.hd.config.DynamicLights;
 import rs117.hd.data.ObjectType;
 import rs117.hd.opengl.uniforms.UBOLights;
+import rs117.hd.scene.model.ModelLightManager;
 import rs117.hd.scene.lights.Alignment;
 import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.lights.LightDefinition;
@@ -101,7 +106,11 @@ public class LightManager {
 	@Inject
 	private EntityHiderPlugin entityHiderPlugin;
 
+	@Inject
+	private ModelLightManager modelLightManager;
+
 	private final ArrayList<Light> WORLD_LIGHTS = new ArrayList<>();
+	private final Map<String, LightDefinition> LIGHTS_BY_DESCRIPTION = new LinkedHashMap<>();
 	private final ListMultimap<Integer, LightDefinition> NPC_LIGHTS = ArrayListMultimap.create();
 	private final ListMultimap<Integer, LightDefinition> OBJECT_LIGHTS = ArrayListMultimap.create();
 	private final ListMultimap<Integer, LightDefinition> PROJECTILE_LIGHTS = ArrayListMultimap.create();
@@ -131,9 +140,12 @@ public class LightManager {
 			OBJECT_LIGHTS.clear();
 			PROJECTILE_LIGHTS.clear();
 			GRAPHICS_OBJECT_LIGHTS.clear();
+			LIGHTS_BY_DESCRIPTION.clear();
 
 			for (LightDefinition lightDef : lights) {
 				lightDef.normalize();
+				if (lightDef.description != null && !LIGHTS_BY_DESCRIPTION.containsKey(lightDef.description))
+					LIGHTS_BY_DESCRIPTION.put(lightDef.description, lightDef);
 				if (lightDef.worldX != null && lightDef.worldY != null) {
 					Light light = new Light(lightDef);
 					light.worldPoint = new WorldPoint(lightDef.worldX, lightDef.worldY, lightDef.plane);
@@ -151,12 +163,15 @@ public class LightManager {
 			// Reload lights once on plugin startup, and whenever lights.json should be hot-swapped.
 			// If we don't reload on startup, NPCs won't have lights added until RuneLite fires events
 			reloadLights = true;
+
+			modelLightManager.onLightDefinitionsChanged();
 		});
 	}
 
 	public void startUp() {
 		entityHiderConfig = configManager.getConfig(EntityHiderConfig.class);
 		LIGHTS_PATH.watch(path -> loadConfig(plugin.getGson(), path));
+		modelLightManager.startUp();
 		eventBus.register(this);
 	}
 
@@ -166,8 +181,19 @@ public class LightManager {
 		OBJECT_LIGHTS.clear();
 		PROJECTILE_LIGHTS.clear();
 		GRAPHICS_OBJECT_LIGHTS.clear();
+		LIGHTS_BY_DESCRIPTION.clear();
+		modelLightManager.shutDown();
 
 		eventBus.unregister(this);
+	}
+
+	public List<String> getLightDescriptions() {
+		return new ArrayList<>(new TreeSet<>(LIGHTS_BY_DESCRIPTION.keySet()));
+	}
+
+	@Nullable
+	public LightDefinition getLightDefinitionByDescription(String description) {
+		return LIGHTS_BY_DESCRIPTION.get(description);
 	}
 
 	public void update(@Nonnull SceneContext sceneContext, int[] cameraShift, float[][] cameraFrustum) {
@@ -189,7 +215,10 @@ public class LightManager {
 				addNpcLights(npc);
 				addSpotanimLights(npc);
 			});
+			modelLightManager.onSceneReload(sceneContext);
 		}
+
+		modelLightManager.update(sceneContext);
 
 		// These should never occur, but just in case...
 		if (sceneContext.knownProjectiles.size() > 10000) {
@@ -287,11 +316,15 @@ public class LightManager {
 					parentExists = false;
 					light.markedForRemoval = true;
 				} else {
-					var lp = light.actor.getLocalLocation();
-					light.origin[0] = lp.getX();
-					light.origin[2] = lp.getY();
-					light.plane = plane;
-					light.orientation = light.actor.getCurrentOrientation();
+					if (light.modelProfileKey == null) {
+						var lp = light.actor.getLocalLocation();
+						light.origin[0] = lp.getX();
+						light.origin[2] = lp.getY();
+						light.plane = plane;
+						light.orientation = light.actor.getCurrentOrientation();
+					} else {
+						light.plane = plane;
+					}
 
 					if (light.animationSpecific) {
 						if (light.spotanimId != -1) {
@@ -340,24 +373,26 @@ public class LightManager {
 							}
 						}
 
-						// Interpolate between tile heights based on specific scene coordinates
-						int tileZ = plane;
-						if (tile.getBridge() != null)
-							tileZ++;
-						float lerpX = fract(light.origin[0] / (float) LOCAL_TILE_SIZE);
-						float lerpY = fract(light.origin[2] / (float) LOCAL_TILE_SIZE);
-						float heightNorth = mix(
-							tileHeights[tileZ][tileExX][tileExY + 1],
-							tileHeights[tileZ][tileExX + 1][tileExY + 1],
-							lerpX
-						);
-						float heightSouth = mix(
-							tileHeights[tileZ][tileExX][tileExY],
-							tileHeights[tileZ][tileExX + 1][tileExY],
-							lerpX
-						);
-						float tileHeight = mix(heightSouth, heightNorth, lerpY);
-						light.origin[1] = (int) tileHeight - 1 - light.def.height;
+						if (light.modelProfileKey == null) {
+							// Interpolate between tile heights based on specific scene coordinates
+							int tileZ = plane;
+							if (tile.getBridge() != null)
+								tileZ++;
+							float lerpX = fract(light.origin[0] / (float) LOCAL_TILE_SIZE);
+							float lerpY = fract(light.origin[2] / (float) LOCAL_TILE_SIZE);
+							float heightNorth = mix(
+								tileHeights[tileZ][tileExX][tileExY + 1],
+								tileHeights[tileZ][tileExX + 1][tileExY + 1],
+								lerpX
+							);
+							float heightSouth = mix(
+								tileHeights[tileZ][tileExX][tileExY],
+								tileHeights[tileZ][tileExX + 1][tileExY],
+								lerpX
+							);
+							float tileHeight = mix(heightSouth, heightNorth, lerpY);
+							light.origin[1] = (int) tileHeight - 1 - light.def.height;
+						}
 					}
 				}
 			}
@@ -396,6 +431,20 @@ public class LightManager {
 
 				light.pos[0] += offsetX;
 				light.pos[2] += offsetY;
+			}
+
+			if (light.def.outerConeAngle > 0) {
+				if (light.modelProfileKey == null || light.modelFaceV0 < 0) {
+					float yawRad = light.orientation * JAU_TO_RAD;
+					float pitchRad = light.def.conePitch * DEG_TO_RAD;
+					float yawSin = sin(yawRad);
+					float yawCos = cos(yawRad);
+					float pitchCos = cos(pitchRad);
+					float pitchSin = sin(pitchRad);
+					light.direction[0] = -yawSin * pitchCos;
+					light.direction[1] = -pitchSin;
+					light.direction[2] = -yawCos * pitchCos;
+				}
 			}
 
 			// This is a little bit slow, so only update it when necessary
