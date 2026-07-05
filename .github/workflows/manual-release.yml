@@ -1,0 +1,298 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.5.2-preview). Created at the target commit if it does not exist."
+        required: true
+        type: string
+      ref_type:
+        description: "What to build from"
+        required: true
+        type: choice
+        default: branch
+        options:
+          - branch
+          - pull_request
+          - commit
+      ref:
+        description: "Branch name, PR number, or commit SHA (depending on ref_type)"
+        required: true
+        type: string
+      commit_sha:
+        description: "Optional exact commit SHA (overrides branch/PR HEAD)"
+        required: false
+        type: string
+      base_ref:
+        description: "Diff base tag or branch. Defaults to the latest GitHub release tag, else the repo default branch."
+        required: false
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        type: boolean
+        default: true
+      draft:
+        description: "Create as draft release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manual-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  # TODO: re-enable fork guard before merging to upstream
+  release:
+    name: Build shadow jar and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve checkout ref
+        id: resolve
+        env:
+          REF_TYPE: ${{ inputs.ref_type }}
+          REF: ${{ inputs.ref }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+
+          case "$REF_TYPE" in
+            branch)
+              CHECKOUT_REF="$REF"
+              SOURCE_LABEL="branch \`$REF\`"
+              ;;
+            pull_request)
+              if ! [[ "$REF" =~ ^[0-9]+$ ]]; then
+                echo "::error::PR ref must be a numeric pull request number."
+                exit 1
+              fi
+              CHECKOUT_REF="refs/pull/$REF/head"
+              SOURCE_LABEL="pull request #$REF"
+              ;;
+            commit)
+              if ! [[ "$REF" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+                echo "::error::Commit ref must be a valid git SHA."
+                exit 1
+              fi
+              CHECKOUT_REF="$REF"
+              SOURCE_LABEL="commit \`${REF:0:7}\`"
+              ;;
+            *)
+              echo "::error::Unsupported ref_type: $REF_TYPE"
+              exit 1
+              ;;
+          esac
+
+          if [ -n "$COMMIT_SHA" ]; then
+            if ! [[ "$COMMIT_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+              echo "::error::commit_sha must be a valid git SHA."
+              exit 1
+            fi
+            CHECKOUT_REF="$COMMIT_SHA"
+            SOURCE_LABEL="$SOURCE_LABEL @ \`${COMMIT_SHA:0:7}\`"
+          fi
+
+          echo "checkout_ref=$CHECKOUT_REF" >> "$GITHUB_OUTPUT"
+          echo "source_label=$SOURCE_LABEL" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name: Capture build metadata
+        id: meta
+        env:
+          TAG: ${{ inputs.tag }}
+          BASE_REF_INPUT: ${{ inputs.base_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags origin
+          git fetch origin "$DEFAULT_BRANCH" --depth=1
+
+          HEAD_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="${HEAD_SHA:0:7}"
+
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
+            if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+              echo "::error::Tag '$TAG' already exists but points to ${TAG_SHA:0:7}, not the target commit ${SHORT_SHA}."
+              exit 1
+            fi
+            echo "tag_action=exists" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_action=create" >> "$GITHUB_OUTPUT"
+          fi
+
+          ref_resolves() {
+            git rev-parse --verify "$1^{commit}" >/dev/null 2>&1
+          }
+
+          ensure_ref_fetched() {
+            local ref="$1"
+            ref_resolves "$ref" && return 0
+            ref_resolves "origin/$ref" && return 0
+            ref_resolves "refs/tags/$ref" && return 0
+
+            git fetch origin "$ref" --depth=1 2>/dev/null || true
+            git fetch origin "refs/tags/$ref:refs/tags/$ref" 2>/dev/null || true
+
+            ref_resolves "$ref" || ref_resolves "origin/$ref" || ref_resolves "refs/tags/$ref"
+          }
+
+          if [ -n "$BASE_REF_INPUT" ]; then
+            BASE_REF="$BASE_REF_INPUT"
+          else
+            BASE_REF="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)"
+            if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "null" ]; then
+              BASE_REF="$DEFAULT_BRANCH"
+            fi
+          fi
+
+          if ! ensure_ref_fetched "$BASE_REF"; then
+            echo "::warning::Diff base '$BASE_REF' is not available locally, falling back to $DEFAULT_BRANCH"
+            BASE_REF="$DEFAULT_BRANCH"
+            git fetch origin "$DEFAULT_BRANCH" --depth=1
+            if ! ensure_ref_fetched "$BASE_REF"; then
+              echo "::error::Diff base '$BASE_REF' does not resolve to a commit. Set base_ref to a valid branch, tag, or SHA."
+              exit 1
+            fi
+          fi
+
+          REPO="${{ github.repository }}"
+          DIFF_URL="https://github.com/$REPO/compare/${BASE_REF}...${TAG}"
+          COMMIT_URL="https://github.com/$REPO/commit/$HEAD_SHA"
+
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
+          echo "diff_url=$DIFF_URL" >> "$GITHUB_OUTPUT"
+          echo "commit_url=$COMMIT_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Build shadow jar
+        run: ./gradlew shadowJar --no-daemon
+
+      - name: Locate shadow jar
+        id: jar
+        run: |
+          set -euo pipefail
+          JAR_PATH="$(find build/libs -maxdepth 1 -name '*-all.jar' -type f | head -n 1)"
+          if [ -z "$JAR_PATH" ]; then
+            echo "::error::Could not find shadow jar in build/libs"
+            ls -la build/libs || true
+            exit 1
+          fi
+          echo "path=$JAR_PATH" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$JAR_PATH")" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag if missing
+        if: steps.meta.outputs.tag_action == 'create'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Publish GitHub release
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          JAR_PATH: ${{ steps.jar.outputs.path }}
+          JAR_NAME: ${{ steps.jar.outputs.name }}
+          DIFF_URL: ${{ steps.meta.outputs.diff_url }}
+          COMMIT_URL: ${{ steps.meta.outputs.commit_url }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          BASE_REF: ${{ steps.meta.outputs.base_ref }}
+          SOURCE_LABEL: ${{ steps.resolve.outputs.source_label }}
+          REPO: ${{ github.repository }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          set -euo pipefail
+
+          BODY_FILE="$(mktemp)"
+          cat > "$BODY_FILE" <<EOF
+          ## Build
+
+          | | |
+          | --- | --- |
+          | Source | ${SOURCE_LABEL} |
+          | Commit | [\`${SHORT_SHA}\`](${COMMIT_URL}) |
+          | Artifact | \`${JAR_NAME}\` |
+
+          ## Changes
+
+          **Full diff:** ${DIFF_URL}
+
+          [\`${BASE_REF}...${TAG}\`](${DIFF_URL})
+
+          ---
+
+          [![GitHub release](https://img.shields.io/github/v/release/${REPO}?style=flat-square&label=release)](https://github.com/${REPO}/releases/tag/${TAG})
+          [![Compare](https://img.shields.io/github/commits-difference/${REPO}?base=${BASE_REF}&head=${TAG}&style=flat-square)](${DIFF_URL})
+          EOF
+
+          RELEASE_ARGS=(
+            "$TAG"
+            --title "$TAG"
+            --notes-file "$BODY_FILE"
+            "$JAR_PATH#${JAR_NAME}"
+          )
+
+          if [ "$PRERELEASE" = "true" ]; then
+            RELEASE_ARGS+=(--prerelease)
+          fi
+          if [ "$DRAFT" = "true" ]; then
+            RELEASE_ARGS+=(--draft)
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$JAR_PATH#${JAR_NAME}" --clobber
+            EDIT_ARGS=(--notes-file "$BODY_FILE")
+            if [ "$PRERELEASE" = "true" ]; then
+              EDIT_ARGS+=(--prerelease)
+            else
+              EDIT_ARGS+=(--prerelease=false)
+            fi
+            if [ "$DRAFT" = "true" ]; then
+              EDIT_ARGS+=(--draft)
+            else
+              EDIT_ARGS+=(--draft=false)
+            fi
+            gh release edit "$TAG" "${EDIT_ARGS[@]}"
+            echo "release_url=https://github.com/$REPO/releases/tag/$TAG" >> "$GITHUB_OUTPUT"
+          else
+            gh release create "${RELEASE_ARGS[@]}"
+            echo "release_url=https://github.com/$REPO/releases/tag/$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release published"
+            echo ""
+            echo "- Tag: \`${{ inputs.tag }}\`"
+            echo "- Commit: [\`${{ steps.meta.outputs.short_sha }}\`](${{ steps.meta.outputs.commit_url }})"
+            echo "- Jar: \`${{ steps.jar.outputs.name }}\`"
+            echo "- Release: ${{ steps.publish.outputs.release_url }}"
+            echo "- Diff: ${{ steps.meta.outputs.diff_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
