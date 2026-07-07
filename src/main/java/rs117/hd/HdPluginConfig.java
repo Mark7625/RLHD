@@ -1104,12 +1104,143 @@ public interface HdPluginConfig extends Config
 	}
 
 
+	/*====== Particle settings ======*/
+
+	@ConfigSection(
+		name = "Particles",
+		description = "Cosmetic particle effects for capes, halos, torches, and more.",
+		position = 6
+	)
+	String particleSettings = "particleSettings";
+
+	enum ParticleDensity
+	{
+		NORMAL("Normal", 1f),
+		LOW("Low", 0.66f),
+		VERY_LOW("Very low", 0.33f);
+
+		private final String label;
+		private final float factor;
+
+		ParticleDensity(String label, float factor)
+		{
+			this.label = label;
+			this.factor = factor;
+		}
+
+		public float getFactor()
+		{
+			return factor;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
+	}
+
+	enum ParticleApplyTo
+	{
+		EVERYONE("Everyone"),
+		FRIENDS("Friends"),
+		ME("Me");
+
+		private final String label;
+
+		ParticleApplyTo(String label)
+		{
+			this.label = label;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
+	}
+
+	@ConfigItem(
+		keyName = "particleHideSidePanel",
+		name = "Hide side panel",
+		description = "Hides the particles sidebar icon.",
+		position = 0,
+		section = particleSettings
+	)
+	default boolean particleHideSidePanel()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "particleApplyTo",
+		name = "Apply to",
+		description = "Which players get particles: everyone, you and your friends, or only you.",
+		position = 1,
+		section = particleSettings
+	)
+	default ParticleApplyTo particleApplyTo()
+	{
+		return ParticleApplyTo.EVERYONE;
+	}
+
+	@ConfigItem(
+		keyName = "particleDensity",
+		name = "Particle density",
+		description = "Scales every preset's emission rate; lower for calmer effects or more FPS.",
+		position = 2,
+		section = particleSettings
+	)
+	default ParticleDensity particleDensity()
+	{
+		return ParticleDensity.NORMAL;
+	}
+
+	@ConfigItem(
+		keyName = "particleFullSelfDensity",
+		name = "Full density for me",
+		description = "Keep your own character at full density even when particle density is lowered.",
+		position = 3,
+		section = particleSettings
+	)
+	default boolean particleFullSelfDensity()
+	{
+		return false;
+	}
+
+	@Range(min = 2, max = 64)
+	@ConfigItem(
+		keyName = "particleEffectRadius",
+		name = "Effect radius",
+		description = "Only players within this many tiles of you emit particles.",
+		position = 4,
+		section = particleSettings
+	)
+	default int particleEffectRadius()
+	{
+		return 32;
+	}
+
+	@Range(min = 128, max = 8192)
+	@ConfigItem(
+		keyName = "particleMaxParticles",
+		name = "Max live particles",
+		description = "Total particle budget across all emitters; higher values cost FPS.",
+		position = 5,
+		section = particleSettings
+	)
+	default int particleMaxParticles()
+	{
+		return 4096;
+	}
+
+
 	/*====== Experimental settings ======*/
 
 	@ConfigSection(
 		name = "Experimental",
 		description = "Experimental features - if you're experiencing issues you should consider disabling these.",
-		position = 6,
+		position = 7,
 		closedByDefault = true
 	)
 	String experimentalSettings = "experimentalSettings";

@@ -114,6 +114,7 @@ import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.TextureManager;
 import rs117.hd.scene.TileOverrideManager;
 import rs117.hd.scene.WaterTypeManager;
+import rs117.hd.particles.ParticlesManager;
 import rs117.hd.utils.ColorUtils;
 import rs117.hd.utils.DestructibleHandler;
 import rs117.hd.utils.DeveloperTools;
@@ -285,6 +286,9 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private FishingSpotReplacer fishingSpotReplacer;
+
+	@Inject
+	private ParticlesManager particlesManager;
 
 	@Inject
 	private NpcDisplacementCache npcDisplacementCache;
@@ -716,6 +720,7 @@ public class HdPlugin extends Plugin {
 				lightManager.startUp();
 				environmentManager.startUp();
 				fishingSpotReplacer.startUp();
+				particlesManager.startUp();
 				gammaCalibrationOverlay.initialize();
 				npcDisplacementCache.initialize();
 
@@ -785,6 +790,7 @@ public class HdPlugin extends Plugin {
 			lightManager.shutDown();
 			environmentManager.shutDown();
 			fishingSpotReplacer.shutDown();
+			particlesManager.shutDown();
 			areaManager.shutDown();
 			gamevalManager.shutDown();
 			gammaCalibrationOverlay.destroy();

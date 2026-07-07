@@ -3,7 +3,6 @@ plugins {
 }
 
 repositories {
-	mavenLocal()
 	maven {
 		url = 'https://repo.runelite.net'
 		content {
@@ -48,6 +47,12 @@ tasks.register('run', JavaExec) {
 
 	jvmArgs "-ea", "-Xmx768M", "--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED"
 	args "--developer-mode", "--debug", "--disable-telemetry"
+}
+
+tasks.register('regenEmitters', JavaExec) {
+	dependsOn compileTestJava
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'rs117.hd.particles.RegenEmitters'
 }
 
 tasks.register('shadowJar', Jar) {

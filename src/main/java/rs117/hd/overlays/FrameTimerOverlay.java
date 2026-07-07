@@ -17,6 +17,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 import rs117.hd.HdPlugin;
+import rs117.hd.particles.ParticlesManager;
 import rs117.hd.renderer.zone.SceneManager;
 import rs117.hd.renderer.zone.WorldViewContext;
 import rs117.hd.renderer.zone.ZoneRenderer;
@@ -50,6 +51,9 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 
 	@Inject
 	private SceneManager sceneManager;
+
+	@Inject
+	private ParticlesManager particlesManager;
 
 	private final ArrayDeque<FrameTimings> frames = new ArrayDeque<>();
 	private final long[] timings = new long[Timer.TIMERS.length];
@@ -211,6 +215,43 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 					.right(String.valueOf(npcDisplacementCache.size()))
 					.build());
 			}
+
+			children.add(LineComponent.builder()
+				.leftFont(boldFont)
+				.left("Particles:")
+				.build());
+
+			children.add(LineComponent.builder()
+				.left("Active:")
+				.right(format("%d / %d", particlesManager.getStatAlive(), particlesManager.getStatMax()))
+				.build());
+
+			children.add(LineComponent.builder()
+				.left("In view:")
+				.right(format("%d / %d", particlesManager.getStatInView(), particlesManager.getStatInViewMax()))
+				.build());
+
+			children.add(LineComponent.builder()
+				.left("Emitters:")
+				.right(String.valueOf(particlesManager.getStatVisibleEmitters()))
+				.build());
+
+			children.add(LineComponent.builder()
+				.left("Spawns/s:")
+				.right(String.valueOf(particlesManager.getStatSpawnsPerSec()))
+				.build());
+
+			long particleCpuNs = particlesManager.getStatLastCpuNanos();
+			if (particleCpuNs > 0)
+			{
+				addTiming("Particles CPU", particleCpuNs, false);
+			}
+			long particleCpuAvgNs = particlesManager.getStatCpuNanos();
+			if (particleCpuAvgNs > 0 && particleCpuAvgNs != particleCpuNs)
+			{
+				addTiming("Particles CPU (1s avg)", particleCpuAvgNs, false);
+			}
+			addTiming("Render particles", timings[Timer.RENDER_PARTICLES.ordinal()], false);
 
 			children.add(LineComponent.builder()
 				.leftFont(boldFont)

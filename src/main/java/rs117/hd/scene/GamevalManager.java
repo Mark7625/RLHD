@@ -3,6 +3,7 @@ package rs117.hd.scene;
 import com.google.gson.TypeAdapter;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -102,14 +103,7 @@ public class GamevalManager {
 		if (!loaded)
 			log.warn("Gamevals not loaded yet, will fail to resolve name.");
 
-		return GAMEVALS
-			.get(key)
-			.entrySet()
-			.stream()
-			.filter(e -> e.getValue() == id)
-			.map(Map.Entry::getKey)
-			.findFirst()
-			.orElse(null);
+		return resolveName(key, id);
 	}
 
 	@Slf4j
@@ -208,6 +202,84 @@ public class GamevalManager {
 
 	public static class SpotanimAdapter extends GamevalAdapter {
 		public SpotanimAdapter() {
+			super(SPOTANIM_KEY);
+		}
+	}
+
+	@Slf4j
+	@RequiredArgsConstructor
+	private abstract static class SingleGamevalAdapter extends TypeAdapter<Integer> {
+		private final String key;
+
+		@Override
+		public Integer read(JsonReader in) throws IOException {
+			JsonToken type = in.peek();
+			if (type == JsonToken.NULL) {
+				in.nextNull();
+				return -1;
+			}
+			if (type == JsonToken.NUMBER) {
+				int id = in.nextInt();
+				if (id != -1) {
+					log.debug("Adding raw {} ID: {} at {}. Should be replaced with a gameval.", key, id, GsonUtils.location(in));
+				}
+				return id;
+			}
+			if (type == JsonToken.STRING) {
+				String name = in.nextString();
+				Integer id = GAMEVALS.get(key).get(name);
+				if (id == null) {
+					log.error("Missing {} gameval: {} at {}", key, name, GsonUtils.location(in), new Throwable());
+					return -1;
+				}
+				return id;
+			}
+			log.error("Unexpected {} gameval type: {} at {}", key, type, GsonUtils.location(in), new Throwable());
+			in.skipValue();
+			return -1;
+		}
+
+		@Override
+		public void write(JsonWriter out, Integer id) throws IOException {
+			if (id == null || id < 0) {
+				out.value(-1);
+				return;
+			}
+			String name = resolveName(key, id);
+			if (name != null) {
+				out.value(name);
+			} else {
+				log.warn("Exporting {} ID with no corresponding gameval: {}", key, id);
+				out.value(id);
+			}
+		}
+	}
+
+	private static String resolveName(String key, int id) {
+		return GAMEVALS
+			.get(key)
+			.entrySet()
+			.stream()
+			.filter(e -> e.getValue() == id)
+			.map(Map.Entry::getKey)
+			.findFirst()
+			.orElse(null);
+	}
+
+	public static class ObjectIdAdapter extends SingleGamevalAdapter {
+		public ObjectIdAdapter() {
+			super(OBJECT_KEY);
+		}
+	}
+
+	public static class NpcIdAdapter extends SingleGamevalAdapter {
+		public NpcIdAdapter() {
+			super(NPC_KEY);
+		}
+	}
+
+	public static class SpotanimIdAdapter extends SingleGamevalAdapter {
+		public SpotanimIdAdapter() {
 			super(SPOTANIM_KEY);
 		}
 	}

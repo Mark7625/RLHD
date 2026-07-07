@@ -12221,6 +12221,24 @@
     ]
   },
   {
+    "name": "WES",
+    "aabbs": [
+      [ 2723, 3740, 2761, 3704 ]
+    ]
+  },
+  {
+    "name": "WILD_FALLOFF_ASH_AREA",
+    "aabbs": [
+      [ 3780, 3782, 3816, 3814 ]
+    ]
+  },
+  {
+    "name": "TEST_SNOW_AREA",
+    "aabbs": [
+      [ 3235, 9869, 3240, 9865 ]
+    ]
+  },
+  {
     "name": "OVERWORLD",
     "areas": [
       "MAINLAND",
