@@ -991,6 +991,30 @@ class EmitterStore
 	}
 
 	/**
+	 * Bulk-add piece-local faces (triangle selection). Persists once.
+	 */
+	synchronized void addFaces(String profileKey, Collection<Integer> localFaces)
+	{
+		EmitterProfile profile = profiles.get(profileKey);
+		if (profile != null && profile.getFaces().addAll(localFaces))
+		{
+			save();
+		}
+	}
+
+	/**
+	 * Bulk-remove piece-local faces (triangle selection). Persists once.
+	 */
+	synchronized void removeFaces(String profileKey, Collection<Integer> localFaces)
+	{
+		EmitterProfile profile = profiles.get(profileKey);
+		if (profile != null && profile.getFaces().removeAll(localFaces))
+		{
+			save();
+		}
+	}
+
+	/**
 	 * Copy particle style into the profile's linked definition.
 	 */
 	synchronized void updateStyle(String profileKey, EmitterProfile settingsSource)
@@ -1091,6 +1115,7 @@ class EmitterStore
 		}
 		profile.setSignature(newSignature);
 		profile.getVertices().clear();
+		profile.getFaces().clear();
 		save();
 	}
 

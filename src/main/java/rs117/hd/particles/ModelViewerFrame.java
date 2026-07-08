@@ -79,9 +79,11 @@ class ModelViewerFrame extends JFrame
 
 		void boxSelected(@Nullable String profileKey, Set<Integer> vertices, boolean add);
 
+		void facesSelected(@Nullable String profileKey, Set<Integer> faces, boolean add);
+
 		void selectionChanged();
 
-		/** True when the viewport should accept vertex picking (player or loaded target mesh). */
+		/** True when the viewport should accept vertex/face picking (player or loaded target mesh). */
 		boolean canPickVertices();
 
 		@Nullable
@@ -298,9 +300,11 @@ class ModelViewerFrame extends JFrame
 	private JLayeredPane viewportLayer;
 	private final JButton viewportPlaceBtn = new JButton("Place");
 	private final JButton viewportRemoveBtn = new JButton("Remove");
+	private final JButton viewportPickVertsBtn = new JButton("Vert");
+	private final JButton viewportPickFacesBtn = new JButton("Face");
 	private final JButton viewportColorsBtn = new JButton("Colors");
 	private final JButton viewportWireBtn = new JButton("Wire");
-	private final JButton viewportVertsBtn = new JButton("Verts");
+	private final JButton viewportVertsBtn = new JButton("Dots");
 	private final DefaultListModel<String> rowListModel = new DefaultListModel<>();
 	private final JList<String> rowList;
 	private final JButton emittersNavBtn = new JButton("Emitters");
@@ -488,11 +492,18 @@ class ModelViewerFrame extends JFrame
 		setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 		this.callbacks = callbacks;
 
-		viewport = new ViewportPanel((vertices, add) ->
+		viewport = new ViewportPanel((indices, add, faces) ->
 		{
 			if (callbacks.canPickVertices())
 			{
-				callbacks.boxSelected(selectedProfileKey, vertices, add);
+				if (faces)
+				{
+					callbacks.facesSelected(selectedProfileKey, indices, add);
+				}
+				else
+				{
+					callbacks.boxSelected(selectedProfileKey, indices, add);
+				}
 			}
 		});
 		viewportToolbar = buildViewportToolbar();
@@ -904,11 +915,19 @@ class ModelViewerFrame extends JFrame
 		ParticleDevUi.styleSegmentButton(viewportRemoveBtn, false);
 		JPanel modeBar = ParticleDevUi.segmentBar(viewportPlaceBtn, viewportRemoveBtn);
 		modeBar.setOpaque(false);
-		viewportModeBar = modeBar;
 		viewportPlaceBtn.setToolTipText("Click or shift+drag to add emitters (P)");
 		viewportRemoveBtn.setToolTipText("Click or ctrl+drag to remove emitters (D)");
 		viewportPlaceBtn.addActionListener(e -> setViewportInteractionMode(ViewportPanel.InteractionMode.PLACE));
 		viewportRemoveBtn.addActionListener(e -> setViewportInteractionMode(ViewportPanel.InteractionMode.REMOVE));
+
+		ParticleDevUi.styleSegmentButton(viewportPickVertsBtn, true);
+		ParticleDevUi.styleSegmentButton(viewportPickFacesBtn, false);
+		JPanel pickBar = ParticleDevUi.segmentBar(viewportPickVertsBtn, viewportPickFacesBtn);
+		pickBar.setOpaque(false);
+		viewportPickVertsBtn.setToolTipText("Pick vertices (T)");
+		viewportPickFacesBtn.setToolTipText("Pick triangles / faces (F)");
+		viewportPickVertsBtn.addActionListener(e -> setViewportPickMode(ViewportPanel.PickMode.VERTEX));
+		viewportPickFacesBtn.addActionListener(e -> setViewportPickMode(ViewportPanel.PickMode.FACE));
 		updateViewportModeUi();
 
 		ParticleDevUi.styleSegmentButton(viewportColorsBtn, false);
@@ -942,16 +961,22 @@ class ModelViewerFrame extends JFrame
 		cameraBar.add(sideBtn);
 		cameraBar.add(behindBtn);
 
+		JPanel leftBar = new JPanel(new GridLayout(1, 0, 8, 0));
+		leftBar.setOpaque(false);
+		leftBar.add(modeBar);
+		leftBar.add(pickBar);
+		viewportModeBar = leftBar;
+
 		JPanel centerBar = new JPanel(new GridLayout(1, 0, 4, 0));
 		centerBar.setOpaque(false);
 		centerBar.add(viewportColorsBtn);
 		centerBar.add(viewportWireBtn);
 		centerBar.add(viewportVertsBtn);
 
-		bar.add(modeBar, BorderLayout.WEST);
+		bar.add(leftBar, BorderLayout.WEST);
 		bar.add(centerBar, BorderLayout.CENTER);
 		bar.add(cameraBar, BorderLayout.EAST);
-		bar.setPreferredSize(new Dimension(480, ParticleDevUi.FIELD_HEIGHT + 12));
+		bar.setPreferredSize(new Dimension(560, ParticleDevUi.FIELD_HEIGHT + 12));
 		return bar;
 	}
 
@@ -982,11 +1007,20 @@ class ModelViewerFrame extends JFrame
 		updateViewportModeUi();
 	}
 
+	private void setViewportPickMode(ViewportPanel.PickMode mode)
+	{
+		viewport.setPickMode(mode);
+		updateViewportModeUi();
+	}
+
 	private void updateViewportModeUi()
 	{
 		ViewportPanel.InteractionMode mode = viewport.getInteractionMode();
 		ParticleDevUi.styleSegmentButton(viewportPlaceBtn, mode == ViewportPanel.InteractionMode.PLACE);
 		ParticleDevUi.styleSegmentButton(viewportRemoveBtn, mode == ViewportPanel.InteractionMode.REMOVE);
+		ViewportPanel.PickMode pick = viewport.getPickMode();
+		ParticleDevUi.styleSegmentButton(viewportPickVertsBtn, pick == ViewportPanel.PickMode.VERTEX);
+		ParticleDevUi.styleSegmentButton(viewportPickFacesBtn, pick == ViewportPanel.PickMode.FACE);
 	}
 
 	private void installViewportKeyBindings()
@@ -1011,6 +1045,26 @@ class ModelViewerFrame extends JFrame
 			public void actionPerformed(java.awt.event.ActionEvent e)
 			{
 				setViewportInteractionMode(ViewportPanel.InteractionMode.REMOVE);
+			}
+		});
+
+		input.put(KeyStroke.getKeyStroke("T"), "viewportPickVerts");
+		actions.put("viewportPickVerts", new AbstractAction()
+		{
+			@Override
+			public void actionPerformed(java.awt.event.ActionEvent e)
+			{
+				setViewportPickMode(ViewportPanel.PickMode.VERTEX);
+			}
+		});
+
+		input.put(KeyStroke.getKeyStroke("F"), "viewportPickFaces");
+		actions.put("viewportPickFaces", new AbstractAction()
+		{
+			@Override
+			public void actionPerformed(java.awt.event.ActionEvent e)
+			{
+				setViewportPickMode(ViewportPanel.PickMode.FACE);
 			}
 		});
 
@@ -2395,6 +2449,7 @@ class ModelViewerFrame extends JFrame
 			viewport.setSnapshot(null);
 			viewport.setEmptyMessage("Weather emitters have no mesh preview.");
 			viewport.setSelectedVertices(Set.of());
+			viewport.setSelectedFaces(Set.of());
 			wornItemsCombo.setModel(new DefaultComboBoxModel<>(new String[0]));
 		}
 		else
@@ -2833,5 +2888,13 @@ class ModelViewerFrame extends JFrame
 	void setSelectedVertices(Set<Integer> selectedVertices)
 	{
 		viewport.setSelectedVertices(selectedVertices);
+	}
+
+	/**
+	 * Update the highlighted emitter faces. Must be called on the Swing EDT.
+	 */
+	void setSelectedFaces(Set<Integer> selectedFaces)
+	{
+		viewport.setSelectedFaces(selectedFaces);
 	}
 }

@@ -110,6 +110,18 @@ class ModelSnapshot
 		}
 
 		/**
+		 * Piece-local face rank: position in {@link #faces} (ascending global
+		 * face order within the component). Stable across recomposition.
+		 *
+		 * @return local face index, or -1
+		 */
+		int localFaceIndexOf(int globalFace)
+		{
+			int pos = Arrays.binarySearch(faces, globalFace);
+			return pos < 0 ? -1 : pos;
+		}
+
+		/**
 		 * Does this signature identify the piece, in either handedness?
 		 */
 		boolean matchesSignature(String sig)
@@ -235,6 +247,26 @@ class ModelSnapshot
 			return null;
 		}
 		return pieces.get(vertexToPiece[vertex]);
+	}
+
+	/**
+	 * @return the piece a face belongs to, or null when the face is unused
+	 */
+	@Nullable
+	Piece pieceContainingFace(int face)
+	{
+		if (face < 0 || face >= faceCount)
+		{
+			return null;
+		}
+		for (Piece piece : pieces)
+		{
+			if (piece.localFaceIndexOf(face) >= 0)
+			{
+				return piece;
+			}
+		}
+		return null;
 	}
 
 	/**

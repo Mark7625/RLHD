@@ -23,6 +23,7 @@ class ParticleEmitter
 	private boolean wip = false;
 	private String folderId;
 	private Set<Integer> vertices = new HashSet<>();
+	private Set<Integer> faces = new HashSet<>();
 	private Set<Integer> itemIds = new HashSet<>();
 	private Set<Integer> animationIds = new HashSet<>();
 	private String animFrames = "";
@@ -48,6 +49,7 @@ class ParticleEmitter
 		emitter.wip = profile.isWip();
 		emitter.folderId = profile.getFolderId();
 		emitter.vertices = new HashSet<>(profile.getVertices());
+		emitter.faces = new HashSet<>(profile.getFaces());
 		emitter.itemIds = new HashSet<>(profile.getItemIds());
 		emitter.animationIds = new HashSet<>(profile.getAnimationIds());
 		emitter.animFrames = profile.getAnimFrames();
@@ -74,6 +76,7 @@ class ParticleEmitter
 		profile.setWip(wip);
 		profile.setFolderId(folderId);
 		profile.setVertices(new HashSet<>(vertices));
+		profile.setFaces(faces == null ? new HashSet<>() : new HashSet<>(faces));
 		profile.setItemIds(new HashSet<>(itemIds));
 		profile.setAnimationIds(new HashSet<>(animationIds));
 		profile.setAnimFrames(animFrames == null ? "" : animFrames);

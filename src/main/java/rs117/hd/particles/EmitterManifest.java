@@ -59,6 +59,7 @@ final class EmitterManifest
 		private int objectId = -1;
 		private String signature;
 		private Set<Integer> vertices = new HashSet<>();
+		private Set<Integer> faces = new HashSet<>();
 		private Set<Integer> itemIds = new HashSet<>();
 		private Set<Integer> animationIds = new HashSet<>();
 		private String animFrames = "";
@@ -76,6 +77,7 @@ final class EmitterManifest
 			profile.setObjectId(objectId);
 			profile.setSignature(signature);
 			profile.setVertices(new HashSet<>(vertices));
+			profile.setFaces(faces == null ? new HashSet<>() : new HashSet<>(faces));
 			profile.setItemIds(new HashSet<>(itemIds));
 			profile.setAnimationIds(new HashSet<>(animationIds));
 			profile.setAnimFrames(animFrames);
@@ -94,6 +96,7 @@ final class EmitterManifest
 			placement.objectId = profile.getObjectId();
 			placement.signature = profile.getSignature();
 			placement.vertices = new HashSet<>(profile.getVertices());
+			placement.faces = new HashSet<>(profile.getFaces());
 			placement.itemIds = new HashSet<>(profile.getItemIds());
 			placement.animationIds = new HashSet<>(profile.getAnimationIds());
 			placement.animFrames = profile.getAnimFrames();
@@ -115,6 +118,7 @@ final class EmitterManifest
 	{
 		private String signature;
 		private Set<Integer> vertices = new HashSet<>();
+		private Set<Integer> faces = new HashSet<>();
 		private Set<Integer> itemIds = new HashSet<>();
 		private Set<Integer> animationIds = new HashSet<>();
 		private String animFrames = "";
@@ -131,6 +135,7 @@ final class EmitterManifest
 			profile.setTargetType(EmitterProfile.TARGET_PLAYER);
 			profile.setSignature(signature);
 			profile.setVertices(new HashSet<>(vertices));
+			profile.setFaces(faces == null ? new HashSet<>() : new HashSet<>(faces));
 			profile.setItemIds(new HashSet<>(itemIds));
 			profile.setAnimationIds(new HashSet<>(animationIds));
 			profile.setAnimFrames(animFrames);
@@ -148,6 +153,7 @@ final class EmitterManifest
 			PlayerEmitterPlacement placement = new PlayerEmitterPlacement();
 			placement.signature = profile.getSignature();
 			placement.vertices = new HashSet<>(profile.getVertices());
+			placement.faces = new HashSet<>(profile.getFaces());
 			placement.itemIds = new HashSet<>(profile.getItemIds());
 			placement.animationIds = new HashSet<>(profile.getAnimationIds());
 			placement.animFrames = profile.getAnimFrames();
@@ -172,6 +178,7 @@ final class EmitterManifest
 		private int npcId = -1;
 		private String signature;
 		private Set<Integer> vertices = new HashSet<>();
+		private Set<Integer> faces = new HashSet<>();
 		private Set<Integer> itemIds = new HashSet<>();
 		private Set<Integer> animationIds = new HashSet<>();
 		private String animFrames = "";
@@ -189,6 +196,7 @@ final class EmitterManifest
 			profile.setNpcId(npcId);
 			profile.setSignature(signature);
 			profile.setVertices(new HashSet<>(vertices));
+			profile.setFaces(faces == null ? new HashSet<>() : new HashSet<>(faces));
 			profile.setItemIds(new HashSet<>(itemIds));
 			profile.setAnimationIds(new HashSet<>(animationIds));
 			profile.setAnimFrames(animFrames);
@@ -207,6 +215,7 @@ final class EmitterManifest
 			placement.npcId = profile.getNpcId();
 			placement.signature = profile.getSignature();
 			placement.vertices = new HashSet<>(profile.getVertices());
+			placement.faces = new HashSet<>(profile.getFaces());
 			placement.itemIds = new HashSet<>(profile.getItemIds());
 			placement.animationIds = new HashSet<>(profile.getAnimationIds());
 			placement.animFrames = profile.getAnimFrames();
@@ -279,6 +288,9 @@ final class EmitterManifest
 		@SerializedName("graphic")
 		@JsonAdapter(GamevalManager.SpotanimIdAdapter.class)
 		private int graphicId = -1;
+		private String signature;
+		private Set<Integer> vertices = new HashSet<>();
+		private Set<Integer> faces = new HashSet<>();
 		private int offsetX;
 		private int offsetY;
 		private int offsetZ;
@@ -291,6 +303,9 @@ final class EmitterManifest
 		{
 			profile.setTargetType(EmitterProfile.TARGET_GRAPHIC);
 			profile.setGraphicId(graphicId);
+			profile.setSignature(signature);
+			profile.setVertices(vertices == null ? new HashSet<>() : new HashSet<>(vertices));
+			profile.setFaces(faces == null ? new HashSet<>() : new HashSet<>(faces));
 			profile.setOffsetX(offsetX);
 			profile.setOffsetY(offsetY);
 			profile.setOffsetZ(offsetZ);
@@ -304,6 +319,9 @@ final class EmitterManifest
 		{
 			GraphicEmitterPlacement placement = new GraphicEmitterPlacement();
 			placement.graphicId = profile.getGraphicId();
+			placement.signature = profile.getSignature();
+			placement.vertices = new HashSet<>(profile.getVertices());
+			placement.faces = new HashSet<>(profile.getFaces());
 			placement.offsetX = profile.getOffsetX();
 			placement.offsetY = profile.getOffsetY();
 			placement.offsetZ = profile.getOffsetZ();

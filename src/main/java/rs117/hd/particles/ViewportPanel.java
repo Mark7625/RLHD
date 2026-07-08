@@ -14,7 +14,6 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import javax.annotation.Nullable;
 import javax.swing.JPanel;
 import rs117.hd.utils.ColorUtils;
@@ -22,9 +21,10 @@ import rs117.hd.utils.HDUtils;
 
 /**
  * Software-rendered wireframe viewer for a {@link ModelSnapshot}.
- * Drag to orbit, scroll to zoom, hover to inspect a vertex. Place mode
+ * Drag to orbit, scroll to zoom, hover to inspect a vertex or face. Place mode
  * click-adds emitters; Remove mode click-removes them. Shift+drag box-adds;
- * Ctrl+drag box-removes (modifiers override the active mode).
+ * Ctrl+drag box-removes (modifiers override the active mode). Vert/Face
+ * pick modes choose vertices or triangles.
  */
 class ViewportPanel extends JPanel
 {
@@ -39,6 +39,28 @@ class ViewportPanel extends JPanel
 		{
 			this.label = label;
 		}
+	}
+
+	enum PickMode
+	{
+		VERTEX("verts"),
+		FACE("faces");
+
+		final String label;
+
+		PickMode(String label)
+		{
+			this.label = label;
+		}
+	}
+
+	/**
+	 * Bulk add/remove of mesh elements: vertices or faces depending on pick mode.
+	 */
+	@FunctionalInterface
+	interface SelectionHandler
+	{
+		void accept(Set<Integer> indices, boolean add, boolean faces);
 	}
 
 	enum CameraPreset
@@ -62,14 +84,17 @@ class ViewportPanel extends JPanel
 	private static final Color COLOR_VERTEX = new Color(170, 170, 180);
 	private static final Color COLOR_HOVER = new Color(0, 220, 255);
 	private static final Color COLOR_SELECTED = new Color(255, 152, 31);
+	private static final Color COLOR_FACE_SELECTED = new Color(255, 152, 31, 90);
+	private static final Color COLOR_FACE_HOVER = new Color(0, 220, 255, 70);
 	private static final Color COLOR_TEXT = new Color(200, 200, 205);
 	private static final int HIT_RADIUS = 10;
 	/** Placeholder HSL for textured faces (matches SceneUploader convention). */
 	private static final int TEXTURED_FACE_HSL = 90;
 
-	private final BiConsumer<Set<Integer>, Boolean> onBoxSelected;
+	private final SelectionHandler onBoxSelected;
 
 	private InteractionMode interactionMode = InteractionMode.PLACE;
+	private PickMode pickMode = PickMode.VERTEX;
 
 	private String emptyMessage = "No model snapshot. Log in and press Refresh.";
 	private ModelSnapshot snapshot;
@@ -100,7 +125,9 @@ class ViewportPanel extends JPanel
 	private boolean[] vertexVisible;
 
 	private int hoverVertex = -1;
+	private int hoverFace = -1;
 	private Set<Integer> selectedVertices = new HashSet<>();
+	private Set<Integer> selectedFaces = new HashSet<>();
 	private boolean labelAll;
 	private boolean showFaceColors = false;
 	private boolean showWireframe = true;
@@ -118,7 +145,7 @@ class ViewportPanel extends JPanel
 	private int[] colorBufferPixels;
 	private float[] depthBuffer;
 
-	ViewportPanel(BiConsumer<Set<Integer>, Boolean> onBoxSelected)
+	ViewportPanel(SelectionHandler onBoxSelected)
 	{
 		this.onBoxSelected = onBoxSelected;
 		setBackground(COLOR_BACKGROUND);
@@ -171,21 +198,45 @@ class ViewportPanel extends JPanel
 					finishBoxSelection();
 					return;
 				}
-				if (!dragged && hoverVertex != -1)
+				if (!dragged)
 				{
 					boolean add = interactionMode == InteractionMode.PLACE;
-					onBoxSelected.accept(Set.of(hoverVertex), add);
+					if (pickMode == PickMode.FACE)
+					{
+						if (hoverFace != -1)
+						{
+							onBoxSelected.accept(Set.of(hoverFace), add, true);
+						}
+					}
+					else if (hoverVertex != -1)
+					{
+						onBoxSelected.accept(Set.of(hoverVertex), add, false);
+					}
 				}
 			}
 
 			@Override
 			public void mouseMoved(MouseEvent e)
 			{
-				int previous = hoverVertex;
-				hoverVertex = findVertexAt(e.getX(), e.getY());
-				if (hoverVertex != previous)
+				if (pickMode == PickMode.FACE)
 				{
-					repaint();
+					int previous = hoverFace;
+					hoverFace = findFaceAt(e.getX(), e.getY());
+					hoverVertex = -1;
+					if (hoverFace != previous)
+					{
+						repaint();
+					}
+				}
+				else
+				{
+					int previous = hoverVertex;
+					hoverVertex = findVertexAt(e.getX(), e.getY());
+					hoverFace = -1;
+					if (hoverVertex != previous)
+					{
+						repaint();
+					}
 				}
 			}
 
@@ -211,6 +262,7 @@ class ViewportPanel extends JPanel
 		}
 		this.pieceFilter = -1;
 		this.hoverVertex = -1;
+		this.hoverFace = -1;
 		this.overrideX = null;
 		this.overrideY = null;
 		this.overrideZ = null;
@@ -233,6 +285,7 @@ class ViewportPanel extends JPanel
 	{
 		this.pieceFilter = pieceIndex;
 		this.hoverVertex = -1;
+		this.hoverFace = -1;
 		fit();
 		repaint();
 	}
@@ -240,6 +293,12 @@ class ViewportPanel extends JPanel
 	void setSelectedVertices(Set<Integer> vertices)
 	{
 		this.selectedVertices = new HashSet<>(vertices);
+		repaint();
+	}
+
+	void setSelectedFaces(Set<Integer> faces)
+	{
+		this.selectedFaces = new HashSet<>(faces);
 		repaint();
 	}
 
@@ -301,6 +360,22 @@ class ViewportPanel extends JPanel
 		if (interactionMode != mode)
 		{
 			interactionMode = mode;
+			repaint();
+		}
+	}
+
+	PickMode getPickMode()
+	{
+		return pickMode;
+	}
+
+	void setPickMode(PickMode mode)
+	{
+		if (pickMode != mode)
+		{
+			pickMode = mode;
+			hoverVertex = -1;
+			hoverFace = -1;
 			repaint();
 		}
 	}
@@ -420,6 +495,32 @@ class ViewportPanel extends JPanel
 		}
 
 		Set<Integer> inside = new HashSet<>();
+		if (pickMode == PickMode.FACE)
+		{
+			int[] f1 = snapshot.getFaceIndices1();
+			int[] f2 = snapshot.getFaceIndices2();
+			int[] f3 = snapshot.getFaceIndices3();
+			for (int f = 0; f < snapshot.getFaceCount(); f++)
+			{
+				int a = f1[f], b = f2[f], c = f3[f];
+				if (!vertexVisible[a])
+				{
+					continue;
+				}
+				int cx = (screenX[a] + screenX[b] + screenX[c]) / 3;
+				int cy = (screenY[a] + screenY[b] + screenY[c]) / 3;
+				if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1)
+				{
+					inside.add(f);
+				}
+			}
+			if (!inside.isEmpty())
+			{
+				onBoxSelected.accept(inside, !boxRemove, true);
+			}
+			return;
+		}
+
 		for (int v = 0; v < snapshot.getVertexCount(); v++)
 		{
 			if (vertexVisible[v]
@@ -431,7 +532,7 @@ class ViewportPanel extends JPanel
 		}
 		if (!inside.isEmpty())
 		{
-			onBoxSelected.accept(inside, !boxRemove);
+			onBoxSelected.accept(inside, !boxRemove, false);
 		}
 	}
 
@@ -459,6 +560,55 @@ class ViewportPanel extends JPanel
 			}
 		}
 		return best;
+	}
+
+	/**
+	 * Front-most projected triangle under the cursor (highest viewDepth wins).
+	 */
+	private int findFaceAt(int x, int y)
+	{
+		if (snapshot == null)
+		{
+			return -1;
+		}
+		int[] f1 = snapshot.getFaceIndices1();
+		int[] f2 = snapshot.getFaceIndices2();
+		int[] f3 = snapshot.getFaceIndices3();
+		int best = -1;
+		float bestDepth = Float.NEGATIVE_INFINITY;
+		for (int f = 0; f < snapshot.getFaceCount(); f++)
+		{
+			int a = f1[f], b = f2[f], c = f3[f];
+			if (!vertexVisible[a])
+			{
+				continue;
+			}
+			if (!pointInTriangle(x, y, screenX[a], screenY[a], screenX[b], screenY[b], screenX[c], screenY[c]))
+			{
+				continue;
+			}
+			float depth = (viewDepth[a] + viewDepth[b] + viewDepth[c]) / 3f;
+			if (depth > bestDepth)
+			{
+				bestDepth = depth;
+				best = f;
+			}
+		}
+		return best;
+	}
+
+	private static boolean pointInTriangle(int px, int py,
+		int x0, int y0, int x1, int y1, int x2, int y2)
+	{
+		float area = edge(x1, y1, x2, y2, x0, y0);
+		if (area == 0)
+		{
+			return false;
+		}
+		float w0 = edge(x1, y1, x2, y2, px, py) / area;
+		float w1 = edge(x2, y2, x0, y0, px, py) / area;
+		float w2 = edge(x0, y0, x1, y1, px, py) / area;
+		return w0 >= 0 && w1 >= 0 && w2 >= 0;
 	}
 
 	@Override
@@ -505,6 +655,8 @@ class ViewportPanel extends JPanel
 			}
 		}
 
+		paintFaceHighlights(g2, f1, f2, f3);
+
 		if (showVertices)
 		{
 			g2.setColor(COLOR_VERTEX);
@@ -524,7 +676,7 @@ class ViewportPanel extends JPanel
 				drawMarkedVertex(g2, v, COLOR_SELECTED, labelAll);
 			}
 		}
-		if (hoverVertex != -1 && !selectedVertices.contains(hoverVertex))
+		if (pickMode == PickMode.VERTEX && hoverVertex != -1 && !selectedVertices.contains(hoverVertex))
 		{
 			drawMarkedVertex(g2, hoverVertex, COLOR_HOVER, true);
 		}
@@ -546,15 +698,55 @@ class ViewportPanel extends JPanel
 		// Status line
 		g2.setColor(COLOR_TEXT);
 		g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 12f));
+		int emitterCount = selectedVertices.size() + selectedFaces.size();
 		String status = snapshot.getVertexCount() + " vertices, " + snapshot.getFaceCount() + " faces"
 			+ (pieceFilter >= 0 ? "  |  piece " + (pieceFilter + 1) : "")
 			+ (showFaceColors ? "  |  colors" : "")
 			+ (!showWireframe ? "  |  no wire" : "")
 			+ (!showVertices ? "  |  no verts" : "")
-			+ "  |  emitters: " + selectedVertices.size()
+			+ "  |  emitters: " + emitterCount
+			+ "  |  " + pickMode.label
 			+ "  |  " + interactionMode.label.toLowerCase()
-			+ " (P/D)  |  shift+drag add, ctrl+drag remove  |  drag orbits";
+			+ " (P/D)  |  F=faces T=verts  |  shift+drag add, ctrl+drag remove  |  drag orbits";
 		g2.drawString(status, 10, getHeight() - 10);
+	}
+
+	private void paintFaceHighlights(Graphics2D g2, int[] f1, int[] f2, int[] f3)
+	{
+		for (int f : selectedFaces)
+		{
+			if (f >= 0 && f < snapshot.getFaceCount())
+			{
+				fillFace(g2, f1[f], f2[f], f3[f], COLOR_FACE_SELECTED);
+			}
+		}
+		if (pickMode == PickMode.FACE && hoverFace != -1 && !selectedFaces.contains(hoverFace))
+		{
+			fillFace(g2, f1[hoverFace], f2[hoverFace], f3[hoverFace], COLOR_FACE_HOVER);
+			g2.setColor(COLOR_HOVER);
+			g2.setStroke(new BasicStroke(1.5f));
+			int a = f1[hoverFace], b = f2[hoverFace], c = f3[hoverFace];
+			g2.drawLine(screenX[a], screenY[a], screenX[b], screenY[b]);
+			g2.drawLine(screenX[b], screenY[b], screenX[c], screenY[c]);
+			g2.drawLine(screenX[c], screenY[c], screenX[a], screenY[a]);
+			g2.setStroke(new BasicStroke(1f));
+			g2.drawString("f" + hoverFace,
+				(screenX[a] + screenX[b] + screenX[c]) / 3 + 6,
+				(screenY[a] + screenY[b] + screenY[c]) / 3 - 4);
+		}
+	}
+
+	private void fillFace(Graphics2D g2, int a, int b, int c, Color fill)
+	{
+		if (!vertexVisible[a])
+		{
+			return;
+		}
+		g2.setColor(fill);
+		g2.fillPolygon(
+			new int[]{screenX[a], screenX[b], screenX[c]},
+			new int[]{screenY[a], screenY[b], screenY[c]},
+			3);
 	}
 
 	private void paintFaceColors(Graphics2D g2)

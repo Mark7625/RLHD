@@ -83,6 +83,12 @@ class EmitterProfile
 	private String folderId = null;
 	private Set<Integer> vertices = new HashSet<>();
 	/**
+	 * Piece-local face indices (rank in the piece's ascending face list) to
+	 * emit across. Empty = vertex-only placement. Survives model recomposition
+	 * the same way {@link #vertices} do.
+	 */
+	private Set<Integer> faces = new HashSet<>();
+	/**
 	 * Item IDs gating this profile: only active while one of these items is
 	 * worn. Empty = active on any item with this mesh. Distinguishes recolored
 	 * variants that share the same model.
@@ -309,6 +315,7 @@ class EmitterProfile
 		c.wip = wip;
 		c.folderId = folderId;
 		c.vertices = new HashSet<>(vertices);
+		c.faces = new HashSet<>(faces);
 		c.definitionId = definitionId;
 		c.itemIds = new HashSet<>(itemIds);
 		c.animationIds = new HashSet<>(animationIds);

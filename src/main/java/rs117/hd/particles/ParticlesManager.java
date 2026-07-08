@@ -92,13 +92,18 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	static final int MAX_DRAWN_PARTICLES = 2048;
 	/**
 	 * One enabled emitter profile resolved onto the current model: its style,
-	 * global vertex indices, spawn accumulator, and its slice of the shared
-	 * anchor arrays.
+	 * global vertex indices, optional face triangles, spawn accumulator, and
+	 * its slice of the shared anchor arrays.
 	 */
 	private static class ActiveEmitter
 	{
 		final ParticleStyle style;
 		final int[] vertices;
+		/**
+		 * Global face corner triplets {@code [f0a,f0b,f0c, f1a,...]}; empty
+		 * when the profile has no triangle emitters.
+		 */
+		final int[] faceCorners;
 		/**
 		 * Feathering: emitter vertices chained along mesh edges, as anchor
 		 * offsets within this emitter; null when feathering is off.
@@ -130,11 +135,24 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		float cx;
 		float cy;
 		float cz;
+		/**
+		 * World positions of face corners this tick ({@code faceCorners.length}),
+		 * filled during anchoring so emit can barycentric-sample triangles.
+		 */
+		float[] faceWorldX = EMPTY_FLOATS;
+		float[] faceWorldY = EMPTY_FLOATS;
+		float[] faceWorldZ = EMPTY_FLOATS;
 
 		ActiveEmitter(ParticleStyle style, int[] vertices, int[][] chains)
 		{
+			this(style, vertices, EMPTY_INTS, chains);
+		}
+
+		ActiveEmitter(ParticleStyle style, int[] vertices, int[] faceCorners, int[][] chains)
+		{
 			this.style = style;
 			this.vertices = vertices;
+			this.faceCorners = faceCorners == null ? EMPTY_INTS : faceCorners;
 			this.chains = chains;
 			int extra = 0;
 			if (chains != null && style.getInterpolation() > 0)
@@ -172,7 +190,20 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				samplePosOf = null;
 			}
 		}
+
+		int faceCount()
+		{
+			return faceCorners.length / 3;
+		}
+
+		boolean hasEmitSites()
+		{
+			return anchorCount > 0 || faceCount() > 0;
+		}
 	}
+
+	private static final int[] EMPTY_INTS = new int[0];
+	private static final float[] EMPTY_FLOATS = new float[0];
 
 	@Inject
 	private Client client;
@@ -352,6 +383,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		@Nullable
 		final String signature;
 		final int[] locals;
+		final int[] faceLocals;
 		/**
 		 * One resolved emitter per matching piece: vertices are model
 		 * globals, chains present when feathering.
@@ -359,11 +391,12 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		final List<ActiveEmitter> resolved = new ArrayList<>();
 		boolean resolveTried;
 
-		GraphicEmitter(ParticleStyle style, @Nullable String signature, int[] locals)
+		GraphicEmitter(ParticleStyle style, @Nullable String signature, int[] locals, int[] faceLocals)
 		{
 			this.style = style;
 			this.signature = signature;
 			this.locals = locals;
+			this.faceLocals = faceLocals == null ? EMPTY_INTS : faceLocals;
 		}
 	}
 
@@ -1705,6 +1738,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				emitter.anchorCount += end - pe.anchorCount;
 				pe.anchorCount = end;
 			}
+			fillFaceWorldPositions(emitter, model.getVerticesX(), model.getVerticesY(), model.getVerticesZ(),
+				vertexCount, style.getOffsetX(), style.getOffsetY(), style.getOffsetZ(),
+				lp.getX(), lp.getY(), playerBaseZ, sin, cos, true);
 		}
 
 		if (pe.trailCarry.length < pe.anchorXs.length)
@@ -1849,7 +1885,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				if (!EmitterProfile.TARGET_PLAYER.equals(profile.getTargetType())
 					|| !piece.matchesSignature(profile.getSignature())
 					|| !ParticlesPanel.effectiveEnabled(profile, folders)
-					|| profile.getVertices().isEmpty()
+					|| (profile.getVertices().isEmpty() && profile.getFaces().isEmpty())
 					|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
 				{
 					continue;
@@ -1865,28 +1901,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					continue;
 				}
 
-				List<Integer> globals = new ArrayList<>();
-				int[] pieceVerts = piece.verticesFor(profile.getSignature());
-				for (int local : profile.getVertices())
+				ActiveEmitter emitter = resolveMeshEmitter(style, snapshot, piece, profile);
+				if (emitter != null)
 				{
-					if (local >= 0 && local < pieceVerts.length)
-					{
-						globals.add(pieceVerts[local]);
-					}
+					pe.emitters.add(emitter);
 				}
-				if (globals.isEmpty())
-				{
-					continue;
-				}
-				int[] vertices = new int[globals.size()];
-				for (int i = 0; i < vertices.length; i++)
-				{
-					vertices[i] = globals.get(i);
-				}
-				int[][] chains = style.getFeatherStrength() > 0 || style.getInterpolation() > 0
-					? buildChains(snapshot, piece, vertices)
-					: null;
-				pe.emitters.add(new ActiveEmitter(style, vertices, chains));
 			}
 		}
 
@@ -1924,6 +1943,77 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			presentSignatures = present;
 			refreshViewer();
 		}
+	}
+
+	/**
+	 * Resolve piece-local vertex and face indices into a live {@link ActiveEmitter}.
+	 * Returns null when neither set maps onto the piece.
+	 */
+	@Nullable
+	private ActiveEmitter resolveMeshEmitter(ParticleStyle style, ModelSnapshot snapshot,
+		ModelSnapshot.Piece piece, EmitterProfile profile)
+	{
+		int[] pieceVerts = piece.verticesFor(profile.getSignature());
+		List<Integer> globals = new ArrayList<>();
+		for (int local : profile.getVertices())
+		{
+			if (local >= 0 && local < pieceVerts.length)
+			{
+				globals.add(pieceVerts[local]);
+			}
+		}
+		int[] faceCorners = resolveFaceCorners(snapshot, piece, profile.getFaces());
+		if (globals.isEmpty() && faceCorners.length == 0)
+		{
+			return null;
+		}
+		int[] vertices = new int[globals.size()];
+		for (int i = 0; i < vertices.length; i++)
+		{
+			vertices[i] = globals.get(i);
+		}
+		int[][] chains = vertices.length > 0 && (style.getFeatherStrength() > 0 || style.getInterpolation() > 0)
+			? buildChains(snapshot, piece, vertices)
+			: null;
+		return new ActiveEmitter(style, vertices, faceCorners, chains);
+	}
+
+	/**
+	 * Map piece-local face ranks to global corner triple streams for emission.
+	 */
+	private static int[] resolveFaceCorners(ModelSnapshot snapshot, ModelSnapshot.Piece piece,
+		Set<Integer> localFaces)
+	{
+		if (localFaces == null || localFaces.isEmpty())
+		{
+			return EMPTY_INTS;
+		}
+		int[] pieceFaces = piece.getFaces();
+		int[] f1 = snapshot.getFaceIndices1();
+		int[] f2 = snapshot.getFaceIndices2();
+		int[] f3 = snapshot.getFaceIndices3();
+		List<Integer> corners = new ArrayList<>(localFaces.size() * 3);
+		for (int local : localFaces)
+		{
+			if (local < 0 || local >= pieceFaces.length)
+			{
+				continue;
+			}
+			int globalFace = pieceFaces[local];
+			corners.add(f1[globalFace]);
+			corners.add(f2[globalFace]);
+			corners.add(f3[globalFace]);
+		}
+		if (corners.isEmpty())
+		{
+			return EMPTY_INTS;
+		}
+		int[] out = new int[corners.size()];
+		for (int i = 0; i < out.length; i++)
+		{
+			out[i] = corners.get(i);
+		}
+		return out;
 	}
 
 	/**
@@ -2146,7 +2236,19 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 	private void emit(float dt, PlayerEmitters pe, Actor player)
 	{
-		if (pe.anchorCount == 0)
+		boolean anySites = pe.anchorCount > 0;
+		if (!anySites)
+		{
+			for (ActiveEmitter emitter : pe.emitters)
+			{
+				if (emitter.faceCount() > 0)
+				{
+					anySites = true;
+					break;
+				}
+			}
+		}
+		if (!anySites)
 		{
 			for (ActiveEmitter emitter : pe.emitters)
 			{
@@ -2177,7 +2279,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 		for (ActiveEmitter emitter : pe.emitters)
 		{
-			if (emitter.anchorCount == 0)
+			if (!emitter.hasEmitSites())
 			{
 				emitter.carry = 0;
 				continue;
@@ -2215,6 +2317,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					spawnFeathered(pe, emitter, lifeScale);
 				}
+				else if (shouldSpawnOnFace(emitter))
+				{
+					spawnOnFace(emitter, lifeScale);
+				}
 				else
 				{
 					int a = emitter.anchorStart + random.nextInt(emitter.anchorCount);
@@ -2225,7 +2331,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			// Distance-based emission: spread spawns evenly along each
 			// anchor's movement this tick, for ribbon-like weapon trails
 			float density = style.getTrailDensity() * densityScale;
-			if (density <= 0)
+			if (density <= 0 || emitter.anchorCount == 0)
 			{
 				continue;
 			}
@@ -2250,6 +2356,111 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				}
 			}
 		}
+	}
+
+
+	/**
+	 * World-space corner positions for face emission this tick.
+	 * {@code actorSpace}: player/NPC offsets (X east-in-model, Y height as -Z,
+	 * Z north-in-model) with yaw; scene objects use pre-rotated verts and
+	 * world-axis offsets instead.
+	 */
+	private void fillFaceWorldPositions(ActiveEmitter emitter, float[] vx, float[] vy, float[] vz,
+		int vertexCount, float offX, float offY, float offZ,
+		float baseX, float baseY, float baseZ, int sin, int cos, boolean actorSpace)
+	{
+		int n = emitter.faceCorners.length;
+		if (n == 0)
+		{
+			emitter.faceWorldX = EMPTY_FLOATS;
+			emitter.faceWorldY = EMPTY_FLOATS;
+			emitter.faceWorldZ = EMPTY_FLOATS;
+			return;
+		}
+		if (emitter.faceWorldX.length != n)
+		{
+			emitter.faceWorldX = new float[n];
+			emitter.faceWorldY = new float[n];
+			emitter.faceWorldZ = new float[n];
+		}
+		for (int i = 0; i < n; i++)
+		{
+			int v = emitter.faceCorners[i];
+			if (v < 0 || v >= vertexCount)
+			{
+				emitter.faceWorldX[i] = baseX;
+				emitter.faceWorldY[i] = baseY;
+				emitter.faceWorldZ[i] = baseZ;
+				continue;
+			}
+			if (actorSpace)
+			{
+				float mx = vx[v] + offX;
+				float my = vy[v] - offZ;
+				float mz = vz[v] + offY;
+				emitter.faceWorldX[i] = baseX + (mz * sin + mx * cos) / 65536f;
+				emitter.faceWorldY[i] = baseY + (mz * cos - mx * sin) / 65536f;
+				emitter.faceWorldZ[i] = baseZ + my;
+			}
+			else
+			{
+				emitter.faceWorldX[i] = baseX + vx[v] + offX;
+				emitter.faceWorldY[i] = baseY + vz[v] + offY;
+				emitter.faceWorldZ[i] = baseZ + vy[v] - offZ;
+			}
+		}
+	}
+
+	/** Prefer face sites proportionally when both verts and faces are present. */
+	private boolean shouldSpawnOnFace(ActiveEmitter emitter)
+	{
+		int faces = emitter.faceCount();
+		if (faces <= 0)
+		{
+			return false;
+		}
+		if (emitter.anchorCount <= 0)
+		{
+			return true;
+		}
+		return random.nextInt(emitter.anchorCount + faces) < faces;
+	}
+
+	/** Uniform barycentric sample on a random authored triangle. */
+	private void spawnOnFace(ActiveEmitter emitter, float lifeScale)
+	{
+		int faces = emitter.faceCount();
+		if (faces <= 0 || emitter.faceWorldX.length < faces * 3)
+		{
+			return;
+		}
+		int f = random.nextInt(faces) * 3;
+		float u = random.nextFloat();
+		float v = random.nextFloat();
+		if (u + v > 1f)
+		{
+			u = 1f - u;
+			v = 1f - v;
+		}
+		float w = 1f - u - v;
+		float x = emitter.faceWorldX[f] * w + emitter.faceWorldX[f + 1] * u + emitter.faceWorldX[f + 2] * v;
+		float y = emitter.faceWorldY[f] * w + emitter.faceWorldY[f + 1] * u + emitter.faceWorldY[f + 2] * v;
+		float z = emitter.faceWorldZ[f] * w + emitter.faceWorldZ[f + 1] * u + emitter.faceWorldZ[f + 2] * v;
+		if (needsCentroid(emitter.style) && emitter.anchorCount == 0)
+		{
+			float sx = 0, sy = 0, sz = 0;
+			for (int i = 0; i < emitter.faceWorldX.length; i++)
+			{
+				sx += emitter.faceWorldX[i];
+				sy += emitter.faceWorldY[i];
+				sz += emitter.faceWorldZ[i];
+			}
+			float inv = 1f / emitter.faceWorldX.length;
+			emitter.cx = sx * inv;
+			emitter.cy = sy * inv;
+			emitter.cz = sz * inv;
+		}
+		spawnAt(emitter.style, x, y, z, emitter.cx, emitter.cy, emitter.cz, lifeScale);
 	}
 
 	/**
@@ -2771,7 +2982,8 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			EmitterProfile profile = entry.getValue();
 			if (!profile.isObjectTarget() || profile.getObjectId() != object.getId()
-				|| !ParticlesPanel.effectiveEnabled(profile, folders) || profile.getVertices().isEmpty()
+				|| !ParticlesPanel.effectiveEnabled(profile, folders)
+				|| (profile.getVertices().isEmpty() && profile.getFaces().isEmpty())
 				|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
 			{
 				continue;
@@ -2790,26 +3002,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					continue;
 				}
-				List<Integer> globals = new ArrayList<>();
-				int[] pieceVerts = piece.verticesFor(profile.getSignature());
-				for (int local : profile.getVertices())
+				ActiveEmitter emitter = resolveMeshEmitter(style, snapshot, piece, profile);
+				if (emitter != null)
 				{
-					if (local >= 0 && local < pieceVerts.length)
-					{
-						globals.add(pieceVerts[local]);
-					}
-				}
-				if (!globals.isEmpty())
-				{
-					int[] vertices = new int[globals.size()];
-					for (int i = 0; i < vertices.length; i++)
-					{
-						vertices[i] = globals.get(i);
-					}
-					int[][] chains = style.getFeatherStrength() > 0 || style.getInterpolation() > 0
-						? buildChains(snapshot, piece, vertices)
-						: null;
-					oe.emitters.add(new ActiveEmitter(style, vertices, chains));
+					oe.emitters.add(emitter);
 				}
 			}
 		}
@@ -2931,6 +3127,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				emitter.anchorCount += end - oe.anchorCount;
 				oe.anchorCount = end;
 			}
+			fillFaceWorldPositions(emitter, vx, vy, vz, vertexCount,
+				style.getOffsetX(), style.getOffsetY(), style.getOffsetZ(),
+				lp.getX(), lp.getY(), baseZ, 0, 65536, false);
 		}
 		if (markers && oe.anchorCount > 0)
 		{
@@ -2950,7 +3149,19 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 	private void emitObject(float dt, ObjectEmitters oe)
 	{
-		if (oe.anchorCount == 0)
+		boolean anySites = oe.anchorCount > 0;
+		if (!anySites)
+		{
+			for (ActiveEmitter emitter : oe.emitters)
+			{
+				if (emitter.faceCount() > 0)
+				{
+					anySites = true;
+					break;
+				}
+			}
+		}
+		if (!anySites)
 		{
 			for (ActiveEmitter emitter : oe.emitters)
 			{
@@ -2962,7 +3173,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		float densityScale = config.particleDensity().getFactor();
 		for (ActiveEmitter emitter : oe.emitters)
 		{
-			if (emitter.anchorCount == 0)
+			if (!emitter.hasEmitSites())
 			{
 				emitter.carry = 0;
 				continue;
@@ -2988,6 +3199,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				if (feathered)
 				{
 					spawnFeatheredStatic(oe.anchorXs, oe.anchorYs, oe.anchorZs, emitter, true);
+				}
+				else if (shouldSpawnOnFace(emitter))
+				{
+					spawnOnFace(emitter, 1f);
 				}
 				else
 				{
@@ -3279,8 +3494,14 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				locals[i++] = local;
 			}
+			int[] faceLocals = new int[profile.getFaces().size()];
+			i = 0;
+			for (int local : profile.getFaces())
+			{
+				faceLocals[i++] = local;
+			}
 			graphicEmitters.computeIfAbsent(profile.getGraphicId(), k -> new ArrayList<>())
-				.add(new GraphicEmitter(style, profile.getSignature(), locals));
+				.add(new GraphicEmitter(style, profile.getSignature(), locals, faceLocals));
 		}
 	}
 
@@ -3524,11 +3745,16 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private void resolveGraphic(GraphicEmitter ge, Model model)
 	{
 		ge.resolveTried = true;
-		if (ge.signature == null || ge.locals.length == 0)
+		if (ge.signature == null || (ge.locals.length == 0 && ge.faceLocals.length == 0))
 		{
 			return;
 		}
 		ModelSnapshot snapshot = ModelSnapshot.capture(model);
+		Set<Integer> faceSet = new HashSet<>();
+		for (int local : ge.faceLocals)
+		{
+			faceSet.add(local);
+		}
 		for (ModelSnapshot.Piece piece : snapshot.getPieces())
 		{
 			if (!piece.matchesSignature(ge.signature))
@@ -3544,7 +3770,8 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					globals.add(pieceVerts[local]);
 				}
 			}
-			if (globals.isEmpty())
+			int[] faceCorners = resolveFaceCorners(snapshot, piece, faceSet);
+			if (globals.isEmpty() && faceCorners.length == 0)
 			{
 				continue;
 			}
@@ -3553,10 +3780,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				vertices[i] = globals.get(i);
 			}
-			int[][] chains = ge.style.getFeatherStrength() > 0 || ge.style.getInterpolation() > 0
+			int[][] chains = vertices.length > 0
+				&& (ge.style.getFeatherStrength() > 0 || ge.style.getInterpolation() > 0)
 				? buildChains(snapshot, piece, vertices)
 				: null;
-			ge.resolved.add(new ActiveEmitter(ge.style, vertices, chains));
+			ge.resolved.add(new ActiveEmitter(ge.style, vertices, faceCorners, chains));
 		}
 	}
 
@@ -3673,6 +3901,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					return true;
 				}
 				spawnAt(style, gfxAnchorXs[a], gfxAnchorYs[a], gfxAnchorZs[a], 1f);
+			}
+			else if (emitter.faceCount() > 0
+				&& (emitter.vertices.length == 0 || random.nextInt(emitter.vertices.length + emitter.faceCount()) < emitter.faceCount()))
+			{
+				fillFaceWorldPositions(emitter, vx, vy, vz, model.getVerticesCount(),
+					0, 0, 0, ox, oy, oz, sin, cos, true);
+				spawnOnFace(emitter, 1f);
 			}
 			else
 			{
@@ -3870,7 +4105,8 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			EmitterProfile profile = entry.getValue();
 			if (!profile.isNpcTarget() || profile.getNpcId() != npc.getId()
-				|| !ParticlesPanel.effectiveEnabled(profile, folders) || profile.getVertices().isEmpty()
+				|| !ParticlesPanel.effectiveEnabled(profile, folders)
+				|| (profile.getVertices().isEmpty() && profile.getFaces().isEmpty())
 				|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
 			{
 				continue;
@@ -3886,26 +4122,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					continue;
 				}
-				List<Integer> globals = new ArrayList<>();
-				int[] pieceVerts = piece.verticesFor(profile.getSignature());
-				for (int local : profile.getVertices())
+				ActiveEmitter emitter = resolveMeshEmitter(style, snapshot, piece, profile);
+				if (emitter != null)
 				{
-					if (local >= 0 && local < pieceVerts.length)
-					{
-						globals.add(pieceVerts[local]);
-					}
-				}
-				if (!globals.isEmpty())
-				{
-					int[] vertices = new int[globals.size()];
-					for (int i = 0; i < vertices.length; i++)
-					{
-						vertices[i] = globals.get(i);
-					}
-					int[][] chains = style.getFeatherStrength() > 0 || style.getInterpolation() > 0
-						? buildChains(snapshot, piece, vertices)
-						: null;
-					pe.emitters.add(new ActiveEmitter(style, vertices, chains));
+					pe.emitters.add(emitter);
 				}
 			}
 		}
@@ -4948,6 +5168,54 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	}
 
 	@Override
+	public void facesSelected(@Nullable String profileKey, Set<Integer> globalFaces, boolean add)
+	{
+		ModelSnapshot snapshot = viewerSnapshot;
+		if (snapshot == null)
+		{
+			return;
+		}
+
+		Map<String, List<Integer>> localsByTarget = new HashMap<>();
+		for (int globalFace : globalFaces)
+		{
+			ModelSnapshot.Piece piece = snapshot.pieceContainingFace(globalFace);
+			if (piece == null)
+			{
+				continue;
+			}
+			int local = piece.localFaceIndexOf(globalFace);
+			if (local < 0)
+			{
+				continue;
+			}
+			String target = add
+				? targetProfileKey(profileKey, piece)
+				: existingProfileKey(profileKey, piece);
+			if (target != null)
+			{
+				localsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(local);
+			}
+		}
+
+		for (Map.Entry<String, List<Integer>> entry : localsByTarget.entrySet())
+		{
+			if (add)
+			{
+				store.addFaces(entry.getKey(), entry.getValue());
+			}
+			else
+			{
+				store.removeFaces(entry.getKey(), entry.getValue());
+			}
+		}
+		refreshViewerRows(localsByTarget.size() == 1
+			? localsByTarget.keySet().iterator().next()
+			: viewerFrame != null ? viewerFrame.getSelectedProfileKey() : null);
+		refreshViewerMarkers();
+	}
+
+	@Override
 	public void selectionChanged()
 	{
 		refreshViewerMarkers();
@@ -5154,6 +5422,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 		viewerFrame.setSelectedVertices(selectedGlobals(snapshot, viewerFrame.getSelectedProfileKey()));
+		viewerFrame.setSelectedFaces(selectedFaceGlobals(snapshot, viewerFrame.getSelectedProfileKey()));
 		viewerFrame.refreshStyleEditor();
 	}
 
@@ -5183,6 +5452,36 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					if (local >= 0 && local < piece.getVertices().length)
 					{
 						out.add(piece.getVertices()[local]);
+					}
+				}
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Global face indices of stored triangle emitters on the snapshot.
+	 */
+	private Set<Integer> selectedFaceGlobals(ModelSnapshot snapshot, @Nullable String profileKey)
+	{
+		Map<String, EmitterProfile> profiles = store.snapshotAll();
+		Set<Integer> out = new HashSet<>();
+		for (ModelSnapshot.Piece piece : snapshot.getPieces())
+		{
+			for (Map.Entry<String, EmitterProfile> entry : profiles.entrySet())
+			{
+				if (!piece.getSignature().equals(entry.getValue().getSignature())
+					|| !matchesViewerContext(entry.getValue())
+					|| (profileKey != null && !profileKey.equals(entry.getKey())))
+				{
+					continue;
+				}
+				int[] pieceFaces = piece.getFaces();
+				for (int local : entry.getValue().getFaces())
+				{
+					if (local >= 0 && local < pieceFaces.length)
+					{
+						out.add(pieceFaces[local]);
 					}
 				}
 			}
