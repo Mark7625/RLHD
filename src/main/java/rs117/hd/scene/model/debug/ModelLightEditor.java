@@ -1,7 +1,6 @@
 package rs117.hd.scene.model.debug;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,14 +22,19 @@ import net.runelite.api.events.GameTick;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
+import rs117.hd.scene.LightManager;
+import rs117.hd.scene.lights.LightDefinition;
+import rs117.hd.scene.lights.debug.LightMeshCapture;
+import rs117.hd.scene.lights.debug.LightViewerFrame;
 import rs117.hd.scene.model.ModelLightManager;
 import rs117.hd.scene.model.ModelLightProfile;
 import rs117.hd.scene.model.ModelLightStore;
 import rs117.hd.scene.model.ModelSnapshot;
+import rs117.hd.scene.model.TriangleAnchor;
 
 @Singleton
 @Slf4j
-public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
+public class ModelLightEditor implements LightViewerFrame.Callbacks {
 	@Inject
 	private Client client;
 
@@ -46,23 +50,35 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 	@Inject
 	private ModelLightStore store;
 
+	@Inject
+	private LightManager lightManager;
+
+	@Inject
+	private LightMeshCapture meshCapture;
+
 	@Nullable
-	private ModelLightViewerFrame frame;
+	private LightViewerFrame frame;
 
 	@Nullable
 	private ModelSnapshot viewerSnapshot;
 
 	private boolean eventBusRegistered;
+	private int captureMode;
+	private int viewerObjectId = -1;
+	private int viewerNpcId = -1;
+	private int viewerGraphicId = -1;
 
 	private int recordTicksLeft;
 	@Nullable
 	private ModelSnapshot recordSnapshot;
-	private final List<float[]> recordXs = new ArrayList<>();
-	private final List<float[]> recordYs = new ArrayList<>();
-	private final List<float[]> recordZs = new ArrayList<>();
-	private final List<Integer> recordFrames = new ArrayList<>();
+	private final java.util.List<float[]> recordXs = new java.util.ArrayList<>();
+	private final java.util.List<float[]> recordYs = new java.util.ArrayList<>();
+	private final java.util.List<float[]> recordZs = new java.util.ArrayList<>();
+	private final java.util.List<Integer> recordFrames = new java.util.ArrayList<>();
 
 	private final Map<Integer, String> pieceProfileKeys = new HashMap<>();
+	private List<LightMeshCapture.Sighting> cachedObjectSightings = List.of();
+	private List<LightMeshCapture.Sighting> cachedNpcSightings = List.of();
 
 	@Getter
 	private String selectedLightDescription = "Torch";
@@ -74,7 +90,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 	public void openViewer(@Nullable String profileKey) {
 		SwingUtilities.invokeLater(() -> {
 			if (frame == null) {
-				frame = new ModelLightViewerFrame(this);
+				frame = new LightViewerFrame(this);
 				store.setImportListener(() -> SwingUtilities.invokeLater(this::onStoreImported));
 				modelLightManager.setLightDefinitionsListener(
 					() -> SwingUtilities.invokeLater(this::refreshLightDescriptions));
@@ -85,6 +101,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			}
 			frame.setVisible(true);
 			frame.toFront();
+			frame.setLightDescriptions(modelLightManager.getAvailableLightDescriptions());
 			refreshSnapshot();
 		});
 	}
@@ -95,27 +112,155 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 	}
 
 	private void refreshLightDescriptions() {
-		if (frame != null)
+		if (frame != null) {
 			frame.setLightDescriptions(modelLightManager.getAvailableLightDescriptions());
+			frame.refreshDefinitionList(null);
+		}
+	}
+
+	@Override
+	public void refreshSightings() {
+		clientThread.invokeLater(() -> {
+			cachedObjectSightings = meshCapture.objectSightings();
+			cachedNpcSightings = meshCapture.npcSightings();
+			SwingUtilities.invokeLater(() -> {
+				if (frame != null)
+					frame.rebuildSightingsList();
+			});
+		});
 	}
 
 	@Override
 	public void refreshSnapshot() {
-		clientThread.invokeLater(() -> {
-			ModelLightManager.ViewerCapture capture = modelLightManager.captureViewerSnapshot();
-			ModelSnapshot snapshot = capture != null ? capture.snapshot : null;
-			boolean startRecording = capture != null && capture.startRecording;
-			SwingUtilities.invokeLater(() -> {
-				if (frame == null)
-					return;
-				viewerSnapshot = snapshot;
-				pieceProfileKeys.clear();
-				if (startRecording)
-					startRecording();
-				frame.setLightDescriptions(modelLightManager.getAvailableLightDescriptions());
-				frame.setSnapshot(viewerSnapshot, "Player");
-			});
+		SwingUtilities.invokeLater(() -> {
+			if (frame != null)
+				frame.setLoading(true);
 		});
+		clientThread.invokeLater(() -> {
+			if (captureMode == 1 || captureMode == 2) {
+				cachedObjectSightings = meshCapture.objectSightings();
+				cachedNpcSightings = meshCapture.npcSightings();
+			}
+			captureSnapshot();
+		});
+	}
+
+	private void captureSnapshot() {
+		LightMeshCapture.CaptureResult capture;
+		switch (captureMode) {
+			case 1:
+				capture = viewerObjectId >= 0
+					? meshCapture.captureObject(viewerObjectId)
+					: meshCapture.capturePlayer();
+				break;
+			case 2:
+				capture = viewerNpcId >= 0
+					? meshCapture.captureNpc(viewerNpcId)
+					: meshCapture.capturePlayer();
+				break;
+			case 3:
+				capture = viewerGraphicId >= 0
+					? meshCapture.captureGraphic(viewerGraphicId)
+					: meshCapture.capturePlayer();
+				break;
+			default:
+				capture = meshCapture.capturePlayer();
+		}
+		LightMeshCapture.CaptureResult result = capture;
+		SwingUtilities.invokeLater(() -> {
+			if (frame == null)
+				return;
+			frame.setLoading(false);
+			if (result == null && captureMode > 0) {
+				frame.showHint("Could not capture mesh — try Refresh, then Load again");
+				return;
+			}
+			viewerSnapshot = result != null ? result.snapshot : null;
+			pieceProfileKeys.clear();
+			if (result != null && result.startRecording)
+				startRecording();
+			frame.setSnapshot(viewerSnapshot, result != null ? result.targetLabel : null);
+		});
+	}
+
+	@Override
+	public void playerViewSelected() {
+		captureMode = 0;
+		viewerObjectId = -1;
+		viewerNpcId = -1;
+		viewerGraphicId = -1;
+	}
+
+	@Override
+	public void loadObject(int objectId) {
+		if (captureMode == 1 && viewerObjectId == objectId && viewerSnapshot != null)
+			return;
+		captureMode = 1;
+		viewerObjectId = objectId;
+		viewerNpcId = -1;
+		viewerGraphicId = -1;
+		SwingUtilities.invokeLater(() -> {
+			if (frame != null)
+				frame.setLoading(true);
+		});
+		clientThread.invokeLater(this::captureSnapshot);
+	}
+
+	@Override
+	public void loadNpc(int npcId) {
+		if (captureMode == 2 && viewerNpcId == npcId && viewerSnapshot != null)
+			return;
+		captureMode = 2;
+		viewerNpcId = npcId;
+		viewerObjectId = -1;
+		viewerGraphicId = -1;
+		SwingUtilities.invokeLater(() -> {
+			if (frame != null)
+				frame.setLoading(true);
+		});
+		clientThread.invokeLater(this::captureSnapshot);
+	}
+
+	@Override
+	public void loadGraphic(int graphicId) {
+		if (captureMode == 3 && viewerGraphicId == graphicId && viewerSnapshot != null)
+			return;
+		captureMode = 3;
+		viewerGraphicId = graphicId;
+		viewerObjectId = -1;
+		viewerNpcId = -1;
+		SwingUtilities.invokeLater(() -> {
+			if (frame != null)
+				frame.setLoading(true);
+		});
+		clientThread.invokeLater(this::captureSnapshot);
+	}
+
+	@Override
+	public void poseAnimation(int animId) {
+		if (viewerNpcId < 0) {
+			if (frame != null)
+				frame.selectAnchor(null);
+			JOptionPane.showMessageDialog(
+				frame,
+				"Pose needs an NPC snapshot. Load an NPC first.",
+				"Pose",
+				JOptionPane.INFORMATION_MESSAGE
+			);
+			return;
+		}
+		// NPC cache posing can be added later; for now use live recording
+		refreshSnapshot();
+	}
+
+	@Override
+	public List<LightMeshCapture.Sighting> getObjectSightings() {
+		return cachedObjectSightings;
+	}
+
+	@Override
+	public List<LightMeshCapture.Sighting> getNpcSightings() {
+		return cachedNpcSightings;
 	}
 
 	@Override
@@ -137,11 +282,9 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			}
 			return out;
 		}
-
 		Set<Integer> out = new HashSet<>();
-		for (int i = 0; i < viewerSnapshot.getPieces().size(); i++) {
+		for (int i = 0; i < viewerSnapshot.getPieces().size(); i++)
 			out.addAll(litFaces(i));
-		}
 		return out;
 	}
 
@@ -165,11 +308,9 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			}
 			return out;
 		}
-
 		Set<Integer> out = new HashSet<>();
-		for (int i = 0; i < viewerSnapshot.getPieces().size(); i++) {
+		for (int i = 0; i < viewerSnapshot.getPieces().size(); i++)
 			out.addAll(litVertices(i));
-		}
 		return out;
 	}
 
@@ -181,15 +322,13 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 	}
 
 	private void startRecording() {
-		recordSnapshot = null;
+		releaseRecordSnapshot();
 		recordXs.clear();
 		recordYs.clear();
 		recordZs.clear();
 		recordFrames.clear();
-
 		if (client.getLocalPlayer() == null)
 			return;
-
 		recordTicksLeft = 150;
 	}
 
@@ -197,7 +336,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 		recordTicksLeft--;
 		Player local = client.getLocalPlayer();
 		Model model = local == null ? null : local.getModel();
-		int frame = local == null ? -1 : local.getAnimationFrame();
+		int frameNum = local == null ? -1 : local.getAnimationFrame();
 
 		if (model == null && !recordXs.isEmpty())
 			recordTicksLeft = 0;
@@ -207,7 +346,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 				recordSnapshot = ModelSnapshot.capture(model);
 			if (model.getVerticesCount() != recordSnapshot.getVertexCount()) {
 				recordTicksLeft = 0;
-				recordSnapshot = null;
+				releaseRecordSnapshot();
 				recordXs.clear();
 				recordYs.clear();
 				recordZs.clear();
@@ -218,7 +357,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			recordXs.add(Arrays.copyOf(model.getVerticesX(), count));
 			recordYs.add(Arrays.copyOf(model.getVerticesY(), count));
 			recordZs.add(Arrays.copyOf(model.getVerticesZ(), count));
-			recordFrames.add(frame);
+			recordFrames.add(frameNum);
 		}
 
 		if (recordTicksLeft == 0)
@@ -246,6 +385,14 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			if (frame != null)
 				frame.setRecording(xs, ys, zs, frames);
 		});
+		snapshot.release();
+	}
+
+	private void releaseRecordSnapshot() {
+		if (recordSnapshot != null) {
+			recordSnapshot.release();
+			recordSnapshot = null;
+		}
 	}
 
 	@Override
@@ -253,10 +400,38 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 		if (viewerSnapshot == null || frame == null)
 			return;
 
+		if (action == ViewportPanel.PickAction.SELECT) {
+			selectAnchorFromPick(pick);
+			return;
+		}
+
 		if (pick.target == ViewportPanel.PickTarget.FACE)
 			handleFacePick(pick, action);
 		else
 			handlePointPick(pick, action);
+	}
+
+	private void selectAnchorFromPick(ViewportPanel.Pick pick) {
+		int preferredPiece = frame.getAppliedPieceIndex();
+		if (pick.target == ViewportPanel.PickTarget.FACE) {
+			ModelSnapshot.Piece piece = viewerSnapshot.pieceForFace(pick.globalIndex, preferredPiece);
+			if (piece == null)
+				return;
+			int localFace = piece.localFaceIndex(pick.globalIndex);
+			if (localFace < 0)
+				return;
+			int pieceIndex = viewerSnapshot.getPieces().indexOf(piece);
+			frame.selectAnchor(new LightViewerFrame.AnchorSelection(pieceIndex, localFace, true));
+		} else {
+			ModelSnapshot.Piece piece = viewerSnapshot.pieceForVertex(pick.globalIndex, preferredPiece);
+			if (piece == null)
+				return;
+			int local = piece.localIndexOf(pick.globalIndex);
+			if (local < 0)
+				return;
+			int pieceIndex = viewerSnapshot.getPieces().indexOf(piece);
+			frame.selectAnchor(new LightViewerFrame.AnchorSelection(pieceIndex, local, false));
+		}
 	}
 
 	private void handleFacePick(ViewportPanel.Pick pick, ViewportPanel.PickAction action) {
@@ -279,6 +454,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 				store.setTriangleLightDescription(profileKey, localFace, pickLightDescription());
 			}
 			frame.refreshMarkers();
+			selectAnchorFromPick(pick);
 			return;
 		}
 
@@ -287,8 +463,10 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 
 		if (action == ViewportPanel.PickAction.REMOVE) {
 			store.toggleTriangle(profileKey, localFace, pick.bary0, pick.bary1, pick.bary2);
+			frame.selectAnchor(null);
 		} else if (action == ViewportPanel.PickAction.CHANGE) {
 			store.setTriangleLightDescription(profileKey, localFace, pickLightDescription());
+			selectAnchorFromPick(pick);
 		}
 		frame.refreshMarkers();
 	}
@@ -313,6 +491,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 				store.setVertexLightDescription(profileKey, local, pickLightDescription());
 			}
 			frame.refreshMarkers();
+			selectAnchorFromPick(pick);
 			return;
 		}
 
@@ -321,8 +500,10 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 
 		if (action == ViewportPanel.PickAction.REMOVE) {
 			store.toggleVertex(profileKey, local);
+			frame.selectAnchor(null);
 		} else if (action == ViewportPanel.PickAction.CHANGE) {
 			store.setVertexLightDescription(profileKey, local, pickLightDescription());
+			selectAnchorFromPick(pick);
 		}
 		frame.refreshMarkers();
 	}
@@ -378,6 +559,12 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 	}
 
 	@Override
+	public void anchorSelected(LightViewerFrame.AnchorSelection anchor) {
+		if (frame != null)
+			frame.selectAnchor(anchor);
+	}
+
+	@Override
 	public List<String> getLightDescriptions() {
 		return modelLightManager.getAvailableLightDescriptions();
 	}
@@ -413,29 +600,49 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			return;
 
 		ModelSnapshot.Piece piece = viewerSnapshot.getPieces().get(pieceIndex);
-		Set<Integer> itemIds = parseItemIds(itemIdsText);
 		String trimmedName = name == null ? "" : name.trim();
 		String defaultName = trimmedName.isEmpty() ? "Piece " + (pieceIndex + 1) : trimmedName;
-
-		@Nullable String existingKey = store.findProfileKey(piece.getMeshKey(), itemIds);
 		String profileKey;
-		if (existingKey != null) {
-			profileKey = existingKey;
-			store.setItemIds(profileKey, itemIds);
+
+		if (captureMode == 1 && viewerObjectId >= 0) {
+			@Nullable String existingKey = store.findObjectProfileKey(piece.getMeshKey(), viewerObjectId);
+			if (existingKey != null) {
+				profileKey = existingKey;
+				store.setObjectIds(profileKey, Set.of(viewerObjectId));
+			} else {
+				profileKey = store.ensureProfileForObject(piece.getMeshKey(), defaultName, viewerObjectId);
+			}
+			store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
+		} else if (captureMode == 2 && viewerNpcId >= 0) {
+			@Nullable String existingKey = store.findNpcProfileKey(piece.getMeshKey(), viewerNpcId);
+			if (existingKey != null) {
+				profileKey = existingKey;
+				store.setNpcIds(profileKey, Set.of(viewerNpcId));
+			} else {
+				profileKey = store.ensureProfileForNpc(piece.getMeshKey(), defaultName, viewerNpcId);
+			}
 			store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
 		} else {
-			@Nullable String currentKey = pieceProfileKeys.get(pieceIndex);
-			ModelLightProfile current = currentKey != null ? store.get(currentKey) : null;
-			if (current != null
-				&& piece.getMeshKey().equals(current.getMeshKey())
-				&& !current.isNpcProfile()) {
-				profileKey = currentKey;
+			Set<Integer> itemIds = parseItemIds(itemIdsText);
+			@Nullable String existingKey = store.findProfileKey(piece.getMeshKey(), itemIds);
+			if (existingKey != null) {
+				profileKey = existingKey;
 				store.setItemIds(profileKey, itemIds);
 				store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
 			} else {
-				profileKey = store.ensureProfileFor(piece.getMeshKey(), defaultName, itemIds);
-				if (!trimmedName.isEmpty())
-					store.rename(profileKey, trimmedName);
+				@Nullable String currentKey = pieceProfileKeys.get(pieceIndex);
+				ModelLightProfile current = currentKey != null ? store.get(currentKey) : null;
+				if (current != null
+					&& piece.getMeshKey().equals(current.getMeshKey())
+					&& isEquipmentProfile(current)) {
+					profileKey = currentKey;
+					store.setItemIds(profileKey, itemIds);
+					store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
+				} else {
+					profileKey = store.ensureProfileFor(piece.getMeshKey(), defaultName, itemIds);
+					if (!trimmedName.isEmpty())
+						store.rename(profileKey, trimmedName);
+				}
 			}
 		}
 
@@ -444,6 +651,21 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			frame.refreshMarkers();
 			frame.rebuildPieceListRow(pieceIndex);
 		}
+	}
+
+	@Override
+	public void applyProfileOffset(int pieceIndex, float x, float y, float z) {
+		String profileKey = profileKeyForPiece(pieceIndex);
+		if (profileKey != null)
+			store.setProfileOffset(profileKey, x, y, z);
+	}
+
+	@Override
+	public float[] getProfileOffset(int pieceIndex) {
+		ModelLightProfile profile = profileForPiece(pieceIndex);
+		if (profile == null)
+			return new float[3];
+		return new float[] { profile.getOffsetX(), profile.getOffsetY(), profile.getOffsetZ() };
 	}
 
 	@Override
@@ -458,7 +680,89 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 	}
 
 	@Override
-	public void saveChanges() {
+	@Nullable
+	public String getAnchorLightDescription(LightViewerFrame.AnchorSelection anchor) {
+		String profileKey = profileKeyForPiece(anchor.pieceIndex);
+		if (profileKey == null)
+			return null;
+		ModelLightProfile profile = store.get(profileKey);
+		if (profile == null)
+			return null;
+		if (anchor.triangle)
+			return profile.lightDescriptionForTriangle(anchor.localIndex);
+		return profile.lightDescriptionForVertex(anchor.localIndex);
+	}
+
+	@Override
+	public void setAnchorLightDescription(LightViewerFrame.AnchorSelection anchor, String description) {
+		String profileKey = profileKeyForPiece(anchor.pieceIndex);
+		if (profileKey == null)
+			return;
+		if (anchor.triangle)
+			store.setTriangleLightDescription(profileKey, anchor.localIndex, description);
+		else
+			store.setVertexLightDescription(profileKey, anchor.localIndex, description);
+		if (frame != null)
+			frame.refreshMarkers();
+	}
+
+	@Override
+	@Nullable
+	public float[] getAnchorBarycentric(LightViewerFrame.AnchorSelection anchor) {
+		if (!anchor.triangle)
+			return null;
+		String profileKey = profileKeyForPiece(anchor.pieceIndex);
+		if (profileKey == null)
+			return null;
+		ModelLightProfile profile = store.get(profileKey);
+		if (profile == null)
+			return null;
+		TriangleAnchor tri = profile.getTriangles().get(anchor.localIndex);
+		if (tri == null)
+			return null;
+		return new float[] { tri.getBary0(), tri.getBary1(), tri.getBary2() };
+	}
+
+	@Override
+	public void setAnchorBarycentric(LightViewerFrame.AnchorSelection anchor, float b0, float b1, float b2) {
+		if (!anchor.triangle)
+			return;
+		String profileKey = profileKeyForPiece(anchor.pieceIndex);
+		if (profileKey != null)
+			store.setTriangleBarycentric(profileKey, anchor.localIndex, b0, b1, b2);
+	}
+
+	@Override
+	public LightDefinition getDefinition(String description) {
+		return lightManager.copyDefinitionForEditor(description);
+	}
+
+	@Override
+	public void saveDefinition(String description, LightDefinition definition) {
+		lightManager.updateDefinitionTemplate(description, definition);
+		if (frame != null)
+			frame.setLightDescriptions(modelLightManager.getAvailableLightDescriptions());
+	}
+
+	@Override
+	public void createDefinition(String description) {
+		LightDefinition def = new LightDefinition();
+		def.description = description;
+		def.color = new float[] { 1f, 0.8f, 0.4f };
+		lightManager.addDefinitionTemplate(def);
+		if (frame != null)
+			frame.setLightDescriptions(modelLightManager.getAvailableLightDescriptions());
+	}
+
+	@Override
+	public void deleteDefinition(String description) {
+		lightManager.removeDefinitionTemplate(description);
+		if (frame != null)
+			frame.setLightDescriptions(modelLightManager.getAvailableLightDescriptions());
+	}
+
+	@Override
+	public void saveModelLights() {
 		try {
 			var path = store.saveToDisk();
 			String resourcePath = "src/main/resources/rs117/hd/scene/model/model_lights.json";
@@ -471,6 +775,27 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			JOptionPane.showMessageDialog(
 				frame,
 				"Failed to save model lights:\n" + ex.getMessage(),
+				"Save failed",
+				JOptionPane.ERROR_MESSAGE
+			);
+		}
+	}
+
+	@Override
+	public void saveLightDefinitions() {
+		try {
+			lightManager.saveDefinitionsToDisk();
+			String path = LightManager.getLightsResourcePath().toString();
+			JOptionPane.showMessageDialog(
+				frame,
+				"Saved to:\n" + path + "\n\nCommit lights.json to ship the changes.",
+				"Lights saved",
+				JOptionPane.INFORMATION_MESSAGE
+			);
+		} catch (IOException ex) {
+			JOptionPane.showMessageDialog(
+				frame,
+				"Failed to save lights.json:\n" + ex.getMessage(),
 				"Save failed",
 				JOptionPane.ERROR_MESSAGE
 			);
@@ -493,8 +818,8 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 		return frame != null ? frame.getPickLightDescription() : selectedLightDescription;
 	}
 
-	private static boolean isPlayerProfile(ModelLightProfile profile) {
-		return !profile.isNpcProfile();
+	private static boolean isEquipmentProfile(ModelLightProfile profile) {
+		return !profile.isNpcProfile() && !profile.isObjectProfile();
 	}
 
 	@Nullable
@@ -507,16 +832,24 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 		}
 
 		String fallback = pieceIndex >= 0 ? "Piece " + (pieceIndex + 1) : piece.getVertices().length + "v";
+		if (captureMode == 1 && viewerObjectId >= 0)
+			return store.ensureProfileForObject(piece.getMeshKey(), fallback, viewerObjectId);
+		if (captureMode == 2 && viewerNpcId >= 0)
+			return store.ensureProfileForNpc(piece.getMeshKey(), fallback, viewerNpcId);
 		Set<Integer> itemIds = frame != null ? parseItemIds(frame.getItemIdsFieldText()) : Set.of();
 		return store.ensureProfileFor(piece.getMeshKey(), fallback, itemIds);
 	}
 
 	@Nullable
-	private ModelLightProfile profileForPiece(int pieceIndex) {
+	private String profileKeyForPiece(int pieceIndex) {
 		if (viewerSnapshot == null || pieceIndex < 0 || pieceIndex >= viewerSnapshot.getPieces().size())
 			return null;
-		ModelSnapshot.Piece piece = viewerSnapshot.getPieces().get(pieceIndex);
-		@Nullable String profileKey = resolveProfileKey(pieceIndex, piece);
+		return resolveProfileKey(pieceIndex, viewerSnapshot.getPieces().get(pieceIndex));
+	}
+
+	@Nullable
+	private ModelLightProfile profileForPiece(int pieceIndex) {
+		@Nullable String profileKey = profileKeyForPiece(pieceIndex);
 		return profileKey == null ? null : store.get(profileKey);
 	}
 
@@ -527,31 +860,65 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 			ModelLightProfile cachedProfile = store.get(cached);
 			if (cachedProfile != null
 				&& piece.getMeshKey().equals(cachedProfile.getMeshKey())
-				&& isPlayerProfile(cachedProfile))
+				&& matchesCaptureTarget(cachedProfile))
 				return cached;
 		}
 
-		Set<Integer> itemIds = frame != null && frame.getAppliedPieceIndex() == pieceIndex
-			? parseItemIds(frame.getItemIdsFieldText())
-			: Set.of();
-
-		@Nullable String exact = store.findProfileKey(piece.getMeshKey(), itemIds);
-		if (exact != null) {
-			ModelLightProfile profile = store.get(exact);
-			if (profile != null && isPlayerProfile(profile)) {
+		if (captureMode == 1 && viewerObjectId >= 0) {
+			@Nullable String exact = store.findObjectProfileKey(piece.getMeshKey(), viewerObjectId);
+			if (exact != null) {
 				pieceProfileKeys.put(pieceIndex, exact);
 				return exact;
 			}
-		}
+			for (Map.Entry<String, ModelLightProfile> entry : store.snapshotAll().entrySet()) {
+				ModelLightProfile profile = entry.getValue();
+				if (!piece.getMeshKey().equals(profile.getMeshKey())
+					|| profile.isNpcProfile()
+					|| !profile.getItemIds().isEmpty()
+					|| !profile.getObjectIds().isEmpty()
+					|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
+					continue;
+				store.setObjectIds(entry.getKey(), Set.of(viewerObjectId));
+				pieceProfileKeys.put(pieceIndex, entry.getKey());
+				return entry.getKey();
+			}
+		} else if (captureMode == 2 && viewerNpcId >= 0) {
+			@Nullable String exact = store.findNpcProfileKey(piece.getMeshKey(), viewerNpcId);
+			if (exact != null) {
+				pieceProfileKeys.put(pieceIndex, exact);
+				return exact;
+			}
+		} else {
+			Set<Integer> itemIds = frame != null && frame.getAppliedPieceIndex() == pieceIndex
+				? parseItemIds(frame.getItemIdsFieldText())
+				: Set.of();
 
-		for (Map.Entry<String, ModelLightProfile> entry : store.snapshotAll().entrySet()) {
-			ModelLightProfile profile = entry.getValue();
-			if (!isPlayerProfile(profile) || !piece.getMeshKey().equals(profile.getMeshKey()))
-				continue;
-			pieceProfileKeys.put(pieceIndex, entry.getKey());
-			return entry.getKey();
+			@Nullable String exact = store.findProfileKey(piece.getMeshKey(), itemIds);
+			if (exact != null) {
+				ModelLightProfile profile = store.get(exact);
+				if (profile != null && isEquipmentProfile(profile)) {
+					pieceProfileKeys.put(pieceIndex, exact);
+					return exact;
+				}
+			}
+
+			for (Map.Entry<String, ModelLightProfile> entry : store.snapshotAll().entrySet()) {
+				ModelLightProfile profile = entry.getValue();
+				if (!isEquipmentProfile(profile) || !piece.getMeshKey().equals(profile.getMeshKey()))
+					continue;
+				pieceProfileKeys.put(pieceIndex, entry.getKey());
+				return entry.getKey();
+			}
 		}
 		return null;
+	}
+
+	private boolean matchesCaptureTarget(ModelLightProfile profile) {
+		if (captureMode == 1 && viewerObjectId >= 0)
+			return profile.isObjectProfile() && profile.getObjectIds().contains(viewerObjectId);
+		if (captureMode == 2 && viewerNpcId >= 0)
+			return profile.isNpcProfile() && profile.getNpcIds().contains(viewerNpcId);
+		return isEquipmentProfile(profile);
 	}
 
 	private static Set<Integer> parseItemIds(@Nullable String text) {
@@ -564,8 +931,7 @@ public class ModelLightEditor implements ModelLightViewerFrame.Callbacks {
 				continue;
 			try {
 				ids.add(Integer.parseInt(trimmed));
-			} catch (NumberFormatException ignored) {
-			}
+			} catch (NumberFormatException ignored) {}
 		}
 		return ids;
 	}

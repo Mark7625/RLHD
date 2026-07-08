@@ -13,6 +13,9 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.geom.Path2D;
+import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -20,12 +23,15 @@ import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import javax.swing.JPanel;
 import rs117.hd.scene.model.ModelSnapshot;
+import rs117.hd.utils.ColorUtils;
+import rs117.hd.utils.HDUtils;
 
 public class ViewportPanel extends JPanel {
 	public enum PickAction {
 		ADD,
 		REMOVE,
-		CHANGE
+		CHANGE,
+		SELECT
 	}
 
 	public enum PickTarget {
@@ -100,6 +106,9 @@ public class ViewportPanel extends JPanel {
 	private EditMode editMode = EditMode.PLACE;
 	private PickTarget pickTarget = PickTarget.FACE;
 	private boolean shaded = true;
+	private boolean showFaceColors = false;
+	private boolean showWireframe = true;
+	private boolean showVertices = true;
 	private boolean showGrid = false;
 	private boolean showGizmo = true;
 
@@ -118,6 +127,13 @@ public class ViewportPanel extends JPanel {
 	private boolean[] vertexVisible;
 	@Nullable
 	private float[] faceShade;
+
+	@Nullable
+	private BufferedImage colorBuffer;
+	@Nullable
+	private int[] colorBufferPixels;
+	@Nullable
+	private float[] depthBuffer;
 
 	@Nullable
 	private Pick hoverPick;
@@ -224,7 +240,11 @@ public class ViewportPanel extends JPanel {
 						&& hoverPick != null;
 					orbitDrag = false;
 					if (pick) {
-						PickAction action = e.getClickCount() >= 2 ? PickAction.CHANGE : PickAction.ADD;
+						PickAction action;
+						if (editMode == EditMode.PLACE && hoverPick != null && isLit(hoverPick))
+							action = PickAction.SELECT;
+						else
+							action = e.getClickCount() >= 2 ? PickAction.CHANGE : PickAction.ADD;
 						onPickClicked.accept(hoverPick, action);
 					}
 					return;
@@ -293,6 +313,18 @@ public class ViewportPanel extends JPanel {
 						break;
 					case KeyEvent.VK_V:
 						setPickTarget(PickTarget.POINT);
+						break;
+					case KeyEvent.VK_T:
+						setPickTarget(PickTarget.FACE);
+						break;
+					case KeyEvent.VK_C:
+						setShowFaceColors(!showFaceColors);
+						break;
+					case KeyEvent.VK_W:
+						setShowWireframe(!showWireframe);
+						break;
+					case KeyEvent.VK_D:
+						setShowVertices(!showVertices);
 						break;
 				}
 			}
@@ -382,6 +414,39 @@ public class ViewportPanel extends JPanel {
 	public void setShaded(boolean shaded) {
 		this.shaded = shaded;
 		repaint();
+	}
+
+	public void setShowFaceColors(boolean showFaceColors) {
+		if (this.showFaceColors != showFaceColors) {
+			this.showFaceColors = showFaceColors;
+			repaint();
+		}
+	}
+
+	public boolean isShowFaceColors() {
+		return showFaceColors;
+	}
+
+	public void setShowWireframe(boolean showWireframe) {
+		if (this.showWireframe != showWireframe) {
+			this.showWireframe = showWireframe;
+			repaint();
+		}
+	}
+
+	public boolean isShowWireframe() {
+		return showWireframe;
+	}
+
+	public void setShowVertices(boolean showVertices) {
+		if (this.showVertices != showVertices) {
+			this.showVertices = showVertices;
+			repaint();
+		}
+	}
+
+	public boolean isShowVertices() {
+		return showVertices;
 	}
 
 	public void setShowGrid(boolean showGrid) {
@@ -484,6 +549,12 @@ public class ViewportPanel extends JPanel {
 	public void setSelectedVertices(Set<Integer> vertices) {
 		this.selectedVertices = new HashSet<>(vertices);
 		repaint();
+	}
+
+	private boolean isLit(Pick pick) {
+		if (pick.target == PickTarget.FACE)
+			return selectedFaces.contains(pick.globalIndex);
+		return selectedVertices.contains(pick.globalIndex);
 	}
 
 	public void setLabelAll(boolean labelAll) {
@@ -729,10 +800,14 @@ public class ViewportPanel extends JPanel {
 			drawGrid(g2);
 		drawWorldAxes(g2);
 
-		if (shaded)
+		if (showFaceColors)
+			paintFaceColors(g2);
+		else if (shaded)
 			drawShadedFaces(g2);
-		drawWireframe(g2);
-		drawVertices(g2);
+		if (showWireframe)
+			drawWireframe(g2);
+		if (showVertices)
+			drawVertices(g2);
 		drawSelection(g2);
 
 		if (boxSelecting)
@@ -782,6 +857,137 @@ public class ViewportPanel extends JPanel {
 		g2.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 180));
 		g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 		g2.drawLine(p0[0], p0[1], p1[0], p1[1]);
+	}
+
+	private void paintFaceColors(Graphics2D g2) {
+		if (snapshot.getFaceColors1() == null || snapshot.getFaceColors1().length < snapshot.getFaceCount())
+			return;
+
+		int w = getWidth();
+		int h = getHeight();
+		if (w <= 0 || h <= 0)
+			return;
+		ensureColorBuffer(w, h);
+		int background = BG_BOTTOM.getRGB();
+		Arrays.fill(colorBufferPixels, background);
+		Arrays.fill(depthBuffer, Float.NEGATIVE_INFINITY);
+
+		int[] f1 = snapshot.getFaceIndices1();
+		int[] f2 = snapshot.getFaceIndices2();
+		int[] f3 = snapshot.getFaceIndices3();
+		int[] colors1 = snapshot.getFaceColors1();
+		int[] colors2 = snapshot.getFaceColors2();
+		int[] colors3 = snapshot.getFaceColors3();
+		int[] cornerArgb = new int[3];
+
+		for (int face : visibleFaces()) {
+			int a = f1[face], b = f2[face], c = f3[face];
+			if (!vertexVisible[a] || !resolveFaceCornerColors(face, colors1, colors2, colors3, cornerArgb))
+				continue;
+			fillGouraudTriangle(
+				colorBufferPixels, depthBuffer, w, h,
+				screenX[a], screenY[a], screenZ[a], cornerArgb[0],
+				screenX[b], screenY[b], screenZ[b], cornerArgb[1],
+				screenX[c], screenY[c], screenZ[c], cornerArgb[2]
+			);
+		}
+		g2.drawImage(colorBuffer, 0, 0, null);
+	}
+
+	private void ensureColorBuffer(int w, int h) {
+		int pixels = w * h;
+		if (colorBuffer == null || colorBuffer.getWidth() != w || colorBuffer.getHeight() != h) {
+			colorBuffer = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+			colorBufferPixels = ((DataBufferInt) colorBuffer.getRaster().getDataBuffer()).getData();
+			depthBuffer = new float[pixels];
+		}
+	}
+
+	private static boolean resolveFaceCornerColors(
+		int face,
+		int[] colors1,
+		int[] colors2,
+		int[] colors3,
+		int[] outArgb
+	) {
+		if (face >= colors1.length)
+			return false;
+		int hsl1 = colors1[face];
+		if (hsl1 == HDUtils.HIDDEN_HSL)
+			return false;
+		int hsl2 = colors2 != null && face < colors2.length ? colors2[face] : hsl1;
+		int hsl3 = colors3 != null && face < colors3.length ? colors3[face] : hsl1;
+		if (colors3 != null && face < colors3.length && colors3[face] == -1)
+			hsl2 = hsl3 = hsl1;
+		outArgb[0] = hslToArgb(hsl1);
+		outArgb[1] = hslToArgb(hsl2);
+		outArgb[2] = hslToArgb(hsl3);
+		return outArgb[0] != 0 || outArgb[1] != 0 || outArgb[2] != 0;
+	}
+
+	private static int hslToArgb(int hsl) {
+		if (hsl == HDUtils.HIDDEN_HSL)
+			return 0;
+		float[] srgb = ColorUtils.packedHslToSrgb(hsl & 0xFFFF);
+		int rgb = ColorUtils.packSrgb(srgb);
+		return 0xFF000000 | (rgb & 0xFFFFFF);
+	}
+
+	private static void fillGouraudTriangle(
+		int[] pixels, float[] depths, int width, int height,
+		int x0, int y0, float z0, int argb0,
+		int x1, int y1, float z1, int argb1,
+		int x2, int y2, float z2, int argb2
+	) {
+		float area = edge(x1, y1, x2, y2, x0, y0);
+		if (area == 0)
+			return;
+		if (area < 0) {
+			int sx = x1; x1 = x2; x2 = sx;
+			int sy = y1; y1 = y2; y2 = sy;
+			float sz = z1; z1 = z2; z2 = sz;
+			int sa = argb1; argb1 = argb2; argb2 = sa;
+			area = -area;
+		}
+
+		int minX = Math.max(0, Math.min(x0, Math.min(x1, x2)));
+		int maxX = Math.min(width - 1, Math.max(x0, Math.max(x1, x2)));
+		int minY = Math.max(0, Math.min(y0, Math.min(y1, y2)));
+		int maxY = Math.min(height - 1, Math.max(y0, Math.max(y1, y2)));
+		if (minX > maxX || minY > maxY)
+			return;
+
+		int r0 = (argb0 >> 16) & 0xFF, g0 = (argb0 >> 8) & 0xFF, b0 = argb0 & 0xFF;
+		int r1 = (argb1 >> 16) & 0xFF, g1 = (argb1 >> 8) & 0xFF, b1 = argb1 & 0xFF;
+		int r2 = (argb2 >> 16) & 0xFF, g2 = (argb2 >> 8) & 0xFF, b2 = argb2 & 0xFF;
+
+		for (int y = minY; y <= maxY; y++) {
+			int row = y * width;
+			for (int x = minX; x <= maxX; x++) {
+				float w0 = edge(x1, y1, x2, y2, x, y) / area;
+				float w1 = edge(x2, y2, x0, y0, x, y) / area;
+				float w2 = edge(x0, y0, x1, y1, x, y) / area;
+				if (w0 < 0 || w1 < 0 || w2 < 0)
+					continue;
+				float depth = w0 * z0 + w1 * z1 + w2 * z2;
+				int idx = row + x;
+				if (depth <= depths[idx])
+					continue;
+				depths[idx] = depth;
+				int r = clamp255((int) (w0 * r0 + w1 * r1 + w2 * r2));
+				int g = clamp255((int) (w0 * g0 + w1 * g1 + w2 * g2));
+				int b = clamp255((int) (w0 * b0 + w1 * b1 + w2 * b2));
+				pixels[idx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+			}
+		}
+	}
+
+	private static float edge(int x0, int y0, int x1, int y1, int x, int y) {
+		return (x - x0) * (float) (y1 - y0) - (y - y0) * (float) (x1 - x0);
+	}
+
+	private static int clamp255(int v) {
+		return Math.max(0, Math.min(255, v));
 	}
 
 	private void drawShadedFaces(Graphics2D g2) {
@@ -1065,7 +1271,10 @@ public class ViewportPanel extends JPanel {
 		String piece = pieceFilter >= 0 ? "piece " + (pieceFilter + 1) : "all pieces";
 		String modeLabel = editMode == EditMode.DELETE ? "delete mode" : "place mode";
 		String pickLabel = pickTarget == PickTarget.FACE ? "face pick" : "point pick";
-		g2.drawString(piece + "  ·  " + (selectedFaces.size() + selectedVertices.size()) + " lights  ·  " + modeLabel + "  ·  " + pickLabel, 16, line);
+		g2.drawString(piece + "  ·  " + (selectedFaces.size() + selectedVertices.size()) + " lights  ·  " + modeLabel + "  ·  " + pickLabel
+			+ (showFaceColors ? "  ·  colors" : "")
+			+ (!showWireframe ? "  ·  no wire" : "")
+			+ (!showVertices ? "  ·  no dots" : ""), 16, line);
 		line += fm.getHeight();
 		g2.drawString(String.format("yaw %.0f°  pitch %.0f°  zoom %.1fx", Math.toDegrees(yaw), Math.toDegrees(pitch), zoom), 16, line);
 

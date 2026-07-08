@@ -31,6 +31,7 @@ import com.google.gson.Gson;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -116,6 +117,8 @@ public class LightManager {
 	private final ListMultimap<Integer, LightDefinition> PROJECTILE_LIGHTS = ArrayListMultimap.create();
 	private final ListMultimap<Integer, LightDefinition> GRAPHICS_OBJECT_LIGHTS = ArrayListMultimap.create();
 
+	private LightDefinition[] definitionArray = new LightDefinition[0];
+
 	private final Renderable[] imposterRenderables = new Renderable[2];
 	private boolean reloadLights;
 	private EntityHiderConfig entityHiderConfig;
@@ -141,6 +144,7 @@ public class LightManager {
 			PROJECTILE_LIGHTS.clear();
 			GRAPHICS_OBJECT_LIGHTS.clear();
 			LIGHTS_BY_DESCRIPTION.clear();
+			definitionArray = lights;
 
 			for (LightDefinition lightDef : lights) {
 				lightDef.normalize();
@@ -194,6 +198,130 @@ public class LightManager {
 	@Nullable
 	public LightDefinition getLightDefinitionByDescription(String description) {
 		return LIGHTS_BY_DESCRIPTION.get(description);
+	}
+
+	public synchronized LightDefinition copyDefinitionForEditor(@Nullable String description) {
+		LightDefinition source = description == null ? null : LIGHTS_BY_DESCRIPTION.get(description);
+		if (source == null)
+			return new LightDefinition();
+		return cloneDefinition(source);
+	}
+
+	public synchronized void updateDefinitionTemplate(String description, LightDefinition updated) {
+		if (description == null || description.isEmpty() || updated == null)
+			return;
+		updated.description = description;
+		for (int i = 0; i < definitionArray.length; i++) {
+			if (description.equals(definitionArray[i].description))
+				definitionArray[i] = cloneDefinition(updated);
+		}
+		rebuildDescriptionIndex();
+		modelLightManager.onLightDefinitionsChanged();
+	}
+
+	public synchronized void addDefinitionTemplate(LightDefinition definition) {
+		if (definition == null || definition.description == null || definition.description.isEmpty())
+			return;
+		LightDefinition[] next = Arrays.copyOf(definitionArray, definitionArray.length + 1);
+		next[next.length - 1] = cloneDefinition(definition);
+		definitionArray = next;
+		rebuildDescriptionIndex();
+		modelLightManager.onLightDefinitionsChanged();
+	}
+
+	public synchronized void removeDefinitionTemplate(String description) {
+		if (description == null || description.isEmpty())
+			return;
+		List<LightDefinition> kept = new ArrayList<>();
+		for (LightDefinition def : definitionArray) {
+			if (!description.equals(def.description))
+				kept.add(def);
+		}
+		definitionArray = kept.toArray(new LightDefinition[0]);
+		rebuildDescriptionIndex();
+		modelLightManager.onLightDefinitionsChanged();
+	}
+
+	public synchronized void saveDefinitionsToDisk() throws IOException {
+		LightDefinition[] toWrite = new LightDefinition[definitionArray.length];
+		for (int i = 0; i < definitionArray.length; i++)
+			toWrite[i] = cloneDefinitionForJson(definitionArray[i]);
+		String json = plugin.getGson().toJson(toWrite);
+		LIGHTS_PATH.writeString(json);
+	}
+
+	public static ResourcePath getLightsResourcePath() {
+		return LIGHTS_PATH;
+	}
+
+	private void rebuildDescriptionIndex() {
+		LIGHTS_BY_DESCRIPTION.clear();
+		NPC_LIGHTS.clear();
+		OBJECT_LIGHTS.clear();
+		PROJECTILE_LIGHTS.clear();
+		GRAPHICS_OBJECT_LIGHTS.clear();
+		WORLD_LIGHTS.clear();
+		for (LightDefinition lightDef : definitionArray) {
+			lightDef.normalize();
+			if (lightDef.description != null && !LIGHTS_BY_DESCRIPTION.containsKey(lightDef.description))
+				LIGHTS_BY_DESCRIPTION.put(lightDef.description, lightDef);
+			if (lightDef.worldX != null && lightDef.worldY != null) {
+				Light light = new Light(lightDef);
+				light.worldPoint = new WorldPoint(lightDef.worldX, lightDef.worldY, lightDef.plane);
+				light.persistent = true;
+				WORLD_LIGHTS.add(light);
+			}
+			lightDef.npcIds.forEach(id -> NPC_LIGHTS.put(id, lightDef));
+			lightDef.objectIds.forEach(id -> OBJECT_LIGHTS.put(id, lightDef));
+			lightDef.projectileIds.forEach(id -> PROJECTILE_LIGHTS.put(id, lightDef));
+			lightDef.graphicsObjectIds.forEach(id -> GRAPHICS_OBJECT_LIGHTS.put(id, lightDef));
+		}
+		reloadLights = true;
+	}
+
+	private static LightDefinition cloneDefinition(LightDefinition source) {
+		LightDefinition copy = new LightDefinition();
+		copy.description = source.description;
+		copy.worldX = source.worldX;
+		copy.worldY = source.worldY;
+		copy.plane = source.plane;
+		copy.alignment = source.alignment;
+		copy.offset = source.offset == null ? new float[3] : source.offset.clone();
+		copy.height = source.height;
+		copy.radius = source.radius;
+		copy.strength = source.strength;
+		copy.color = source.color == null ? new float[3] : source.color.clone();
+		copy.type = source.type;
+		copy.duration = source.duration;
+		copy.range = source.range;
+		copy.innerConeAngle = source.innerConeAngle;
+		copy.outerConeAngle = source.outerConeAngle;
+		copy.conePitch = source.conePitch;
+		copy.fadeInDuration = source.fadeInDuration;
+		copy.fadeOutDuration = source.fadeOutDuration;
+		copy.spawnDelay = source.spawnDelay;
+		copy.despawnDelay = source.despawnDelay;
+		copy.fixedDespawnTime = source.fixedDespawnTime;
+		copy.despawnWithParent = source.despawnWithParent;
+		copy.visibleFromOtherPlanes = source.visibleFromOtherPlanes;
+		copy.ignoreActorHiding = source.ignoreActorHiding;
+		copy.renderableIndex = source.renderableIndex;
+		copy.waitForAnimation = source.waitForAnimation;
+		copy.areas = source.areas;
+		copy.excludeAreas = source.excludeAreas;
+		copy.npcIds = source.npcIds == null ? new HashSet<>() : new HashSet<>(source.npcIds);
+		copy.objectIds = source.objectIds == null ? new HashSet<>() : new HashSet<>(source.objectIds);
+		copy.projectileIds = source.projectileIds == null ? new HashSet<>() : new HashSet<>(source.projectileIds);
+		copy.graphicsObjectIds = source.graphicsObjectIds == null ? new HashSet<>() : new HashSet<>(source.graphicsObjectIds);
+		copy.animationIds = source.animationIds == null ? new HashSet<>() : new HashSet<>(source.animationIds);
+		return copy;
+	}
+
+	private static LightDefinition cloneDefinitionForJson(LightDefinition source) {
+		LightDefinition copy = cloneDefinition(source);
+		if (copy.offset != null && copy.offset.length == 3)
+			copy.offset[1] *= -1;
+		return copy;
 	}
 
 	public void update(@Nonnull SceneContext sceneContext, int[] cameraShift, float[][] cameraFrustum) {

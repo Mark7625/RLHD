@@ -110,6 +110,8 @@ public class ModelLightStore {
 				profile.setItemIds(new HashSet<>());
 			if (profile.getNpcIds() == null)
 				profile.setNpcIds(new HashSet<>());
+			if (profile.getObjectIds() == null)
+				profile.setObjectIds(new HashSet<>());
 			normalizeVertices(profile);
 			normalizeTriangles(profile);
 			profiles.put(key, profile);
@@ -251,16 +253,62 @@ public class ModelLightStore {
 		notifyChanged();
 	}
 
+	public synchronized void setNpcIds(String profileKey, Set<Integer> npcIds) {
+		ModelLightProfile profile = profiles.get(profileKey);
+		if (profile == null)
+			return;
+		Set<Integer> normalized = npcIds == null ? new HashSet<>() : new HashSet<>(npcIds);
+		if (profile.getNpcIds().equals(normalized))
+			return;
+		profile.setNpcIds(normalized);
+		notifyChanged();
+	}
+
+	public synchronized void setObjectIds(String profileKey, Set<Integer> objectIds) {
+		ModelLightProfile profile = profiles.get(profileKey);
+		if (profile == null)
+			return;
+		Set<Integer> normalized = objectIds == null ? new HashSet<>() : new HashSet<>(objectIds);
+		if (profile.getObjectIds().equals(normalized))
+			return;
+		profile.setObjectIds(normalized);
+		notifyChanged();
+	}
+
 	@Nullable
 	public synchronized String findProfileKey(String meshKey, Set<Integer> itemIds) {
 		Set<Integer> ids = itemIds == null ? Set.of() : Set.copyOf(itemIds);
 		for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
 			ModelLightProfile profile = entry.getValue();
-			if (profile.isNpcProfile())
+			if (profile.isNpcProfile() || profile.isObjectProfile())
 				continue;
 			if (!meshKey.equals(profile.getMeshKey()))
 				continue;
 			if (profile.getItemIds().equals(ids))
+				return entry.getKey();
+		}
+		return null;
+	}
+
+	@Nullable
+	public synchronized String findObjectProfileKey(String meshKey, int objectId) {
+		for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
+			ModelLightProfile profile = entry.getValue();
+			if (!profile.isObjectProfile() || !meshKey.equals(profile.getMeshKey()))
+				continue;
+			if (profile.getObjectIds().contains(objectId))
+				return entry.getKey();
+		}
+		return null;
+	}
+
+	@Nullable
+	public synchronized String findNpcProfileKey(String meshKey, int npcId) {
+		for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
+			ModelLightProfile profile = entry.getValue();
+			if (!profile.isNpcProfile() || !meshKey.equals(profile.getMeshKey()))
+				continue;
+			if (profile.getNpcIds().contains(npcId))
 				return entry.getKey();
 		}
 		return null;
@@ -281,6 +329,36 @@ public class ModelLightStore {
 		ModelLightProfile profile = new ModelLightProfile(name);
 		profile.setMeshKey(meshKey);
 		profile.setItemIds(new HashSet<>(ids));
+		profiles.put(key, profile);
+		notifyChanged();
+		return key;
+	}
+
+	public synchronized String ensureProfileForObject(String meshKey, String defaultName, int objectId) {
+		@Nullable String existing = findObjectProfileKey(meshKey, objectId);
+		if (existing != null)
+			return existing;
+
+		String key = freeKey(meshKey + "@obj" + objectId);
+		String name = displayNameFor(meshKey, null, defaultName);
+		ModelLightProfile profile = new ModelLightProfile(name);
+		profile.setMeshKey(meshKey);
+		profile.getObjectIds().add(objectId);
+		profiles.put(key, profile);
+		notifyChanged();
+		return key;
+	}
+
+	public synchronized String ensureProfileForNpc(String meshKey, String defaultName, int npcId) {
+		@Nullable String existing = findNpcProfileKey(meshKey, npcId);
+		if (existing != null)
+			return existing;
+
+		String key = freeKey(meshKey + "@npc" + npcId);
+		String name = displayNameFor(meshKey, null, defaultName);
+		ModelLightProfile profile = new ModelLightProfile(name);
+		profile.setMeshKey(meshKey);
+		profile.getNpcIds().add(npcId);
 		profiles.put(key, profile);
 		notifyChanged();
 		return key;
@@ -405,6 +483,36 @@ public class ModelLightStore {
 			return;
 		if (profile.getVertices().keySet().removeAll(localVertices))
 			notifyChanged();
+	}
+
+	public synchronized void setProfileOffset(String profileKey, float x, float y, float z) {
+		ModelLightProfile profile = profiles.get(profileKey);
+		if (profile == null)
+			return;
+		profile.setOffsetX(x);
+		profile.setOffsetY(y);
+		profile.setOffsetZ(z);
+		notifyChanged();
+	}
+
+	public synchronized void setTriangleBarycentric(
+		String profileKey,
+		int localFace,
+		float bary0,
+		float bary1,
+		float bary2
+	) {
+		ModelLightProfile profile = profiles.get(profileKey);
+		if (profile == null)
+			return;
+		TriangleAnchor anchor = profile.getTriangles().get(localFace);
+		if (anchor == null)
+			return;
+		anchor.setBary0(bary0);
+		anchor.setBary1(bary1);
+		anchor.setBary2(bary2);
+		anchor.normalizeBarycentric();
+		notifyChanged();
 	}
 
 	public synchronized void updateProfile(String profileKey, ModelLightProfile settingsSource) {

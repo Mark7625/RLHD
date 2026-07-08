@@ -231,7 +231,8 @@ public class HdPlugin extends Plugin {
 		WaterTypeManager.class,
 		SceneManager.class,
 		rs117.hd.scene.model.ModelLightManager.class,
-		rs117.hd.scene.model.ModelLightStore.class
+		rs117.hd.scene.model.ModelLightStore.class,
+		rs117.hd.scene.lights.debug.LightMeshCapture.class
 	);
 
 	@Getter

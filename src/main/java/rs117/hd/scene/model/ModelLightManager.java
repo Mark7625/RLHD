@@ -3,6 +3,7 @@ package rs117.hd.scene.model;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -16,16 +17,38 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
+import net.runelite.api.DecorativeObject;
+import net.runelite.api.DynamicObject;
+import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
+import net.runelite.api.GroundObject;
 import net.runelite.api.Model;
+import net.runelite.api.NPC;
+import net.runelite.api.ObjectComposition;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
 import net.runelite.api.Point;
+import net.runelite.api.Renderable;
+import net.runelite.api.Scene;
+import net.runelite.api.Tile;
+import net.runelite.api.TileObject;
+import net.runelite.api.WallObject;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.events.DecorativeObjectDespawned;
+import net.runelite.api.events.DecorativeObjectSpawned;
+import net.runelite.api.events.GameObjectDespawned;
+import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GroundObjectDespawned;
+import net.runelite.api.events.GroundObjectSpawned;
+import net.runelite.api.events.NpcChanged;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.PlayerChanged;
 import net.runelite.api.events.PlayerDespawned;
 import net.runelite.api.events.PlayerSpawned;
+import net.runelite.api.events.WallObjectDespawned;
+import net.runelite.api.events.WallObjectSpawned;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
@@ -38,6 +61,7 @@ import rs117.hd.scene.lights.LightDefinition;
 import static net.runelite.api.Perspective.COSINE;
 import static net.runelite.api.Perspective.SINE;
 import static net.runelite.api.Perspective.getFootprintTileHeight;
+import static net.runelite.api.Perspective.getTileHeight;
 import static net.runelite.api.Perspective.localToCanvas;
 
 @Singleton
@@ -62,6 +86,42 @@ public class ModelLightManager {
 	private ClientThread clientThread;
 
 	private final List<PlayerState> playerStates = new ArrayList<>();
+	private final Map<TileObject, ObjectLightState> objectLightStates = new HashMap<>();
+	private final Map<NPC, NpcLightState> npcLightStates = new HashMap<>();
+	private final Set<Integer> profiledObjectIds = new HashSet<>();
+	private final Set<Integer> profiledNpcIds = new HashSet<>();
+	private final Map<ObjectMeshKey, ModelSnapshot> staticObjectSnapshots = new HashMap<>();
+
+	private static final class ObjectMeshKey {
+		final int objectId;
+		final int vertexCount;
+		final int faceCount;
+
+		ObjectMeshKey(int objectId, int vertexCount, int faceCount) {
+			this.objectId = objectId;
+			this.vertexCount = vertexCount;
+			this.faceCount = faceCount;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (this == o)
+				return true;
+			if (!(o instanceof ObjectMeshKey))
+				return false;
+			ObjectMeshKey other = (ObjectMeshKey) o;
+			return objectId == other.objectId
+				&& vertexCount == other.vertexCount
+				&& faceCount == other.faceCount;
+		}
+
+		@Override
+		public int hashCode() {
+			int result = objectId;
+			result = 31 * result + vertexCount;
+			return 31 * result + faceCount;
+		}
+	}
 
 	public static final class ViewerCapture {
 		@Nullable
@@ -90,7 +150,12 @@ public class ModelLightManager {
 		eventBus.unregister(this);
 		store.stopWatching();
 		store.setChangeListener(null);
+		clearStaticObjectSnapshotCache();
 		playerStates.clear();
+		objectLightStates.clear();
+		npcLightStates.clear();
+		profiledObjectIds.clear();
+		profiledNpcIds.clear();
 	}
 
 	public void onLightDefinitionsChanged() {
@@ -119,6 +184,22 @@ public class ModelLightManager {
 			if (state.player != cachedPlayers.byIndex(state.player.getId()))
 				continue;
 			updateVertexPositions(state.player, state.lights);
+		}
+
+		for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
+			TileObject object = entry.getKey();
+			ObjectLightState state = entry.getValue();
+			if (state.revision != store.getRevision())
+				resolveObjectLights(state, object, sceneContext);
+			updateTileObjectLightPositions(object, state, state.lights);
+		}
+
+		for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
+			NPC npc = entry.getKey();
+			NpcLightState state = entry.getValue();
+			if (state.revision != store.getRevision() || state.npcId != npc.getId())
+				resolveNpcLights(state, npc, sceneContext);
+			updateVertexPositions(npc, state.lights);
 		}
 	}
 
@@ -157,7 +238,12 @@ public class ModelLightManager {
 	}
 
 	private void invalidateAllActors() {
+		rebuildProfiledIds();
 		for (PlayerState state : playerStates)
+			state.invalidate();
+		for (ObjectLightState state : objectLightStates.values())
+			state.invalidate();
+		for (NpcLightState state : npcLightStates.values())
 			state.invalidate();
 
 		clientThread.invokeLater(() -> {
@@ -174,7 +260,33 @@ public class ModelLightManager {
 					}
 				}
 			}
+
+			scanProfiledObjects();
+			for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
+				resolveObjectLights(entry.getValue(), entry.getKey(), sceneContext);
+				updateTileObjectLightPositions(entry.getKey(), entry.getValue(), entry.getValue().lights);
+			}
+
+			for (NPC npc : client.getNpcs()) {
+				if (profiledNpcIds.contains(npc.getId()))
+					trackNpc(npc);
+			}
+			for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
+				resolveNpcLights(entry.getValue(), entry.getKey(), sceneContext);
+				updateVertexPositions(entry.getKey(), entry.getValue().lights);
+			}
 		});
+	}
+
+	private void rebuildProfiledIds() {
+		profiledObjectIds.clear();
+		profiledNpcIds.clear();
+		for (ModelLightProfile profile : store.snapshotAll().values()) {
+			if (!profile.isEnabled())
+				continue;
+			profiledObjectIds.addAll(profile.getObjectIds());
+			profiledNpcIds.addAll(profile.getNpcIds());
+		}
 	}
 
 	private void trackPlayer(Player player) {
@@ -215,25 +327,376 @@ public class ModelLightManager {
 		Set<Integer> wornItemIds = getWornItemIds(composition);
 		Map<String, ModelLightProfile> profiles = store.snapshotAll();
 		ModelSnapshot snapshot = ModelSnapshot.capture(model);
+		try {
+			for (ModelSnapshot.Piece piece : snapshot.getPieces()) {
+				for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
+					ModelLightProfile profile = entry.getValue();
+					if (!piece.getMeshKey().equals(profile.getMeshKey())
+						|| profile.isNpcProfile()
+						|| profile.isObjectProfile()
+						|| !profile.isEnabled()
+						|| (!profile.getItemIds().isEmpty() && Collections.disjoint(profile.getItemIds(), wornItemIds))
+						|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
+						continue;
 
-		for (ModelSnapshot.Piece piece : snapshot.getPieces()) {
-			for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
-				ModelLightProfile profile = entry.getValue();
-				if (!piece.getMeshKey().equals(profile.getMeshKey())
-					|| profile.isNpcProfile()
-					|| !profile.isEnabled()
-					|| (!profile.getItemIds().isEmpty() && Collections.disjoint(profile.getItemIds(), wornItemIds))
-					|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
-					continue;
-
-				spawnPieceLights(sceneContext, player, profile, entry.getKey(), snapshot, piece, state.lights);
+					spawnPieceLights(sceneContext, player, null, profile, entry.getKey(), snapshot, piece, state.lights);
+				}
 			}
+		} finally {
+			snapshot.release();
+		}
+	}
+
+	private void resolveObjectLights(ObjectLightState state, TileObject object, SceneContext sceneContext) {
+		int revision = store.getRevision();
+		if (revision == state.revision)
+			return;
+
+		boolean dynamic = isDynamicTileObject(object);
+
+		Model model = objectModel(object);
+		if (model == null) {
+			removeModelLights(sceneContext, state.lights);
+			state.meshKey = null;
+			return;
+		}
+
+		state.revision = revision;
+		removeModelLights(sceneContext, state.lights);
+		state.lights.clear();
+
+		int objectId = profileObjectId(object);
+		Map<String, ModelLightProfile> profiles = store.snapshotAll();
+		boolean ownedSnapshot = dynamic;
+		ModelSnapshot snapshot;
+		if (dynamic) {
+			state.meshKey = null;
+			snapshot = ModelSnapshot.capture(model);
+		} else {
+			ObjectMeshKey meshKey = new ObjectMeshKey(objectId, model.getVerticesCount(), model.getFaceCount());
+			state.meshKey = meshKey;
+			snapshot = staticObjectSnapshots.get(meshKey);
+			if (snapshot == null || snapshot.getVerticesX() == null) {
+				if (snapshot != null)
+					staticObjectSnapshots.remove(meshKey);
+				snapshot = ModelSnapshot.capture(model);
+				staticObjectSnapshots.put(meshKey, snapshot);
+			}
+		}
+
+		try {
+			for (ModelSnapshot.Piece piece : snapshot.getPieces()) {
+				for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
+					ModelLightProfile profile = entry.getValue();
+					if (!piece.getMeshKey().equals(profile.getMeshKey())
+						|| !profile.isObjectProfile()
+						|| !profile.getObjectIds().contains(objectId)
+						|| !profile.isEnabled()
+						|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
+						continue;
+
+					spawnPieceLights(sceneContext, null, object, profile, entry.getKey(), snapshot, piece, state.lights);
+				}
+			}
+		} finally {
+			if (ownedSnapshot)
+				snapshot.release();
+		}
+	}
+
+	private void resolveNpcLights(NpcLightState state, NPC npc, SceneContext sceneContext) {
+		int revision = store.getRevision();
+		if (revision == state.revision && state.npcId == npc.getId())
+			return;
+
+		Model model = npc.getModel();
+		if (model == null) {
+			removeModelLights(sceneContext, state.lights);
+			return;
+		}
+
+		state.revision = revision;
+		state.npcId = npc.getId();
+		removeModelLights(sceneContext, state.lights);
+		state.lights.clear();
+
+		int npcId = npc.getId();
+		Map<String, ModelLightProfile> profiles = store.snapshotAll();
+		ModelSnapshot snapshot = ModelSnapshot.capture(model);
+		try {
+			for (ModelSnapshot.Piece piece : snapshot.getPieces()) {
+				for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
+					ModelLightProfile profile = entry.getValue();
+					if (!piece.getMeshKey().equals(profile.getMeshKey())
+						|| !profile.isNpcProfile()
+						|| !profile.getNpcIds().contains(npcId)
+						|| !profile.isEnabled()
+						|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
+						continue;
+
+					spawnPieceLights(sceneContext, npc, null, profile, entry.getKey(), snapshot, piece, state.lights);
+				}
+			}
+		} finally {
+			snapshot.release();
+		}
+	}
+
+	private boolean isProfiledObject(TileObject object) {
+		return profiledObjectIds.contains(profileObjectId(object));
+	}
+
+	private int profileObjectId(TileObject object) {
+		int id = object.getId();
+		if (profiledObjectIds.contains(id))
+			return id;
+		if (object instanceof GameObject && ((GameObject) object).getRenderable() instanceof DynamicObject) {
+			int impostorId = objectImpostorId(object);
+			if (profiledObjectIds.contains(impostorId))
+				return impostorId;
+		}
+		return id;
+	}
+
+	private int objectImpostorId(TileObject object) {
+		ObjectComposition def = client.getObjectDefinition(object.getId());
+		int[] impostorIds = def.getImpostorIds();
+		if (impostorIds == null)
+			return object.getId();
+		try {
+			int impostorVarbit = def.getVarbitId();
+			int impostorVarp = def.getVarPlayerId();
+			int impostorIndex = -1;
+			if (impostorVarbit != -1)
+				impostorIndex = client.getVarbitValue(impostorVarbit);
+			else if (impostorVarp != -1)
+				impostorIndex = client.getVarpValue(impostorVarp);
+			if (impostorIndex >= 0)
+				return impostorIds[Math.min(impostorIndex, impostorIds.length - 1)];
+		} catch (Exception ex) {
+			log.debug("Error resolving object impostor id", ex);
+		}
+		return object.getId();
+	}
+
+	private void trackObject(TileObject object) {
+		if (!isProfiledObject(object))
+			return;
+		objectLightStates.putIfAbsent(object, new ObjectLightState());
+	}
+
+	private void trackNpc(NPC npc) {
+		if (!profiledNpcIds.contains(npc.getId()))
+			return;
+		npcLightStates.putIfAbsent(npc, new NpcLightState());
+	}
+
+	private void scanProfiledObjects() {
+		if (profiledObjectIds.isEmpty())
+			return;
+
+		Scene scene = client.getTopLevelWorldView().getScene();
+		Tile[][][] tiles = scene.getTiles();
+		for (Tile[][] plane : tiles) {
+			if (plane == null)
+				continue;
+			for (Tile[] row : plane) {
+				if (row == null)
+					continue;
+				for (Tile tile : row) {
+					if (tile == null)
+						continue;
+					for (GameObject gameObject : tile.getGameObjects()) {
+						if (gameObject != null && isProfiledObject(gameObject))
+							trackObject(gameObject);
+					}
+					WallObject wallObject = tile.getWallObject();
+					if (wallObject != null && isProfiledObject(wallObject))
+						trackObject(wallObject);
+					DecorativeObject decorativeObject = tile.getDecorativeObject();
+					if (decorativeObject != null && isProfiledObject(decorativeObject))
+						trackObject(decorativeObject);
+					GroundObject groundObject = tile.getGroundObject();
+					if (groundObject != null && isProfiledObject(groundObject))
+						trackObject(groundObject);
+				}
+			}
+		}
+	}
+
+	private void onObjectDespawned(TileObject object) {
+		var sceneContext = plugin.getSceneContext();
+		ObjectLightState state = objectLightStates.remove(object);
+		if (state != null && sceneContext != null)
+			removeModelLights(sceneContext, state.lights);
+	}
+
+	private void onNpcDespawned(NPC npc) {
+		var sceneContext = plugin.getSceneContext();
+		NpcLightState state = npcLightStates.remove(npc);
+		if (state != null && sceneContext != null)
+			removeModelLights(sceneContext, state.lights);
+	}
+
+	private void onObjectSpawned(TileObject object) {
+		trackObject(object);
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext == null)
+			return;
+		ObjectLightState state = objectLightStates.get(object);
+		if (state != null) {
+			state.invalidate();
+			resolveObjectLights(state, object, sceneContext);
+			updateTileObjectLightPositions(object, state, state.lights);
+		}
+	}
+
+	private void onNpcEvent(NPC npc) {
+		trackNpc(npc);
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext == null)
+			return;
+		NpcLightState state = npcLightStates.get(npc);
+		if (state != null) {
+			state.invalidate();
+			resolveNpcLights(state, npc, sceneContext);
+			updateVertexPositions(npc, state.lights);
+		}
+	}
+
+	@Nullable
+	private static Model objectModel(TileObject object) {
+		if (object instanceof GameObject)
+			return modelOf(((GameObject) object).getRenderable());
+		if (object instanceof WallObject) {
+			Model model = modelOf(((WallObject) object).getRenderable1());
+			return model != null ? model : modelOf(((WallObject) object).getRenderable2());
+		}
+		if (object instanceof DecorativeObject) {
+			Model model = modelOf(((DecorativeObject) object).getRenderable());
+			return model != null ? model : modelOf(((DecorativeObject) object).getRenderable2());
+		}
+		if (object instanceof GroundObject)
+			return modelOf(((GroundObject) object).getRenderable());
+		return null;
+	}
+
+	private static boolean isDynamicTileObject(TileObject object) {
+		Renderable renderable = null;
+		if (object instanceof GameObject)
+			renderable = ((GameObject) object).getRenderable();
+		else if (object instanceof WallObject) {
+			renderable = ((WallObject) object).getRenderable1();
+			if (!(renderable instanceof DynamicObject))
+				renderable = ((WallObject) object).getRenderable2();
+		} else if (object instanceof DecorativeObject) {
+			renderable = ((DecorativeObject) object).getRenderable();
+			if (!(renderable instanceof DynamicObject))
+				renderable = ((DecorativeObject) object).getRenderable2();
+		} else if (object instanceof GroundObject)
+			renderable = ((GroundObject) object).getRenderable();
+		return renderable instanceof DynamicObject;
+	}
+
+	private void clearStaticObjectSnapshotCache() {
+		for (ModelSnapshot snapshot : staticObjectSnapshots.values())
+			snapshot.release();
+		staticObjectSnapshots.clear();
+	}
+
+	@Nullable
+	private static Model modelOf(@Nullable Renderable renderable) {
+		if (renderable instanceof Model)
+			return (Model) renderable;
+		if (renderable instanceof DynamicObject)
+			return ((DynamicObject) renderable).getModel();
+		return null;
+	}
+
+	private void updateTileObjectLightPositions(TileObject object, ObjectLightState state, List<Light> lights) {
+		if (isDynamicTileObject(object))
+			state.meshKey = null;
+
+		Model model = objectModel(object);
+		if (model == null)
+			return;
+
+		updateTileObjectLightPositions(
+			object,
+			model.getVerticesX(),
+			model.getVerticesY(),
+			model.getVerticesZ(),
+			model.getVerticesCount(),
+			lights
+		);
+	}
+
+	private void updateTileObjectLightPositions(
+		TileObject object,
+		float[] verticesX,
+		float[] verticesY,
+		float[] verticesZ,
+		int vertexCount,
+		List<Light> lights
+	) {
+		LocalPoint lp = object.getLocalLocation();
+		int baseZ = getTileHeight(client, lp, object.getPlane());
+
+		for (Light light : lights) {
+			if (light.markedForRemoval || light.modelProfileKey == null)
+				continue;
+
+			float vx, vy, vz;
+			if (light.modelFaceV0 >= 0
+				&& light.modelFaceV1 < vertexCount
+				&& light.modelFaceV2 < vertexCount) {
+				int v0 = light.modelFaceV0, v1 = light.modelFaceV1, v2 = light.modelFaceV2;
+				float b0 = light.modelBary0, b1 = light.modelBary1, b2 = light.modelBary2;
+				float ax = b0 * verticesX[v0] + b1 * verticesX[v1] + b2 * verticesX[v2];
+				float ay = b0 * verticesY[v0] + b1 * verticesY[v1] + b2 * verticesY[v2];
+				float az = b0 * verticesZ[v0] + b1 * verticesZ[v1] + b2 * verticesZ[v2];
+				float e1x = verticesX[v1] - verticesX[v0], e1y = verticesY[v1] - verticesY[v0], e1z = verticesZ[v1] - verticesZ[v0];
+				float e2x = verticesX[v2] - verticesX[v0], e2y = verticesY[v2] - verticesY[v0], e2z = verticesZ[v2] - verticesZ[v0];
+				float nx = e1y * e2z - e1z * e2y;
+				float ny = e1z * e2x - e1x * e2z;
+				float nz = e1x * e2y - e1y * e2x;
+				float nLen = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+				if (nLen > 1e-6f) {
+					nx /= nLen;
+					ny /= nLen;
+					nz /= nLen;
+				}
+				float a = light.modelOffsetA, b = light.modelOffsetB, c = light.modelOffsetC;
+				vx = ax + a * e1x + b * e2x + c * nx;
+				vy = ay + a * e1y + b * e2y + c * ny;
+				vz = az + a * e1z + b * e2z + c * nz;
+
+				if (light.def.outerConeAngle > 0) {
+					light.direction[0] = nx;
+					light.direction[1] = ny;
+					light.direction[2] = nz;
+				}
+			} else {
+				int v = light.modelVertex;
+				if (v < 0 || v >= vertexCount)
+					continue;
+				vx = verticesX[v] + light.modelOffsetX;
+				vy = verticesY[v] - light.modelOffsetZ;
+				vz = verticesZ[v] + light.modelOffsetY;
+			}
+
+			light.origin[0] = lp.getX() + vx;
+			light.origin[2] = lp.getY() + vz;
+			light.origin[1] = baseZ + vy;
+			light.orientation = 0;
+			light.plane = object.getPlane();
 		}
 	}
 
 	private void spawnPieceLights(
 		SceneContext sceneContext,
-		Actor actor,
+		@Nullable Actor actor,
+		@Nullable TileObject tileObject,
 		ModelLightProfile profile,
 		String profileKey,
 		ModelSnapshot snapshot,
@@ -262,6 +725,8 @@ public class ModelLightManager {
 			Light light = new Light(template);
 			light.plane = -1;
 			light.actor = actor;
+			light.tileObject = tileObject;
+			light.tileObjectId = tileObject != null ? tileObject.getId() : 0;
 			light.modelVertex = -1;
 			light.modelProfileKey = profileKey;
 			light.modelFaceV0 = v0;
@@ -294,6 +759,8 @@ public class ModelLightManager {
 			Light light = new Light(template);
 			light.plane = -1;
 			light.actor = actor;
+			light.tileObject = tileObject;
+			light.tileObjectId = tileObject != null ? tileObject.getId() : 0;
 			light.modelVertex = globalVertex;
 			light.modelProfileKey = profileKey;
 			light.modelOffsetX = profile.getOffsetX();
@@ -664,16 +1131,86 @@ public class ModelLightManager {
 			invalidateAllActors();
 	}
 
+	@Subscribe
+	public void onGameObjectSpawned(GameObjectSpawned event) {
+		onObjectSpawned(event.getGameObject());
+	}
+
+	@Subscribe
+	public void onGameObjectDespawned(GameObjectDespawned event) {
+		onObjectDespawned(event.getGameObject());
+	}
+
+	@Subscribe
+	public void onWallObjectSpawned(WallObjectSpawned event) {
+		onObjectSpawned(event.getWallObject());
+	}
+
+	@Subscribe
+	public void onWallObjectDespawned(WallObjectDespawned event) {
+		onObjectDespawned(event.getWallObject());
+	}
+
+	@Subscribe
+	public void onDecorativeObjectSpawned(DecorativeObjectSpawned event) {
+		onObjectSpawned(event.getDecorativeObject());
+	}
+
+	@Subscribe
+	public void onDecorativeObjectDespawned(DecorativeObjectDespawned event) {
+		onObjectDespawned(event.getDecorativeObject());
+	}
+
+	@Subscribe
+	public void onGroundObjectSpawned(GroundObjectSpawned event) {
+		onObjectSpawned(event.getGroundObject());
+	}
+
+	@Subscribe
+	public void onGroundObjectDespawned(GroundObjectDespawned event) {
+		onObjectDespawned(event.getGroundObject());
+	}
+
+	@Subscribe
+	public void onNpcSpawned(NpcSpawned event) {
+		onNpcEvent(event.getNpc());
+	}
+
+	@Subscribe
+	public void onNpcChanged(NpcChanged event) {
+		onNpcDespawned(event.getNpc());
+		onNpcEvent(event.getNpc());
+	}
+
+	@Subscribe
+	public void onNpcDespawned(NpcDespawned event) {
+		onNpcDespawned(event.getNpc());
+	}
+
 	public Map<String, ModelLightProfile> getProfilesForEditor() {
 		return store.snapshotAll();
 	}
 
 	public void onSceneReload(SceneContext sceneContext) {
+		clearStaticObjectSnapshotCache();
 		for (PlayerState state : playerStates) {
 			state.lights.clear();
 			state.invalidate();
 			resolvePlayer(state, sceneContext);
 			updateVertexPositions(state);
+		}
+		for (ObjectLightState state : objectLightStates.values())
+			state.invalidate();
+		for (NpcLightState state : npcLightStates.values())
+			state.invalidate();
+		scanProfiledObjects();
+		for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
+			resolveObjectLights(entry.getValue(), entry.getKey(), sceneContext);
+			updateTileObjectLightPositions(entry.getKey(), entry.getValue(), entry.getValue().lights);
+		}
+		for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
+			resolveNpcLights(entry.getValue(), entry.getKey(), sceneContext);
+			updateVertexPositions(entry.getKey(), entry.getValue().lights);
 		}
 	}
 
@@ -798,6 +1335,28 @@ public class ModelLightManager {
 
 		void invalidate() {
 			equipmentIds = null;
+			revision = -1;
+		}
+	}
+
+	private static final class ObjectLightState {
+		int revision = -1;
+		@Nullable
+		ObjectMeshKey meshKey;
+		final List<Light> lights = new ArrayList<>();
+
+		void invalidate() {
+			revision = -1;
+			meshKey = null;
+		}
+	}
+
+	private static final class NpcLightState {
+		int revision = -1;
+		int npcId = -1;
+		final List<Light> lights = new ArrayList<>();
+
+		void invalidate() {
 			revision = -1;
 		}
 	}

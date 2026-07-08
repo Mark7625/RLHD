@@ -9,22 +9,24 @@ import java.util.Map;
 import javax.annotation.Nullable;
 import lombok.Getter;
 import net.runelite.api.Model;
+import rs117.hd.utils.collections.PooledArrayType;
 
 @Getter
 public class ModelSnapshot {
 	private final int vertexCount;
 	private final int faceCount;
-	private final float[] verticesX;
-	private final float[] verticesY;
-	private final float[] verticesZ;
-	private final int[] faceIndices1;
-	private final int[] faceIndices2;
-	private final int[] faceIndices3;
-	private final int[] faceColors1;
-	private final int[] faceColors2;
-	private final int[] faceColors3;
+	private float[] verticesX;
+	private float[] verticesY;
+	private float[] verticesZ;
+	private int[] faceIndices1;
+	private int[] faceIndices2;
+	private int[] faceIndices3;
+	private int[] faceColors1;
+	private int[] faceColors2;
+	private int[] faceColors3;
 	private final List<Piece> pieces;
 	private final int[] vertexToPiece;
+	private boolean released;
 
 	@Getter
 	public static class Piece {
@@ -68,26 +70,30 @@ public class ModelSnapshot {
 	}
 
 	public static ModelSnapshot capture(Model model) {
+		int vertexCount = model.getVerticesCount();
 		int faceCount = model.getFaceCount();
 		return new ModelSnapshot(
-			model.getVerticesCount(),
+			vertexCount,
 			faceCount,
-			model.getVerticesX().clone(),
-			model.getVerticesY().clone(),
-			model.getVerticesZ().clone(),
-			model.getFaceIndices1().clone(),
-			model.getFaceIndices2().clone(),
-			model.getFaceIndices3().clone(),
-			cloneFaceColors(model.getFaceColors1(), faceCount),
-			cloneFaceColors(model.getFaceColors2(), faceCount),
-			cloneFaceColors(model.getFaceColors3(), faceCount)
+			PooledArrayType.FLOAT.cache(model.getVerticesX(), 0, vertexCount),
+			PooledArrayType.FLOAT.cache(model.getVerticesY(), 0, vertexCount),
+			PooledArrayType.FLOAT.cache(model.getVerticesZ(), 0, vertexCount),
+			PooledArrayType.INT.cache(model.getFaceIndices1(), 0, faceCount),
+			PooledArrayType.INT.cache(model.getFaceIndices2(), 0, faceCount),
+			PooledArrayType.INT.cache(model.getFaceIndices3(), 0, faceCount),
+			cacheFaceColors(model.getFaceColors1(), faceCount),
+			cacheFaceColors(model.getFaceColors2(), faceCount),
+			cacheFaceColors(model.getFaceColors3(), faceCount)
 		);
 	}
 
-	private static int[] cloneFaceColors(@Nullable int[] colors, int faceCount) {
-		if (colors == null || colors.length < faceCount)
-			return new int[faceCount];
-		return Arrays.copyOf(colors, faceCount);
+	private static int[] cacheFaceColors(@Nullable int[] colors, int faceCount) {
+		if (colors == null || colors.length < faceCount) {
+			int[] empty = PooledArrayType.INT.borrow(faceCount);
+			Arrays.fill(empty, 0, faceCount, 0);
+			return empty;
+		}
+		return PooledArrayType.INT.cache(colors, 0, faceCount);
 	}
 
 	private ModelSnapshot(
@@ -116,6 +122,50 @@ public class ModelSnapshot {
 		this.faceColors3 = faceColors3;
 		this.vertexToPiece = new int[vertexCount];
 		this.pieces = decompose();
+	}
+
+	/** Returns pooled mesh arrays to {@link PooledArrayType}; safe to call more than once. */
+	public void release() {
+		if (released)
+			return;
+		released = true;
+
+		if (verticesX != null) {
+			PooledArrayType.FLOAT.release(verticesX);
+			verticesX = null;
+		}
+		if (verticesY != null) {
+			PooledArrayType.FLOAT.release(verticesY);
+			verticesY = null;
+		}
+		if (verticesZ != null) {
+			PooledArrayType.FLOAT.release(verticesZ);
+			verticesZ = null;
+		}
+		if (faceIndices1 != null) {
+			PooledArrayType.INT.release(faceIndices1);
+			faceIndices1 = null;
+		}
+		if (faceIndices2 != null) {
+			PooledArrayType.INT.release(faceIndices2);
+			faceIndices2 = null;
+		}
+		if (faceIndices3 != null) {
+			PooledArrayType.INT.release(faceIndices3);
+			faceIndices3 = null;
+		}
+		if (faceColors1 != null) {
+			PooledArrayType.INT.release(faceColors1);
+			faceColors1 = null;
+		}
+		if (faceColors2 != null) {
+			PooledArrayType.INT.release(faceColors2);
+			faceColors2 = null;
+		}
+		if (faceColors3 != null) {
+			PooledArrayType.INT.release(faceColors3);
+			faceColors3 = null;
+		}
 	}
 
 	public Piece pieceContaining(int vertex) {
@@ -160,7 +210,7 @@ public class ModelSnapshot {
 			unionEdge(edgeToFace, parent, f, faceIndices1[f], faceIndices3[f]);
 		}
 
-		Map<Integer, List<Integer>> facesByRoot = new HashMap<>();
+		Map<Integer, List<Integer>> facesByRoot = new HashMap<>(Math.max(16, faceCount / 4));
 		for (int f = 0; f < faceCount; f++)
 			facesByRoot.computeIfAbsent(find(parent, f), k -> new ArrayList<>()).add(f);
 
@@ -168,9 +218,12 @@ public class ModelSnapshot {
 		int[] stamp = new int[vertexCount];
 		int stampValue = 0;
 
-		List<Piece> result = new ArrayList<>();
+		List<Piece> result = new ArrayList<>(facesByRoot.size());
 		for (Map.Entry<Integer, List<Integer>> entry : facesByRoot.entrySet()) {
-			int[] faces = entry.getValue().stream().mapToInt(Integer::intValue).toArray();
+			List<Integer> faceList = entry.getValue();
+			int[] faces = new int[faceList.size()];
+			for (int i = 0; i < faceList.size(); i++)
+				faces[i] = faceList.get(i);
 			stampValue++;
 
 			List<Integer> appearance = new ArrayList<>();
@@ -184,7 +237,9 @@ public class ModelSnapshot {
 				hash = 31 * hash + faceColors3[f];
 			}
 
-			int[] verts = appearance.stream().mapToInt(Integer::intValue).toArray();
+			int[] verts = new int[appearance.size()];
+			for (int i = 0; i < appearance.size(); i++)
+				verts[i] = appearance.get(i);
 			String meshKey = verts.length + "v" + faces.length + "f-" + Long.toHexString(hash);
 			result.add(new Piece(meshKey, faces, verts));
 		}

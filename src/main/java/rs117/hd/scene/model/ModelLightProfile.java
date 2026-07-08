@@ -19,6 +19,7 @@ public class ModelLightProfile {
 	private Map<Integer, String> vertices = new LinkedHashMap<>();
 	private Set<Integer> itemIds = new HashSet<>();
 	private Set<Integer> npcIds = new HashSet<>();
+	private Set<Integer> objectIds = new HashSet<>();
 	private String lightDescription = "Torch";
 	private float offsetX;
 	private float offsetY;
@@ -63,6 +64,10 @@ public class ModelLightProfile {
 		return !npcIds.isEmpty();
 	}
 
+	public boolean isObjectProfile() {
+		return !objectIds.isEmpty();
+	}
+
 	public ModelLightProfile copy() {
 		ModelLightProfile c = new ModelLightProfile(name);
 		c.meshKey = meshKey;
@@ -72,6 +77,7 @@ public class ModelLightProfile {
 		triangles.forEach((k, v) -> c.triangles.put(k, v.copy()));
 		c.itemIds = new HashSet<>(itemIds);
 		c.npcIds = new HashSet<>(npcIds);
+		c.objectIds = new HashSet<>(objectIds);
 		c.lightDescription = lightDescription;
 		c.offsetX = offsetX;
 		c.offsetY = offsetY;
@@ -89,5 +95,6 @@ public class ModelLightProfile {
 		offsetZ = other.offsetZ;
 		itemIds = new HashSet<>(other.itemIds);
 		npcIds = new HashSet<>(other.npcIds);
+		objectIds = new HashSet<>(other.objectIds);
 	}
 }
