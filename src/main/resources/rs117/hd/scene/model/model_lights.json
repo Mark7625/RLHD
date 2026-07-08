@@ -13,11 +13,103 @@
       "triangles": {
         "111": {
           "light": "Mining helmet light",
-          "bary0": 0.053389832,
-          "bary1": 0.39406782,
-          "bary2": 0.5525424
+          "bary0": 0.053,
+          "bary1": 0.394,
+          "bary2": 0.553
         }
       }
+    },
+    "16v52f-8e85438e82154af": {
+      "name": "Piece 8",
+      "meshKey": "16v52f-8e85438e82154af",
+      "triangles": {
+        "42": {
+          "light": "ABERRANT_SPECTRES",
+          "bary0": 0.11,
+          "bary1": 0.382,
+          "bary2": 0.508
+        }
+      }
+    },
+    "12v12f-2df9e7525278d965@obj50003": {
+      "name": "Piece 19",
+      "meshKey": "12v12f-2df9e7525278d965",
+      "triangles": {
+        "2": {
+          "light": "ABERRANT_SPECTRES",
+          "bary0": 0.415,
+          "bary1": 0.024,
+          "bary2": 0.561
+        }
+      },
+      "objectIds": [
+        50003
+      ]
+    },
+    "8v12f-bdd3a2d502dd00f2@obj663": {
+      "name": "Piece 20",
+      "meshKey": "8v12f-bdd3a2d502dd00f2",
+      "triangles": {
+        "8": {
+          "light": "ABERRANT_SPECTRES",
+          "bary0": 0.278,
+          "bary1": 0.25,
+          "bary2": 0.472
+        }
+      },
+      "objectIds": [
+        663
+      ]
+    },
+    "25v36f-611219b03e01c209@obj660": {
+      "name": "Piece 3",
+      "meshKey": "25v36f-611219b03e01c209",
+      "triangles": {
+        "16": {
+          "light": "ABERRANT_SPECTRES",
+          "bary0": 0.112,
+          "bary1": 0.454,
+          "bary2": 0.434
+        }
+      },
+      "objectIds": [
+        660
+      ]
+    },
+    "9v8f-f8487f12d4f95a85@obj877": {
+      "name": "Piece 2",
+      "meshKey": "9v8f-f8487f12d4f95a85",
+      "triangles": {
+        "3": {
+          "light": "ABERRANT_SPECTRES",
+          "bary0": 0.532,
+          "bary1": 0.164,
+          "bary2": 0.304
+        }
+      },
+      "objectIds": [
+        877
+      ]
+    },
+    "499v993f-69987aff81324cca@npc2856": {
+      "name": "Piece 1",
+      "meshKey": "499v993f-69987aff81324cca",
+      "vertices": {
+        "498": "ABERRANT_SPECTRES"
+      },
+      "npcIds": [
+        2856
+      ]
+    },
+    "69v140f-59d91a4b33bf648e@npc2854": {
+      "name": "Piece 1",
+      "meshKey": "69v140f-59d91a4b33bf648e",
+      "vertices": {
+        "55": "ABYSS_AIR_PORTAL"
+      },
+      "npcIds": [
+        2854
+      ]
     }
   }
 }
