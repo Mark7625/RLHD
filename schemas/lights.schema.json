@@ -119,6 +119,14 @@
         "type": "number",
         "description": "Spotlight pitch in degrees relative to player facing. Negative values tilt downward."
       },
+      "mask": {
+        "type": "string",
+        "description": "Spotlight gobo texture name. Use \"circle\" for a soft round beam."
+      },
+      "maskScale": {
+        "type": "number",
+        "description": "Scale of the projected mask within the spotlight cone. Defaults to 1."
+      },
       "fadeInDuration": {
         "type": "number",
         "description": "The time in milliseconds until the light is fully active after spawning. May overlap with fade-out if overlap is enabled."

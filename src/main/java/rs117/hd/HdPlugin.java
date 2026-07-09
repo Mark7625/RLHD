@@ -112,6 +112,7 @@ import rs117.hd.scene.ModelOverrideManager;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.TextureManager;
+import rs117.hd.scene.lights.LightMaskManager;
 import rs117.hd.scene.TileOverrideManager;
 import rs117.hd.scene.WaterTypeManager;
 import rs117.hd.utils.ColorUtils;
@@ -170,6 +171,7 @@ public class HdPlugin extends Plugin {
 	public static final int TEXTURE_UNIT_SHADOW_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 	public static final int TEXTURE_UNIT_TILE_HEIGHT_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 	public static final int TEXTURE_UNIT_TILED_LIGHTING_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
+	public static final int TEXTURE_UNIT_LIGHT_MASKS = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 
 	public static int MAX_IMAGE_UNITS;
 	public static int IMAGE_UNIT_COUNT = 0;
@@ -181,6 +183,7 @@ public class HdPlugin extends Plugin {
 	public static final int UNIFORM_BLOCK_WATER_TYPES = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_LIGHTS = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_LIGHTS_CULLING = UNIFORM_BLOCK_COUNT++;
+	public static final int UNIFORM_BLOCK_LIGHT_MASKS = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_UI = UNIFORM_BLOCK_COUNT++;
 
 	public static final float NEAR_PLANE = 50;
@@ -223,6 +226,7 @@ public class HdPlugin extends Plugin {
 		GamevalManager.class,
 		GroundMaterialManager.class,
 		LightManager.class,
+		LightMaskManager.class,
 		MaterialManager.class,
 		ModelOverrideManager.class,
 		ProceduralGenerator.class,
@@ -264,6 +268,9 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private LightManager lightManager;
+
+	@Inject
+	private LightMaskManager lightMaskManager;
 
 	@Inject
 	private EnvironmentManager environmentManager;
@@ -394,6 +401,7 @@ public class HdPlugin extends Plugin {
 	public UBOUI uboUI;
 	public UBOLights uboLights;
 	public UBOLights uboLightsCulling;
+	public UBOLights.LightMasks uboLightMasks;
 
 	// Configs used frequently enough to be worth caching
 	public boolean configGroundTextures;
@@ -717,6 +725,7 @@ public class HdPlugin extends Plugin {
 				tileOverrideManager.startUp();
 				modelOverrideManager.startUp();
 				lightManager.startUp();
+				lightMaskManager.startUp();
 				environmentManager.startUp();
 				fishingSpotReplacer.startUp();
 				gammaCalibrationOverlay.initialize();
@@ -786,6 +795,7 @@ public class HdPlugin extends Plugin {
 			groundMaterialManager.shutDown();
 			modelOverrideManager.shutDown();
 			lightManager.shutDown();
+			lightMaskManager.shutDown();
 			environmentManager.shutDown();
 			fishingSpotReplacer.shutDown();
 			areaManager.shutDown();
@@ -956,6 +966,7 @@ public class HdPlugin extends Plugin {
 			.addUniformBuffer(uboGlobal)
 			.addUniformBuffer(uboLights)
 			.addUniformBuffer(uboLightsCulling)
+			.addUniformBuffer(uboLightMasks)
 			.addUniformBuffer(uboUI)
 			.addUniformBuffer(materialManager.uboMaterials)
 			.addUniformBuffer(waterTypeManager.uboWaterTypes);
@@ -1142,6 +1153,9 @@ public class HdPlugin extends Plugin {
 
 		uboLightsCulling = new UBOLights(true);
 		uboLightsCulling.initialize(UNIFORM_BLOCK_LIGHTS_CULLING);
+
+		uboLightMasks = new UBOLights.LightMasks();
+		uboLightMasks.initialize(UNIFORM_BLOCK_LIGHT_MASKS);
 	}
 
 	private void destroyUbos() {
@@ -1160,6 +1174,10 @@ public class HdPlugin extends Plugin {
 		if (uboLightsCulling != null)
 			uboLightsCulling.destroy();
 		uboLightsCulling = null;
+
+		if (uboLightMasks != null)
+			uboLightMasks.destroy();
+		uboLightMasks = null;
 	}
 
 	private void initializeUiTexture() {

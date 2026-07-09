@@ -6,6 +6,39 @@
 #include <utils/specular.glsl>
 
 #if DYNAMIC_LIGHTS
+uniform sampler2DArray lightMaskArray;
+
+float sampleLightMask(int lightIdx, vec3 position, PointLight light, float outerConeCos) {
+    vec4 maskData = lightMaskData[lightIdx];
+    float maskLayer = maskData.x;
+    if (maskLayer < 0.0)
+        return 1.0;
+
+    vec3 lightAxis = light.direction.xyz;
+    vec3 toFrag = position - light.position.xyz;
+    float along = dot(toFrag, lightAxis);
+    if (along <= 0.0)
+        return 0.0;
+
+    vec3 up = abs(lightAxis.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+    vec3 right = normalize(cross(up, lightAxis));
+    up = cross(lightAxis, right);
+
+    vec3 perp = toFrag - lightAxis * along;
+    float coneRadius = along * tan(acos(clamp(outerConeCos, -1.0, 1.0)));
+    float maskScale = max(maskData.y, 0.001);
+    vec2 uv = vec2(dot(perp, right), dot(perp, up)) / (coneRadius * maskScale);
+    uv = uv * 0.5 + 0.5;
+
+    // Spotlight cross-section is circular; clip square UV space to the inscribed circle.
+    vec2 centeredUv = uv - 0.5;
+    float radialSq = dot(centeredUv, centeredUv);
+    if (radialSq > 0.25)
+        return 0.0;
+
+    return texture(lightMaskArray, vec3(uv, maskLayer)).r;
+}
+
 void calculateLight(
     int lightIdx, vec3 position, vec3 normals, vec3 viewDir,
     vec3 texBlend, vec3 specularGloss, vec3 specularStrength,
@@ -30,6 +63,7 @@ void calculateLight(
             float proximity = 1.0 - sqrt(distanceSquared / radiusSquared);
             float spill = proximity * proximity * proximity; // cubic falloff
             attenuation *= max(coneFactor, spill * 0.5);
+            attenuation *= sampleLightMask(lightIdx, position, light, outerConeCos);
         }
 
         vec3 pointLightColor = light.color.rgb * attenuation;

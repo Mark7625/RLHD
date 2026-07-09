@@ -13,9 +13,21 @@
       "triangles": {
         "111": {
           "light": "Mining helmet light",
-          "bary0": 0.053389832,
-          "bary1": 0.39406782,
-          "bary2": 0.5525424
+          "bary0": 0.053,
+          "bary1": 0.394,
+          "bary2": 0.553
+        }
+      }
+    },
+    "100v215f-26125b460f0605b8": {
+      "name": "Piece 5",
+      "meshKey": "100v215f-26125b460f0605b8",
+      "triangles": {
+        "56": {
+          "light": "Mining helmet light",
+          "bary0": 0.348,
+          "bary1": 0.032,
+          "bary2": 0.621
         }
       }
     }

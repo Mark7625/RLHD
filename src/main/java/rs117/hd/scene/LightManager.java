@@ -61,6 +61,7 @@ import rs117.hd.scene.model.ModelLightManager;
 import rs117.hd.scene.lights.Alignment;
 import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.lights.LightDefinition;
+import rs117.hd.scene.lights.LightMaskManager;
 import rs117.hd.scene.lights.LightType;
 import rs117.hd.utils.HDUtils;
 import rs117.hd.utils.ModelHash;
@@ -109,6 +110,9 @@ public class LightManager {
 
 	@Inject
 	private ModelLightManager modelLightManager;
+
+	@Inject
+	private LightMaskManager lightMaskManager;
 
 	private final ArrayList<Light> WORLD_LIGHTS = new ArrayList<>();
 	private final Map<String, LightDefinition> LIGHTS_BY_DESCRIPTION = new LinkedHashMap<>();
@@ -162,6 +166,8 @@ public class LightManager {
 				lightDef.graphicsObjectIds.forEach(id -> GRAPHICS_OBJECT_LIGHTS.put(id, lightDef));
 			}
 
+			lightMaskManager.rebuildFromDefinitions(Arrays.asList(lights));
+
 			log.debug("Loaded {} lights", lights.length);
 
 			// Reload lights once on plugin startup, and whenever lights.json should be hot-swapped.
@@ -211,6 +217,7 @@ public class LightManager {
 		if (description == null || description.isEmpty() || updated == null)
 			return;
 		updated.description = description;
+		lightMaskManager.rebuildFromDefinitions(Arrays.asList(definitionArray));
 		for (int i = 0; i < definitionArray.length; i++) {
 			if (description.equals(definitionArray[i].description))
 				definitionArray[i] = cloneDefinition(updated);
@@ -225,6 +232,7 @@ public class LightManager {
 		LightDefinition[] next = Arrays.copyOf(definitionArray, definitionArray.length + 1);
 		next[next.length - 1] = cloneDefinition(definition);
 		definitionArray = next;
+		lightMaskManager.rebuildFromDefinitions(Arrays.asList(definitionArray));
 		rebuildDescriptionIndex();
 		modelLightManager.onLightDefinitionsChanged();
 	}
@@ -297,6 +305,9 @@ public class LightManager {
 		copy.innerConeAngle = source.innerConeAngle;
 		copy.outerConeAngle = source.outerConeAngle;
 		copy.conePitch = source.conePitch;
+		copy.mask = source.mask;
+		copy.maskScale = source.maskScale;
+		copy.maskLayer = source.maskLayer;
 		copy.fadeInDuration = source.fadeInDuration;
 		copy.fadeOutDuration = source.fadeOutDuration;
 		copy.spawnDelay = source.spawnDelay;

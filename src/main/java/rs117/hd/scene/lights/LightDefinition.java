@@ -25,6 +25,10 @@ public class LightDefinition {
 	public float innerConeAngle = 0;
 	public float outerConeAngle = 0;
 	public float conePitch = 0;
+	@Nullable
+	public String mask;
+	public float maskScale = 1;
+	public transient int maskLayer = -1;
 	public int fadeInDuration = 50;
 	public int fadeOutDuration = 50;
 	public int spawnDelay;

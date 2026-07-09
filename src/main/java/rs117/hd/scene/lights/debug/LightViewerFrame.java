@@ -199,6 +199,8 @@ public class LightViewerFrame extends JFrame {
 	private final JSpinner innerConeSpinner = new JSpinner(new SpinnerNumberModel(0.0, 0.0, 180.0, 1.0));
 	private final JSpinner outerConeSpinner = new JSpinner(new SpinnerNumberModel(0.0, 0.0, 180.0, 1.0));
 	private final JSpinner conePitchSpinner = new JSpinner(new SpinnerNumberModel(0.0, -180.0, 180.0, 1.0));
+	private final JTextField maskField = new JTextField();
+	private final JSpinner maskScaleSpinner = new JSpinner(new SpinnerNumberModel(1.0, 0.1, 10.0, 0.1));
 	private final JSpinner heightSpinner = new JSpinner(new SpinnerNumberModel(0, -1000, 5000, 5));
 	private final JSpinner fadeInSpinner = new JSpinner(new SpinnerNumberModel(50, 0, 60000, 10));
 	private final JSpinner fadeOutSpinner = new JSpinner(new SpinnerNumberModel(50, 0, 60000, 10));
@@ -549,11 +551,11 @@ public class LightViewerFrame extends JFrame {
 		for (JSpinner spinner : new JSpinner[] {
 			radiusSpinner, strengthSpinner, heightSpinner, defOffsetXSpinner, defOffsetYSpinner, defOffsetZSpinner,
 			durationSpinner, rangeSpinner, fadeInSpinner, fadeOutSpinner, spawnDelaySpinner, despawnDelaySpinner,
-			innerConeSpinner, outerConeSpinner, conePitchSpinner, renderableIndexSpinner
+			innerConeSpinner, outerConeSpinner, conePitchSpinner, maskScaleSpinner, renderableIndexSpinner
 		})
 			DevUi.sizeField(spinner);
 		for (JTextField field : new JTextField[] {
-			animationIdsField, npcIdsField, objectIdsField, projectileIdsField, graphicsIdsField
+			maskField, animationIdsField, npcIdsField, objectIdsField, projectileIdsField, graphicsIdsField
 		})
 			DevUi.sizeField(field);
 
@@ -567,6 +569,7 @@ public class LightViewerFrame extends JFrame {
 		spawnDelaySpinner.setToolTipText("Delay before the light becomes visible (ms)");
 		despawnDelaySpinner.setToolTipText("Delay after despawn before removal (ms)");
 		renderableIndexSpinner.setToolTipText("Renderable slot on multi-part objects (-1 = any)");
+		maskField.setToolTipText("Mask from textures/light_masks/ or \"circle\". 256x256, soft edges via alpha/grayscale.");
 
 		colorButton.addActionListener(e -> pickDefinitionColor());
 		Runnable saveDef = this::saveDefinitionFromUi;
@@ -574,11 +577,11 @@ public class LightViewerFrame extends JFrame {
 		for (JSpinner spinner : new JSpinner[] {
 			radiusSpinner, strengthSpinner, heightSpinner, defOffsetXSpinner, defOffsetYSpinner, defOffsetZSpinner,
 			durationSpinner, rangeSpinner, fadeInSpinner, fadeOutSpinner, spawnDelaySpinner, despawnDelaySpinner,
-			innerConeSpinner, outerConeSpinner, conePitchSpinner, renderableIndexSpinner
+			innerConeSpinner, outerConeSpinner, conePitchSpinner, maskScaleSpinner, renderableIndexSpinner
 		})
 			spinner.addChangeListener(e -> saveDef.run());
 		for (JTextField field : new JTextField[] {
-			animationIdsField, npcIdsField, objectIdsField, projectileIdsField, graphicsIdsField
+			maskField, animationIdsField, npcIdsField, objectIdsField, projectileIdsField, graphicsIdsField
 		})
 			field.getDocument().addDocumentListener(docListener(saveDef));
 		for (JCheckBox check : new JCheckBox[] {
@@ -614,7 +617,9 @@ public class LightViewerFrame extends JFrame {
 		editor.add(DevUi.section("Spotlight", true, null,
 			DevUi.formRow("Inner cone", innerConeSpinner),
 			DevUi.formRow("Outer cone", outerConeSpinner),
-			DevUi.formRow("Cone pitch", conePitchSpinner)).root);
+			DevUi.formRow("Cone pitch", conePitchSpinner),
+			DevUi.formRow("Mask", maskField),
+			DevUi.formRow("Mask scale", maskScaleSpinner)).root);
 		editor.add(DevUi.section("Behavior", true, null,
 			DevUi.formRow("Despawn w/ parent", despawnWithParentCheck),
 			DevUi.formRow("Other planes", visibleOtherPlanesCheck),
@@ -896,6 +901,8 @@ public class LightViewerFrame extends JFrame {
 		innerConeSpinner.setValue((double) def.innerConeAngle);
 		outerConeSpinner.setValue((double) def.outerConeAngle);
 		conePitchSpinner.setValue((double) def.conePitch);
+		maskField.setText(def.mask == null ? "" : def.mask);
+		maskScaleSpinner.setValue((double) def.maskScale);
 		if (def.color != null && def.color.length == 3) {
 			float[] srgb = ColorUtils.linearToSrgb(def.color);
 			colorButton.setBackground(new Color(
@@ -942,6 +949,9 @@ public class LightViewerFrame extends JFrame {
 		def.innerConeAngle = ((Number) innerConeSpinner.getValue()).floatValue();
 		def.outerConeAngle = ((Number) outerConeSpinner.getValue()).floatValue();
 		def.conePitch = ((Number) conePitchSpinner.getValue()).floatValue();
+		String mask = maskField.getText().trim();
+		def.mask = mask.isEmpty() ? null : mask;
+		def.maskScale = ((Number) maskScaleSpinner.getValue()).floatValue();
 		Color bg = colorButton.getBackground();
 		def.color = ColorUtils.srgbToLinear(ColorUtils.srgb(bg.getRed(), bg.getGreen(), bg.getBlue()));
 		callbacks.saveDefinition(selectedDefinitionId, def);

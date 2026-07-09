@@ -45,4 +45,22 @@ public class UBOLights extends UniformBuffer<GLBuffer> {
 		public Property color = addProperty(PropertyType.FVec4, "color");
 		public Property direction = addProperty(PropertyType.FVec4, "direction");
 	}
+	public static class LightMasks extends UniformBuffer<GLBuffer> {
+		private final Property[] maskData;
+
+		public LightMasks() {
+			super(GL_DYNAMIC_DRAW);
+			maskData = addPropertyArray(PropertyType.FVec4, "lightMaskData", MAX_LIGHTS);
+		}
+
+		@Override
+		public String getUniformBlockName() {
+			return "UBOLightMasks";
+		}
+
+		public void setMask(int lightIdx, int layer, float scale) {
+			if (lightIdx >= 0 && lightIdx < MAX_LIGHTS)
+				maskData[lightIdx].set(layer, scale, 0, 0);
+		}
+	}
 }

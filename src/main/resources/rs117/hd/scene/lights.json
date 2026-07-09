@@ -49457,7 +49457,9 @@
     "color": [255, 230, 180],
     "type": "STATIC",
     "innerConeAngle": 35,
-    "outerConeAngle": 50
+    "outerConeAngle": 50,
+    "mask": "smiley",
+    "maskScale": 1.0
   },
   {
     "description": "Lit bug lantern",
