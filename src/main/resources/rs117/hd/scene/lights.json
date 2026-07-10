@@ -23156,7 +23156,7 @@
     "description": "Varrock Blacksmith Hearth",
     "offset": [ 0, 100, 40 ],
     "alignment": "CENTER",
-    "radius": 350,
+    "radius": 260,
     "strength": 12.5,
     "color": [
       252,
@@ -23166,6 +23166,9 @@
     "type": "FLICKER",
     "duration": 0,
     "range": 20,
+    "mask": "smiley",
+    "maskScale": 0.2,
+    "maskProjection": "WALL",
     "objectIds": [
       "FAI_VARROCK_SMITHY_HEARTH"
     ]

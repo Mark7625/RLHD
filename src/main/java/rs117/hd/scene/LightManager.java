@@ -55,6 +55,7 @@ import rs117.hd.opengl.uniforms.UBOLights;
 import rs117.hd.scene.lights.Alignment;
 import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.lights.LightDefinition;
+import rs117.hd.scene.lights.LightMaskManager;
 import rs117.hd.scene.lights.LightType;
 import rs117.hd.utils.HDUtils;
 import rs117.hd.utils.ModelHash;
@@ -99,6 +100,9 @@ public class LightManager {
 	private ModelOverrideManager modelOverrideManager;
 
 	@Inject
+	private LightMaskManager lightMaskManager;
+
+	@Inject
 	private EntityHiderPlugin entityHiderPlugin;
 
 	private final ArrayList<Light> WORLD_LIGHTS = new ArrayList<>();
@@ -132,8 +136,12 @@ public class LightManager {
 			PROJECTILE_LIGHTS.clear();
 			GRAPHICS_OBJECT_LIGHTS.clear();
 
-			for (LightDefinition lightDef : lights) {
+			for (LightDefinition lightDef : lights)
 				lightDef.normalize();
+
+			lightMaskManager.rebuildFromDefinitions(Arrays.asList(lights));
+
+			for (LightDefinition lightDef : lights) {
 				if (lightDef.worldX != null && lightDef.worldY != null) {
 					Light light = new Light(lightDef);
 					light.worldPoint = new WorldPoint(lightDef.worldX, lightDef.worldY, lightDef.plane);

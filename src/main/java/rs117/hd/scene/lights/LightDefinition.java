@@ -22,6 +22,10 @@ public class LightDefinition {
 	public LightType type = LightType.STATIC;
 	public float duration;
 	public float range;
+	public String mask;
+	public float maskScale = 1;
+	public MaskProjection maskProjection = MaskProjection.AUTO;
+	public transient int maskLayer = -1;
 	public int fadeInDuration = 50;
 	public int fadeOutDuration = 50;
 	public int spawnDelay;
@@ -62,5 +66,7 @@ public class LightDefinition {
 			color = new float[3];
 		if (type == null)
 			type = LightType.STATIC;
+		if (maskProjection == null)
+			maskProjection = MaskProjection.AUTO;
 	}
 }

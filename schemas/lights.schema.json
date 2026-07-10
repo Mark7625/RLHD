@@ -107,6 +107,19 @@
         "type": "number",
         "description": "The distance range to vary the light's radius by according to the light's animation."
       },
+      "mask": {
+        "type": "string",
+        "description": "Spotlight gobo texture name. Use \"circle\" for a soft round beam."
+      },
+      "maskScale": {
+        "type": "number",
+        "description": "Scale of the projected mask within the light radius. Defaults to 1."
+      },
+      "maskProjection": {
+        "type": "string",
+        "enum": [ "AUTO", "FLAT", "WALL" ],
+        "description": "Which surfaces receive the mask. FLAT for floors and ceilings, WALL for vertical surfaces, AUTO picks from the surface normal."
+      },
       "fadeInDuration": {
         "type": "number",
         "description": "The time in milliseconds until the light is fully active after spawning. May overlap with fade-out if overlap is enabled."

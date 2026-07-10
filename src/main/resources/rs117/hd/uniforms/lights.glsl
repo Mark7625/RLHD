@@ -16,6 +16,10 @@ layout(std140) uniform UBOLightsCulling {
     vec4 PointLightPositionsArray[MAX_LIGHT_COUNT];
 };
 
+layout(std140) uniform UBOLightMasks {
+    vec4 lightMaskData[MAX_LIGHT_COUNT];
+};
+
 bool isDualPacked(uint packedValue) {
     return (packedValue & 0x8000u) != 0u;
 }

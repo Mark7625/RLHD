@@ -57,6 +57,7 @@ import rs117.hd.scene.LightManager;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.lights.Light;
+import rs117.hd.scene.lights.LightMaskManager;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.utils.Camera;
 import rs117.hd.utils.ColorUtils;
@@ -117,6 +118,9 @@ public class ZoneRenderer implements Renderer {
 
 	@Inject
 	private LightManager lightManager;
+
+	@Inject
+	private LightMaskManager lightMaskManager;
 
 	@Inject
 	private EnvironmentManager environmentManager;
@@ -537,6 +541,7 @@ public class ZoneRenderer implements Renderer {
 					lightColor[3] = 0.0f;
 
 					plugin.uboLights.setLight(i, lightPosition, lightColor);
+					plugin.uboLightMasks.setMask(i, light.def.maskLayer, light.def.maskScale, light.def.maskProjection);
 
 					if (plugin.configTiledLighting) {
 						// Pre-calculate the view space position of the light, to save having to do the multiplication in the culling shader
@@ -549,6 +554,7 @@ public class ZoneRenderer implements Renderer {
 
 				plugin.uboLights.upload();
 				plugin.uboLightsCulling.upload();
+				plugin.uboLightMasks.upload();
 				plugin.uboGlobal.pointLightsCount.set(ctx.sceneContext.numVisibleLights);
 				frameTimer.end(Timer.UPDATE_LIGHTS);
 			}
@@ -784,6 +790,7 @@ public class ZoneRenderer implements Renderer {
 
 	private void scenePass() {
 		sceneProgram.use();
+		lightMaskManager.bind();
 
 		frameTimer.begin(Timer.DRAW_SCENE);
 		renderState.framebuffer.set(GL_DRAW_FRAMEBUFFER, plugin.fboScene);

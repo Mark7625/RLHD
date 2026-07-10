@@ -189,6 +189,10 @@ public class TextureManager {
 	}
 
 	public void uploadTexture(int target, int textureLayer, int[] textureSize, BufferedImage image) {
+		uploadTexture(target, textureLayer, textureSize, image, image != vanillaImage);
+	}
+
+	public void uploadTexture(int target, int textureLayer, int[] textureSize, BufferedImage image, boolean flipHorizontal) {
 		assert client.isClientThread() : "Not thread safe";
 
 		// Allocate resources for storing temporary image data
@@ -200,7 +204,7 @@ public class TextureManager {
 
 		// TODO: scale and transform on the GPU for better performance (would save 400+ ms)
 		AffineTransform t = new AffineTransform();
-		if (image != vanillaImage) {
+		if (flipHorizontal) {
 			// Flip non-vanilla textures horizontally to match vanilla UV orientation
 			t.translate(textureSize[1], 0);
 			t.scale(-1, 1);

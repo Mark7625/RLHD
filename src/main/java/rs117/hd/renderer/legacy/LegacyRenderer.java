@@ -49,6 +49,7 @@ import rs117.hd.scene.ModelOverrideManager;
 import rs117.hd.scene.ProceduralGenerator;
 import rs117.hd.scene.areas.Area;
 import rs117.hd.scene.lights.Light;
+import rs117.hd.scene.lights.LightMaskManager;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.utils.ColorUtils;
 import rs117.hd.utils.HDUtils;
@@ -102,6 +103,9 @@ public class LegacyRenderer implements Renderer {
 
 	@Inject
 	private LightManager lightManager;
+
+	@Inject
+	private LightMaskManager lightMaskManager;
 
 	@Inject
 	private EnvironmentManager environmentManager;
@@ -728,6 +732,7 @@ public class LegacyRenderer implements Renderer {
 				lightColor[3] = 0.0f;
 
 				plugin.uboLights.setLight(i, lightPosition, lightColor);
+				plugin.uboLightMasks.setMask(i, light.def.maskLayer, light.def.maskScale, light.def.maskProjection);
 
 				if (plugin.configTiledLighting) {
 					// Pre-calculate the view space position of the light, to save having to do the multiplication in the culling shader
@@ -740,6 +745,7 @@ public class LegacyRenderer implements Renderer {
 
 			plugin.uboLights.upload();
 			plugin.uboLightsCulling.upload();
+			plugin.uboLightMasks.upload();
 			frameTimer.end(Timer.UPDATE_LIGHTS);
 
 			// Perform tiled lighting culling before the compute memory barrier, so it's performed asynchronously
@@ -1133,6 +1139,7 @@ public class LegacyRenderer implements Renderer {
 
 			plugin.uboGlobal.upload();
 			sceneProgram.use();
+			lightMaskManager.bind();
 
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboScene);
 			if (plugin.msaaSamples > 1) {

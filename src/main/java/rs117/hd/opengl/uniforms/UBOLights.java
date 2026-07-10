@@ -1,5 +1,6 @@
 package rs117.hd.opengl.uniforms;
 
+import rs117.hd.scene.lights.MaskProjection;
 import rs117.hd.utils.buffer.GLBuffer;
 
 import static org.lwjgl.opengl.GL33C.*;
@@ -37,4 +38,26 @@ public class UBOLights extends UniformBuffer<GLBuffer> {
 		public Property position = addProperty(PropertyType.FVec4, "position");
 		public Property color = addProperty(PropertyType.FVec4, "color");
 	}
+
+	public static class LightMasks extends UniformBuffer<GLBuffer> {
+		private final Property[] maskData;
+
+		public LightMasks() {
+			super(GL_DYNAMIC_DRAW);
+			maskData = addPropertyArray(PropertyType.FVec4, "lightMaskData", MAX_LIGHTS);
+		}
+
+		@Override
+		public String getUniformBlockName() {
+			return "UBOLightMasks";
+		}
+
+		public void setMask(int lightIdx, int layer, float scale, MaskProjection projection) {
+			if (lightIdx >= 0 && lightIdx < MAX_LIGHTS) {
+				int mode = projection != null ? projection.shaderIndex() : MaskProjection.AUTO.shaderIndex();
+				maskData[lightIdx].set(layer, scale, mode, 0);
+			}
+		}
+	}
+
 }
