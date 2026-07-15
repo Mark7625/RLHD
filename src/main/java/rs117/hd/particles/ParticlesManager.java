@@ -3548,8 +3548,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	}
 
 	/**
-	 * Procedural area weather: spawn above the local tile / camera and fall
+	 * Procedural area weather: spawn throughout the fall column and fall
 	 * straight down across the inscribed circle of each active area AABB.
+	 * Spawn rate targets particles-per-tile using estimated fall duration so
+	 * the column stays filled instead of pulsing as discrete sheets.
 	 */
 	private void processWeather(float dt)
 	{
@@ -3590,11 +3592,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 			activeWeatherZoneCount++;
 			float desiredAlive = desiredWeatherAlive(zone) * scale * densityScale * zone.densityScale;
-			float avgLife = zone.style.getLifetimeSec();
-			if (avgLife <= 0.01f)
-			{
-				avgLife = 1f;
-			}
+			// Weather lives until ground clip, not style lifetime. Using the short
+			// definition lifetime overspawns into the budget as a falling sheet,
+			// then starves until that sheet dies — visible gaps when looking up.
+			float avgLife = weatherFallDurationSec(zone.style);
 			float spawnPerSec = desiredAlive / avgLife;
 			zone.spawnAccum += spawnPerSec * dt;
 			int toSpawn = (int) zone.spawnAccum;
@@ -3676,14 +3677,24 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int worldView = lp.getWorldView();
 		LocalPoint heightLp = new LocalPoint((int) lx, (int) ly, worldView);
 		int ground = Perspective.getTileHeight(client, heightLp, worldPlane);
-		float spawnZ = ground - ParticleSystem.WEATHER_SPAWN_ABOVE_GROUND;
+		// Scene z is negative-up: ceilingZ < floorZ. Scatter through the column so
+		// new spawns refill gaps continuously instead of forming one sheet at the top.
+		float ceilingZ = ground - ParticleSystem.WEATHER_SPAWN_ABOVE_GROUND;
 		float hideFromCamera = hdPlugin.cameraPosition[1] - ParticleSystem.WEATHER_SPAWN_ABOVE_CAMERA;
-		if (spawnZ > hideFromCamera)
+		if (ceilingZ > hideFromCamera)
 		{
-			spawnZ = hideFromCamera;
+			ceilingZ = hideFromCamera;
 		}
-		spawnZ = Math.max(spawnZ, ground - ParticleSystem.WEATHER_SPAWN_MAX_ABOVE_GROUND);
-		spawnZ = Math.min(spawnZ, ground - ParticleSystem.WEATHER_SPAWN_MIN_ABOVE_GROUND);
+		ceilingZ = Math.max(ceilingZ, ground - ParticleSystem.WEATHER_SPAWN_MAX_ABOVE_GROUND);
+		ceilingZ = Math.min(ceilingZ, ground - ParticleSystem.WEATHER_SPAWN_MIN_ABOVE_GROUND);
+		float floorZ = ground - ParticleSystem.WEATHER_SPAWN_MIN_ABOVE_GROUND;
+		if (floorZ < ceilingZ)
+		{
+			float swap = floorZ;
+			floorZ = ceilingZ;
+			ceilingZ = swap;
+		}
+		float spawnZ = ceilingZ + random.nextFloat() * (floorZ - ceilingZ);
 		spawnWeatherAt(zone.style, lx, ly, spawnZ, worldPlane);
 	}
 
@@ -3694,6 +3705,26 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int height = aabb.maxY - aabb.minY + 1;
 		int radiusTiles = Math.max(1, Math.min(width, height) / 2);
 		return (float) (Math.PI * radiusTiles * radiusTiles) * zone.particlesPerTile;
+	}
+
+	private static float weatherFallSpeed(ParticleStyle style)
+	{
+		if (style.getRiseSpeed() < 0)
+		{
+			return -style.getRiseSpeed();
+		}
+		return Math.max(12, style.getGravity() > 0 ? style.getGravity() : 26);
+	}
+
+	/**
+	 * Mean seconds a weather particle stays alive when spawned uniformly through
+	 * the fall column. Used for spawn-rate targeting instead of style lifetime.
+	 */
+	private static float weatherFallDurationSec(ParticleStyle style)
+	{
+		float meanHeight = 0.5f * (ParticleSystem.WEATHER_SPAWN_MIN_ABOVE_GROUND
+			+ ParticleSystem.WEATHER_SPAWN_MAX_ABOVE_GROUND);
+		return Math.max(1f, meanHeight / Math.max(1f, weatherFallSpeed(style)));
 	}
 
 	/** Spawn a weather particle falling straight down from a high point. */
@@ -3709,9 +3740,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		float spread = style.getSpreadSpeed();
 		float velX = (random.nextFloat() - 0.5f) * spread;
 		float velY = (random.nextFloat() - 0.5f) * spread;
-		float fallSpeed = style.getRiseSpeed() < 0
-			? -style.getRiseSpeed()
-			: Math.max(12, style.getGravity() > 0 ? style.getGravity() : 26);
+		float fallSpeed = weatherFallSpeed(style);
 		float velZ = fallSpeed * (0.75f + random.nextFloat() * 0.5f);
 
 		float wobblePhase = random.nextFloat() * 2f * (float) Math.PI;
