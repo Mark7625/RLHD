@@ -61,6 +61,12 @@ class EmitterProfile
 	private float weatherParticlesPerTile = 10f;
 	/** Extra multiplier on weather density, applied after the global density slider. */
 	private float weatherDensityScale = 1f;
+	/** World effector IDs applied as global forces for particles from this emitter. */
+	private List<String> globalEffectors = new ArrayList<>();
+	/** World effector IDs applied as local-filtered forces (skips scope==1). */
+	private List<String> localEffectorFilter = new ArrayList<>();
+	/** Definition-only effectors with no world placement. */
+	private List<String> embeddedEffectors = new ArrayList<>();
 	/**
 	 * Topology signature of the mesh piece this profile attaches to. Multiple
 	 * profiles may share a signature (e.g. one per recolored item variant).
@@ -330,6 +336,9 @@ class EmitterProfile
 		c.weatherAreas = weatherAreas == null ? new ArrayList<>() : new ArrayList<>(weatherAreas);
 		c.weatherParticlesPerTile = weatherParticlesPerTile;
 		c.weatherDensityScale = weatherDensityScale;
+		c.globalEffectors = globalEffectors == null ? new ArrayList<>() : new ArrayList<>(globalEffectors);
+		c.localEffectorFilter = localEffectorFilter == null ? new ArrayList<>() : new ArrayList<>(localEffectorFilter);
+		c.embeddedEffectors = embeddedEffectors == null ? new ArrayList<>() : new ArrayList<>(embeddedEffectors);
 		return c;
 	}
 

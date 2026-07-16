@@ -11,7 +11,7 @@ import net.runelite.api.ModelData;
  * {@link ParticleRenderer} from an {@link EmitterProfile}; immutable once built.
  */
 @Getter
-class ParticleStyle
+public class ParticleStyle
 {
 	static final int FADE_STEPS = 12;
 	/**

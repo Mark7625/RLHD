@@ -83,6 +83,17 @@ import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
+import rs117.hd.particles.effector.ActiveEffectorState;
+import rs117.hd.particles.effector.EffectorDefinition;
+import rs117.hd.particles.effector.EffectorDefinitionManager;
+import rs117.hd.particles.effector.EffectorEffect;
+import rs117.hd.particles.effector.EffectorPlacement;
+import rs117.hd.particles.effector.PushEffect;
+import rs117.hd.particles.effector.RadialEffect;
+import rs117.hd.particles.effector.WhirlpoolEffect;
+import rs117.hd.particles.effector.WindEffect;
+import rs117.hd.particles.debug.EffectorDebugOverlay;
+import rs117.hd.particles.debug.ParticleDebugOverlay;
 
 @Slf4j
 @Singleton
@@ -233,7 +244,22 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private AreaManager areaManager;
 
 	@Inject
+	private EffectorDefinitionManager effectorDefinitions;
+
+	@Inject
+	private WintertodtStormController wintertodtStormController;
+
+	@Inject
+	private ParticleDebugOverlay particleDebugOverlay;
+
+	@Inject
+	private EffectorDebugOverlay effectorDebugOverlay;
+
+	@Inject
 	private FrameTimer frameTimer;
+
+	private boolean particleOverlayActive;
+	private boolean effectorOverlayActive;
 
 	/**
 	 * Preview the shipped experience from a developer client: treats
@@ -256,6 +282,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 	@Getter
 	private final ParticleSystem particleSystem = new ParticleSystem();
+
+	public List<Particle> liveParticles()
+	{
+		return particleSystem.getParticles();
+	}
 
 	private ParticleRenderer renderer;
 	private EmitterStore store;
@@ -542,18 +573,26 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		final ParticleStyle style;
 		final float particlesPerTile;
 		final float densityScale;
+		final List<String> globalEffectors;
+		final List<String> localEffectorFilter;
+		final List<String> embeddedEffectors;
 		double spawnAccum;
 
-		ActiveWeatherZone(AABB aabb, ParticleStyle style, float particlesPerTile, float densityScale)
+		ActiveWeatherZone(AABB aabb, ParticleStyle style, float particlesPerTile, float densityScale,
+			List<String> globalEffectors, List<String> localEffectorFilter, List<String> embeddedEffectors)
 		{
 			this.aabb = aabb;
 			this.style = style;
 			this.particlesPerTile = particlesPerTile;
 			this.densityScale = densityScale;
+			this.globalEffectors = globalEffectors;
+			this.localEffectorFilter = localEffectorFilter;
+			this.embeddedEffectors = embeddedEffectors;
 		}
 	}
 
 	private final List<ActiveWeatherZone> activeWeatherZones = new ArrayList<>();
+	private final Map<String, List<ActiveEffectorState>> activeEffectorsById = new HashMap<>();
 	/**
 	 * Recently seen projectile IDs -> [count, lastSeenMs], for the picker's
 	 * capture list. Client thread.
@@ -640,6 +679,19 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			store.startWatching(clientThread);
 		}
+		effectorDefinitions.startup(() ->
+		{
+			rebuildWeatherZones();
+			SwingUtilities.invokeLater(() ->
+			{
+				if (viewerFrame != null)
+				{
+					viewerFrame.refreshEffectors();
+				}
+			});
+		});
+		effectorDefinitions.loadConfig();
+		wintertodtStormController.startUp();
 
 		log.debug("Particles started");
 	}
@@ -647,6 +699,12 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	public void shutDown()
 	{
 		eventBus.unregister(this);
+		wintertodtStormController.shutDown();
+		effectorDefinitions.shutdown();
+		particleDebugOverlay.setActive(false);
+		effectorDebugOverlay.setActive(false);
+		particleOverlayActive = false;
+		effectorOverlayActive = false;
 		if (store != null)
 		{
 			store.shutDownWatching();
@@ -1169,7 +1227,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		long cpuStart = System.nanoTime();
 		try
 		{
-			particleSystem.update(dt, deathStats);
+			SceneContext ctx = hdPlugin.getSceneContext();
+			Map<String, List<ActiveEffectorState>> effectors = ctx != null && ctx.sceneBase != null
+				? buildActiveEffectorsById(ctx)
+				: Map.of();
+			particleSystem.update(dt, effectors, effectorDefinitions, deathStats);
 			particleSystem.clipGround(anchorWorldView, client, deathStats);
 			if (!useGpuRendering())
 			{
@@ -2859,7 +2921,124 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		viewerFrame.setVisible(true);
 		viewerFrame.toFront();
 		viewerFrame.refreshDefinitions(store.snapshot().definitions);
+		viewerFrame.refreshEffectors();
 		refreshSnapshot();
+	}
+
+	@Override
+	public void setParticleOverlayActive(boolean active)
+	{
+		particleOverlayActive = active;
+		particleDebugOverlay.setActive(active);
+	}
+
+	@Override
+	public void setEffectorOverlayActive(boolean active)
+	{
+		effectorOverlayActive = active;
+		effectorDebugOverlay.setActive(active);
+	}
+
+	@Override
+	public boolean isParticleOverlayActive()
+	{
+		return particleOverlayActive;
+	}
+
+	@Override
+	public boolean isEffectorOverlayActive()
+	{
+		return effectorOverlayActive;
+	}
+
+	@Override
+	public List<ModelViewerFrame.EffectorListEntry> effectorEntries()
+	{
+		List<ModelViewerFrame.EffectorListEntry> out = new ArrayList<>();
+		for (EffectorDefinition def : effectorDefinitions.getDefinitions().values())
+		{
+			if (def == null || def.id == null)
+			{
+				continue;
+			}
+			StringBuilder effects = new StringBuilder();
+			StringBuilder details = new StringBuilder();
+			details.append(def.id).append('\n');
+			if (def.radiusTiles > 0f)
+			{
+				details.append("Radius: ").append(def.radiusTiles).append(" tiles\n");
+			}
+			else
+			{
+				details.append("Radius: unlimited\n");
+			}
+			details.append("Height offset: ").append(def.heightOffset).append('\n');
+			details.append("Scope: ").append(def.scope).append("\n\nEffects:\n");
+			for (EffectorEffect effect : def.effects)
+			{
+				if (effects.length() > 0)
+				{
+					effects.append(", ");
+				}
+				String type = effect.type != null ? effect.type.name().toLowerCase() : "unknown";
+				effects.append(type);
+				details.append("• ").append(type);
+				if (effect instanceof WindEffect)
+				{
+					WindEffect wind = (WindEffect) effect;
+					details.append("  speed=").append(wind.speed)
+						.append(" intensity=").append(wind.intensity)
+						.append(" turb=").append(wind.turbulence)
+						.append(" gust=").append(wind.gust)
+						.append(" lift=").append(wind.lift)
+						.append(" response=").append(wind.response);
+				}
+				else if (effect instanceof WhirlpoolEffect)
+				{
+					WhirlpoolEffect whirl = (WhirlpoolEffect) effect;
+					details.append("  strength=").append(whirl.strength)
+						.append(" sink=").append(whirl.sink);
+				}
+				else if (effect instanceof RadialEffect)
+				{
+					details.append("  strength=").append(((RadialEffect) effect).strength);
+				}
+				else if (effect instanceof PushEffect)
+				{
+					details.append("  strength=").append(((PushEffect) effect).strength);
+				}
+				details.append('\n');
+			}
+			List<String> placementLines = new ArrayList<>();
+			for (EffectorPlacement placement : effectorDefinitions.getAllPlacements())
+			{
+				if (!def.id.equals(placement.getEffectorId()))
+				{
+					continue;
+				}
+				placementLines.add(placement.getWorldX() + ", "
+					+ placement.getWorldY() + ", plane " + placement.getPlane());
+			}
+			details.append("\nPlacements (").append(placementLines.size()).append("):\n");
+			if (placementLines.isEmpty())
+			{
+				details.append("(none — runtime only)\n");
+			}
+			else
+			{
+				for (String line : placementLines)
+				{
+					details.append("• ").append(line).append('\n');
+				}
+			}
+			String summary = effects.length() == 0 ? "no effects" : effects.toString();
+			String placements = placementLines.isEmpty()
+				? "no placements"
+				: placementLines.size() + " placement" + (placementLines.size() == 1 ? "" : "s");
+			out.add(new ModelViewerFrame.EffectorListEntry(def.id, summary + " · " + placements,
+				placements, details.toString()));
+		}
+		return out;
 	}
 
 	// ==================== Scenery ====================
@@ -3541,7 +3720,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					activeWeatherZones.add(new ActiveWeatherZone(
 						aabb, style, profile.getWeatherParticlesPerTile(),
-						profile.getWeatherDensityScale()));
+						profile.getWeatherDensityScale(),
+						copyEffectorList(profile.getGlobalEffectors()),
+						copyEffectorList(profile.getLocalEffectorFilter()),
+						copyEffectorList(profile.getEmbeddedEffectors())));
 				}
 			}
 		}
@@ -3695,7 +3877,51 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			ceilingZ = swap;
 		}
 		float spawnZ = ceilingZ + random.nextFloat() * (floorZ - ceilingZ);
-		spawnWeatherAt(zone.style, lx, ly, spawnZ, worldPlane);
+		spawnWeatherAt(zone, lx, ly, spawnZ, worldPlane);
+	}
+
+	private Map<String, List<ActiveEffectorState>> buildActiveEffectorsById(SceneContext ctx)
+	{
+		for (List<ActiveEffectorState> states : activeEffectorsById.values())
+		{
+			states.clear();
+		}
+		activeEffectorsById.clear();
+		float halfTile = LOCAL_TILE_SIZE / 2f;
+		for (EffectorPlacement placement : effectorDefinitions.getAllPlacements())
+		{
+			EffectorDefinition def = effectorDefinitions.getDefinition(placement.getEffectorId());
+			if (def == null)
+			{
+				continue;
+			}
+			WorldPoint wp = new WorldPoint(placement.getWorldX(), placement.getWorldY(), placement.getPlane());
+			int[] loc = worldToLocalFirst(ctx, wp);
+			if (loc == null)
+			{
+				continue;
+			}
+			float x = loc[0] + halfTile;
+			float y = loc[1] + halfTile;
+			var wv = client.getTopLevelWorldView();
+			LocalPoint heightLp = new LocalPoint((int) x, (int) y, wv != null ? wv.getId() : -1);
+			int ground = Perspective.getTileHeight(client, heightLp, loc[2]);
+			float z = ground - def.heightOffset;
+			activeEffectorsById.computeIfAbsent(def.id, k -> new ArrayList<>())
+				.add(new ActiveEffectorState(def.id, x, y, z, def));
+		}
+		return activeEffectorsById;
+	}
+
+	@Nullable
+	private static int[] worldToLocalFirst(SceneContext ctx, WorldPoint worldPoint)
+	{
+		int[] contiguous = ctx.worldToLocal(worldPoint);
+		if (contiguous != null)
+		{
+			return contiguous;
+		}
+		return ctx.worldToLocals(worldPoint).findFirst().orElse(null);
 	}
 
 	private static float desiredWeatherAlive(ActiveWeatherZone zone)
@@ -3705,6 +3931,15 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int height = aabb.maxY - aabb.minY + 1;
 		int radiusTiles = Math.max(1, Math.min(width, height) / 2);
 		return (float) (Math.PI * radiusTiles * radiusTiles) * zone.particlesPerTile;
+	}
+
+	private static List<String> copyEffectorList(@Nullable List<String> source)
+	{
+		if (source == null || source.isEmpty())
+		{
+			return List.of();
+		}
+		return List.copyOf(source);
 	}
 
 	private static float weatherFallSpeed(ParticleStyle style)
@@ -3728,8 +3963,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	}
 
 	/** Spawn a weather particle falling straight down from a high point. */
-	private void spawnWeatherAt(ParticleStyle style, float x, float y, float z, int worldPlane)
+	private void spawnWeatherAt(ActiveWeatherZone zone, float x, float y, float z, int worldPlane)
 	{
+		ParticleStyle style = zone.style;
 		float jitter = style.getSpawnJitter();
 		double jitterAngle = random.nextFloat() * 2 * Math.PI;
 		float jitterRadius = jitter * (float) Math.sqrt(random.nextFloat());
@@ -3761,6 +3997,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			flipbookFrameFor(style), true, worldPlane);
 		if (p != null)
 		{
+			p.setEffectorLists(zone.globalEffectors, zone.localEffectorFilter, zone.embeddedEffectors);
 			finalizeSpawn(p, style);
 			windowSpawns++;
 		}

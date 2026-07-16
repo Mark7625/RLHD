@@ -4,6 +4,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import lombok.Getter;
@@ -11,6 +12,9 @@ import net.runelite.api.Client;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
+import rs117.hd.particles.effector.ActiveEffectorState;
+import rs117.hd.particles.effector.EffectorApplier;
+import rs117.hd.particles.effector.EffectorDefinitionManager;
 
 /**
  * Holds and integrates live particles. Dead particles are recycled through a
@@ -18,7 +22,7 @@ import net.runelite.api.coords.LocalPoint;
  * nothing. Particle order is not meaningful. All access is on the client
  * thread.
  */
-class ParticleSystem
+public class ParticleSystem
 {
 	// Backstop only; the real budget is the maxParticles config, enforced at emission
 	private static final int MAX_PARTICLES = 8192;
@@ -136,12 +140,23 @@ class ParticleSystem
 		return t * t;
 	}
 
-	void update(float dt, Consumer<Particle> onDeath)
+	void update(float dt, @Nullable Map<String, List<ActiveEffectorState>> activeEffectorsById,
+		@Nullable EffectorDefinitionManager effectorDefinitions, Consumer<Particle> onDeath)
 	{
 		for (int i = particles.size() - 1; i >= 0; i--)
 		{
 			Particle p = particles.get(i);
-			p.update(dt);
+			boolean despawn = EffectorApplier.apply(p, dt, activeEffectorsById, effectorDefinitions);
+			if (despawn)
+			{
+				onDeath.accept(p);
+				int last = particles.size() - 1;
+				particles.set(i, particles.get(last));
+				particles.remove(last);
+				pool.addFirst(p);
+				continue;
+			}
+			p.updateAfterEffectors(dt);
 			if (p.isDead())
 			{
 				onDeath.accept(p);
@@ -151,6 +166,11 @@ class ParticleSystem
 				pool.addFirst(p);
 			}
 		}
+	}
+
+	void update(float dt, Consumer<Particle> onDeath)
+	{
+		update(dt, null, null, onDeath);
 	}
 
 	void clear(Consumer<Particle> onDeath)

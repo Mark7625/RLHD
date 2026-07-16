@@ -1,0 +1,308 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "effectors.schema.json",
+  "title": "Particle Effectors",
+  "description": "World-space particle effector definitions. Emitters opt in by listing effector IDs in globalEffectors, localEffectorFilter, or embeddedEffectors.",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/effectorDefinition"
+  },
+  "$defs": {
+    "placement": {
+      "type": "array",
+      "description": "World placement as [worldX, worldY, plane].",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "integer"
+      }
+    },
+    "direction": {
+      "type": "array",
+      "description": "Direction vector [east, height, north].",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "sharedEffect": {
+      "type": "object",
+      "description": "Fields shared by every effect type (EffectorEffect base class).",
+      "properties": {
+        "edgeFalloff": {
+          "type": "boolean",
+          "description": "When true, effect strength fades toward the zone edge.",
+          "default": true
+        },
+        "falloffPower": {
+          "type": "number",
+          "description": "Exponent for edge falloff. Higher = fuller center, sharper edge.",
+          "minimum": 0,
+          "default": 2
+        },
+        "effectPercent": {
+          "type": "number",
+          "description": "Percent of particles in range that receive this effect (0–100).",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 100
+        },
+        "immunePercent": {
+          "type": "number",
+          "description": "Percent of particles that always ignore this effect (0–100).",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 0
+        },
+        "applyTo": {
+          "type": "string",
+          "enum": [ "velocity", "position" ],
+          "description": "Whether the effect modifies velocity or position.",
+          "default": "velocity"
+        }
+      }
+    },
+    "windConfig": {
+      "allOf": [
+        { "$ref": "#/$defs/sharedEffect" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "direction": { "$ref": "#/$defs/direction" },
+            "speed": {
+              "type": "number",
+              "description": "Wind strength multiplier. Combined with intensity and speedUnits.",
+              "minimum": 0,
+              "default": 1
+            },
+            "intensity": {
+              "type": "number",
+              "description": "Secondary strength multiplier and response scaler.",
+              "minimum": 0,
+              "default": 1
+            },
+            "speedUnits": {
+              "type": "number",
+              "description": "Base horizontal wind speed in scene units/sec when speed is 1.",
+              "minimum": 0,
+              "default": 95
+            },
+            "directionVariance": {
+              "type": "number",
+              "description": "How much wind direction meanders. Values above 100 allowed.",
+              "minimum": 0,
+              "default": 0
+            },
+            "directionVariation": {
+              "type": "number",
+              "description": "Alias for directionVariance.",
+              "minimum": 0
+            },
+            "turbulence": {
+              "type": "number",
+              "description": "Spatial swirl / chaos. Values above 100 allowed.",
+              "minimum": 0,
+              "default": 0
+            },
+            "gust": {
+              "type": "number",
+              "description": "How hard wind speed pulses (0 = steady).",
+              "minimum": 0,
+              "default": 55
+            },
+            "gustSpeed": {
+              "type": "number",
+              "description": "Relative gust cycle rate (1 = default).",
+              "minimum": 0,
+              "default": 1
+            },
+            "response": {
+              "type": "number",
+              "description": "How quickly particles catch the wind.",
+              "minimum": 0,
+              "default": 3.2
+            },
+            "maxBlend": {
+              "type": "number",
+              "description": "Max fraction of velocity gap closed per step (0.05–1).",
+              "minimum": 0.05,
+              "maximum": 1,
+              "default": 0.65
+            },
+            "lift": {
+              "type": "number",
+              "description": "Vertical buffet (0 = horizontal only).",
+              "minimum": 0,
+              "default": 40
+            },
+            "edgeFalloff": { "type": "boolean", "default": true },
+            "falloffPower": { "type": "number", "minimum": 0, "default": 2 },
+            "effectPercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 100 },
+            "immunePercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+            "applyTo": { "type": "string", "enum": [ "velocity", "position" ] }
+          }
+        }
+      ]
+    },
+    "pushConfig": {
+      "allOf": [
+        { "$ref": "#/$defs/sharedEffect" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "direction": { "$ref": "#/$defs/direction" },
+            "spreadAngle": {
+              "type": "integer",
+              "description": "Cone half-angle in legacy units (1024 = full sphere).",
+              "minimum": 0
+            },
+            "strength": {
+              "type": "integer",
+              "description": "Push force magnitude.",
+              "minimum": 0
+            },
+            "speed": { "type": "number", "minimum": 0, "default": 1 },
+            "intensity": { "type": "number", "minimum": 0, "default": 1 },
+            "edgeFalloff": { "type": "boolean", "default": true },
+            "falloffPower": { "type": "number", "minimum": 0, "default": 2 },
+            "effectPercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 100 },
+            "immunePercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+            "applyTo": { "type": "string", "enum": [ "velocity", "position" ], "default": "position" }
+          }
+        }
+      ]
+    },
+    "radialConfig": {
+      "allOf": [
+        { "$ref": "#/$defs/sharedEffect" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [ "strength" ],
+          "properties": {
+            "strength": {
+              "type": "integer",
+              "description": "Radial pull/push strength.",
+              "minimum": 0
+            },
+            "edgeFalloff": { "type": "boolean", "default": true },
+            "falloffPower": { "type": "number", "minimum": 0, "default": 2 },
+            "effectPercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 100 },
+            "immunePercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+            "applyTo": { "type": "string", "enum": [ "velocity", "position" ], "default": "velocity" }
+          }
+        }
+      ]
+    },
+    "whirlpoolConfig": {
+      "allOf": [
+        { "$ref": "#/$defs/sharedEffect" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [ "strength" ],
+          "properties": {
+            "strength": {
+              "type": "integer",
+              "description": "Helix path pull strength.",
+              "minimum": 0
+            },
+            "sink": {
+              "type": "integer",
+              "description": "Travel speed along the helix. Defaults to strength / 2.",
+              "minimum": 0
+            },
+            "inverted": {
+              "type": "boolean",
+              "description": "True = helix runs ground → sky.",
+              "default": false
+            },
+            "clockwise": {
+              "type": "boolean",
+              "description": "Spin direction from above.",
+              "default": false
+            },
+            "pathVariation": {
+              "type": "number",
+              "description": "Per-particle helix wobble (0–100).",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 0
+            },
+            "targetColor": {
+              "type": "string",
+              "description": "Hex color (#RRGGBB or #AARRGGBB) blended onto guided particles.",
+              "pattern": "^#[A-Fa-f0-9]{6}([A-Fa-f0-9]{2})?$"
+            },
+            "colorBlend": {
+              "type": "string",
+              "enum": [ "path", "zone" ],
+              "default": "path"
+            },
+            "edgeFalloff": { "type": "boolean", "default": true },
+            "falloffPower": { "type": "number", "minimum": 0, "default": 2 },
+            "effectPercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 100 },
+            "immunePercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+            "applyTo": { "type": "string", "enum": [ "velocity", "position" ], "default": "velocity" }
+          }
+        }
+      ]
+    },
+    "effectorEffect": {
+      "type": "object",
+      "description": "Exactly one type key whose value is that effect's config.",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "wind": { "$ref": "#/$defs/windConfig" },
+        "push": { "$ref": "#/$defs/pushConfig" },
+        "attract": { "$ref": "#/$defs/radialConfig" },
+        "repel": { "$ref": "#/$defs/radialConfig" },
+        "whirlpool": { "$ref": "#/$defs/whirlpoolConfig" }
+      }
+    },
+    "effectorDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [ "id", "effects" ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique effector id referenced by emitters (e.g. WIND_DEFAULT).",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "placements": {
+          "type": "array",
+          "description": "Static world placements. Omit for runtime-only defs.",
+          "items": { "$ref": "#/$defs/placement" }
+        },
+        "radiusTiles": {
+          "type": "number",
+          "description": "Effect radius in tiles. 0 / omit = unlimited.",
+          "minimum": 0,
+          "default": 0
+        },
+        "heightOffset": {
+          "type": "integer",
+          "description": "Scene height offset (128 units per tile).",
+          "default": 0
+        },
+        "scope": {
+          "type": "integer",
+          "description": "scope=1 is skipped when applied via localEffectorFilter.",
+          "default": 0
+        },
+        "effects": {
+          "type": "array",
+          "description": "Keyed effects, e.g. { \"wind\": { ... } }.",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/effectorEffect" }
+        }
+      }
+    }
+  }
+}

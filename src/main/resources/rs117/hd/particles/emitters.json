@@ -2097,7 +2097,13 @@
         "weatherAreas": [
           "WINTERTODT_ARENA"
         ],
-        "weatherParticlesPerTile": 10
+        "weatherParticlesPerTile": 10,
+        "globalEffectors": [
+          "WINTERTODT_STORM_WIND"
+        ],
+        "localEffectorFilter": [
+          "WINTERTODT_STORM"
+        ]
       }
     ]
   },
@@ -2115,7 +2121,10 @@
           "WATERBIRTH_ISLAND",
           "WINTERTODT_ARENA"
         ],
-        "weatherParticlesPerTile": 3
+        "weatherParticlesPerTile": 8,
+        "globalEffectors": [
+          "WIND_DEFAULT"
+        ]
       }
     ]
   },

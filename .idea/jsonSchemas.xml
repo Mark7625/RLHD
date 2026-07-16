@@ -131,6 +131,22 @@
             </SchemaInfo>
           </value>
         </entry>
+        <entry key="Particle Effectors">
+          <value>
+            <SchemaInfo>
+              <option name="name" value="Particle Effectors" />
+              <option name="relativePathToSchema" value="schemas/effectors.schema.json" />
+              <option name="schemaVersion" value="JSON Schema 7" />
+              <option name="patterns">
+                <list>
+                  <Item>
+                    <option name="path" value="src/main/resources/rs117/hd/particles/effectors.json" />
+                  </Item>
+                </list>
+              </option>
+            </SchemaInfo>
+          </value>
+        </entry>
       </map>
     </state>
   </component>

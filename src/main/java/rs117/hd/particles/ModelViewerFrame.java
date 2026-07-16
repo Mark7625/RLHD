@@ -47,6 +47,7 @@ import javax.swing.JSlider;
 import javax.swing.JSpinner;
 import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.ListSelectionModel;
@@ -144,6 +145,38 @@ class ModelViewerFrame extends JFrame
 		 * context and show the player again.
 		 */
 		void playerViewSelected();
+
+		void setParticleOverlayActive(boolean active);
+
+		void setEffectorOverlayActive(boolean active);
+
+		boolean isParticleOverlayActive();
+
+		boolean isEffectorOverlayActive();
+
+		List<EffectorListEntry> effectorEntries();
+	}
+
+	static final class EffectorListEntry
+	{
+		final String id;
+		final String summary;
+		final String placements;
+		final String details;
+
+		EffectorListEntry(String id, String summary, String placements, String details)
+		{
+			this.id = id;
+			this.summary = summary;
+			this.placements = placements;
+			this.details = details;
+		}
+
+		@Override
+		public String toString()
+		{
+			return id + " — " + summary;
+		}
 	}
 
 	/**
@@ -309,8 +342,16 @@ class ModelViewerFrame extends JFrame
 	private final JList<String> rowList;
 	private final JButton emittersNavBtn = new JButton("Emitters");
 	private final JButton definitionsNavBtn = new JButton("Definitions");
+	private final JButton effectorsNavBtn = new JButton("Effectors");
 	private final CardLayout particleCardLayout = new CardLayout();
 	private final JPanel particleCards = new JPanel(particleCardLayout);
+	private final DefaultListModel<EffectorListEntry> effectorListModel = new DefaultListModel<>();
+	private final JList<EffectorListEntry> effectorList = new JList<>(effectorListModel);
+	private final JTextArea effectorDetailArea = new JTextArea();
+	private final JButton particleOverlayBtn = new JButton("Particle overlay");
+	private final JButton effectorOverlayBtn = new JButton("Effector overlay");
+	private boolean particleOverlayActive;
+	private boolean effectorOverlayActive;
 	private final JButton inSceneFilterBtn = new JButton("In scene");
 	private final JButton savedFilterBtn = new JButton("Saved");
 	private final JPanel rowListFilterBar;
@@ -556,8 +597,42 @@ class ModelViewerFrame extends JFrame
 		inSceneFilterBtn.addActionListener(e -> setEmitterListSaved(false));
 		savedFilterBtn.addActionListener(e -> setEmitterListSaved(true));
 
-		emittersNavBtn.addActionListener(e -> showParticleSubview(false));
-		definitionsNavBtn.addActionListener(e -> showParticleSubview(true));
+		emittersNavBtn.addActionListener(e -> showParticleSubview("emitters"));
+		definitionsNavBtn.addActionListener(e -> showParticleSubview("definitions"));
+		effectorsNavBtn.addActionListener(e -> showParticleSubview("effectors"));
+		particleOverlayBtn.addActionListener(e ->
+		{
+			particleOverlayActive = !particleOverlayActive;
+			callbacks.setParticleOverlayActive(particleOverlayActive);
+			styleOverlayButton(particleOverlayBtn, particleOverlayActive);
+		});
+		effectorOverlayBtn.addActionListener(e ->
+		{
+			effectorOverlayActive = !effectorOverlayActive;
+			callbacks.setEffectorOverlayActive(effectorOverlayActive);
+			styleOverlayButton(effectorOverlayBtn, effectorOverlayActive);
+		});
+		effectorList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		effectorList.setFixedCellHeight(28);
+		effectorList.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		effectorList.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		effectorList.addListSelectionListener(e ->
+		{
+			if (e.getValueIsAdjusting())
+			{
+				return;
+			}
+			EffectorListEntry entry = effectorList.getSelectedValue();
+			effectorDetailArea.setText(entry == null ? "" : entry.details);
+			effectorDetailArea.setCaretPosition(0);
+		});
+		effectorDetailArea.setEditable(false);
+		effectorDetailArea.setLineWrap(true);
+		effectorDetailArea.setWrapStyleWord(true);
+		effectorDetailArea.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		effectorDetailArea.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		effectorDetailArea.setCaretColor(ColorScheme.LIGHT_GRAY_COLOR);
+		effectorDetailArea.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
 		modeSelector.addActionListener(e ->
 		{
@@ -800,14 +875,40 @@ class ModelViewerFrame extends JFrame
 		definitionsTab.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
 		definitionsTab.add(definitionsSplit, BorderLayout.CENTER);
 
+		JPanel overlayRow = new JPanel(new GridLayout(1, 2, 6, 0));
+		ParticleDevUi.themePanel(overlayRow);
+		overlayRow.add(particleOverlayBtn);
+		overlayRow.add(effectorOverlayBtn);
+		styleOverlayButton(particleOverlayBtn, false);
+		styleOverlayButton(effectorOverlayBtn, false);
+
+		JScrollPane effectorListScroll = new JScrollPane(effectorList);
+		effectorListScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR));
+		effectorListScroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		JScrollPane effectorDetailScroll = new JScrollPane(effectorDetailArea);
+		effectorDetailScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR));
+		JSplitPane effectorsSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+			effectorListScroll, effectorDetailScroll);
+		effectorsSplit.setResizeWeight(0.45);
+		effectorsSplit.setDividerLocation(180);
+		effectorsSplit.setContinuousLayout(true);
+		effectorsSplit.setOneTouchExpandable(true);
+
+		JPanel effectorsTab = new JPanel(new BorderLayout(0, 6));
+		ParticleDevUi.themePanel(effectorsTab);
+		effectorsTab.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+		effectorsTab.add(overlayRow, BorderLayout.NORTH);
+		effectorsTab.add(effectorsSplit, BorderLayout.CENTER);
+
 		particleCards.add(emittersTab, "emitters");
 		particleCards.add(definitionsTab, "definitions");
+		particleCards.add(effectorsTab, "effectors");
 		JPanel particlesRoot = new JPanel(new BorderLayout(0, 4));
 		ParticleDevUi.themePanel(particlesRoot);
 		particlesRoot.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
-		particlesRoot.add(ParticleDevUi.segmentBar(emittersNavBtn, definitionsNavBtn), BorderLayout.NORTH);
+		particlesRoot.add(ParticleDevUi.segmentBar(emittersNavBtn, definitionsNavBtn, effectorsNavBtn), BorderLayout.NORTH);
 		particlesRoot.add(particleCards, BorderLayout.CENTER);
-		showParticleSubview(false);
+		showParticleSubview("emitters");
 
 		JTabbedPane mainTabs = new JTabbedPane(JTabbedPane.TOP);
 		ParticleDevUi.styleMainTabs(mainTabs);
@@ -1347,11 +1448,55 @@ class ModelViewerFrame extends JFrame
 		return id;
 	}
 
-	private void showParticleSubview(boolean definitions)
+	private void showParticleSubview(String card)
 	{
-		particleCardLayout.show(particleCards, definitions ? "definitions" : "emitters");
-		ParticleDevUi.styleSegmentButton(emittersNavBtn, !definitions);
-		ParticleDevUi.styleSegmentButton(definitionsNavBtn, definitions);
+		particleCardLayout.show(particleCards, card);
+		ParticleDevUi.styleSegmentButton(emittersNavBtn, "emitters".equals(card));
+		ParticleDevUi.styleSegmentButton(definitionsNavBtn, "definitions".equals(card));
+		ParticleDevUi.styleSegmentButton(effectorsNavBtn, "effectors".equals(card));
+		if ("effectors".equals(card))
+		{
+			refreshEffectors();
+			particleOverlayActive = callbacks.isParticleOverlayActive();
+			effectorOverlayActive = callbacks.isEffectorOverlayActive();
+			styleOverlayButton(particleOverlayBtn, particleOverlayActive);
+			styleOverlayButton(effectorOverlayBtn, effectorOverlayActive);
+		}
+	}
+
+	void refreshEffectors()
+	{
+		EffectorListEntry keep = effectorList.getSelectedValue();
+		String keepId = keep == null ? null : keep.id;
+		effectorListModel.clear();
+		for (EffectorListEntry entry : callbacks.effectorEntries())
+		{
+			effectorListModel.addElement(entry);
+		}
+		if (keepId != null)
+		{
+			for (int i = 0; i < effectorListModel.size(); i++)
+			{
+				if (keepId.equals(effectorListModel.get(i).id))
+				{
+					effectorList.setSelectedIndex(i);
+					return;
+				}
+			}
+		}
+		if (effectorListModel.isEmpty())
+		{
+			effectorDetailArea.setText("");
+		}
+		else if (effectorList.getSelectedIndex() < 0)
+		{
+			effectorList.setSelectedIndex(0);
+		}
+	}
+
+	private static void styleOverlayButton(JButton button, boolean active)
+	{
+		ParticleDevUi.styleSegmentButton(button, active);
 	}
 
 	private void applyRowSelection(Row row)

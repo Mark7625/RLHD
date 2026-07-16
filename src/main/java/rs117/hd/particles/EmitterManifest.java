@@ -341,6 +341,9 @@ final class EmitterManifest
 		private List<String> weatherAreas;
 		private float weatherParticlesPerTile = 10f;
 		private float weatherDensityScale = 1f;
+		private List<String> globalEffectors;
+		private List<String> localEffectorFilter;
+		private List<String> embeddedEffectors;
 
 		void applyTo(EmitterProfile profile)
 		{
@@ -348,6 +351,9 @@ final class EmitterManifest
 			profile.setWeatherAreas(weatherAreas == null ? List.of() : new ArrayList<>(weatherAreas));
 			profile.setWeatherParticlesPerTile(weatherParticlesPerTile);
 			profile.setWeatherDensityScale(weatherDensityScale);
+			profile.setGlobalEffectors(globalEffectors == null ? new ArrayList<>() : new ArrayList<>(globalEffectors));
+			profile.setLocalEffectorFilter(localEffectorFilter == null ? new ArrayList<>() : new ArrayList<>(localEffectorFilter));
+			profile.setEmbeddedEffectors(embeddedEffectors == null ? new ArrayList<>() : new ArrayList<>(embeddedEffectors));
 		}
 
 		static WeatherEmitterPlacement from(EmitterProfile profile)
@@ -364,6 +370,18 @@ final class EmitterManifest
 			if (profile.getWeatherDensityScale() != 1f)
 			{
 				placement.weatherDensityScale = profile.getWeatherDensityScale();
+			}
+			if (profile.getGlobalEffectors() != null && !profile.getGlobalEffectors().isEmpty())
+			{
+				placement.globalEffectors = new ArrayList<>(profile.getGlobalEffectors());
+			}
+			if (profile.getLocalEffectorFilter() != null && !profile.getLocalEffectorFilter().isEmpty())
+			{
+				placement.localEffectorFilter = new ArrayList<>(profile.getLocalEffectorFilter());
+			}
+			if (profile.getEmbeddedEffectors() != null && !profile.getEmbeddedEffectors().isEmpty())
+			{
+				placement.embeddedEffectors = new ArrayList<>(profile.getEmbeddedEffectors());
 			}
 			return placement;
 		}

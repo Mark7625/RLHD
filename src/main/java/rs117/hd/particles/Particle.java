@@ -1,5 +1,7 @@
 package rs117.hd.particles;
 
+import java.util.List;
+import javax.annotation.Nullable;
 import lombok.Getter;
 
 /**
@@ -12,7 +14,7 @@ import lombok.Getter;
  * Instances are pooled by {@link ParticleSystem} and reinitialized via
  * {@link #reset}, so fields are mutable by design.
  */
-class Particle
+public class Particle
 {
 	@Getter
 	private float x;
@@ -71,37 +73,49 @@ class Particle
 	/** Non-zero = fixed spawn colour (per-particle random when uniform variation is off). */
 	private int spawnColorArgb;
 
-	boolean isGroundClip()
+	/** Stable seed for effector immunity / variance (from spawn index). */
+	private int effectorSeed;
+	@Nullable
+	private List<String> globalEffectors;
+	@Nullable
+	private List<String> localEffectorFilter;
+	@Nullable
+	private List<String> embeddedEffectors;
+	private boolean helixLatched;
+	private float helixT;
+	private boolean pathGuided;
+
+	public boolean isGroundClip()
 	{
 		return groundClip;
 	}
 
-	float getGroundProximityFade()
+	public float getGroundProximityFade()
 	{
 		return groundProximityFade;
 	}
 
-	void setGroundProximityFade(float fade)
+	public void setGroundProximityFade(float fade)
 	{
 		groundProximityFade = fade;
 	}
 
-	int getGroundPlane()
+	public int getGroundPlane()
 	{
 		return groundPlane;
 	}
 
-	float getYaw()
+	public float getYaw()
 	{
 		return yaw;
 	}
 
-	int getSpawnColorArgb()
+	public int getSpawnColorArgb()
 	{
 		return spawnColorArgb;
 	}
 
-	void setSpawnState(float yaw, int spawnColorArgb)
+	public void setSpawnState(float yaw, int spawnColorArgb)
 	{
 		this.yaw = yaw;
 		this.spawnColorArgb = spawnColorArgb;
@@ -149,11 +163,110 @@ class Particle
 		this.groundProximityFade = 1f;
 		this.yaw = 0f;
 		this.spawnColorArgb = 0;
+		this.effectorSeed = Float.floatToIntBits(x) ^ Float.floatToIntBits(y) ^ Float.floatToIntBits(z);
+		this.globalEffectors = null;
+		this.localEffectorFilter = null;
+		this.embeddedEffectors = null;
+		this.helixLatched = false;
+		this.helixT = 0f;
+		this.pathGuided = false;
+	}
+
+	public void setEffectorLists(
+		@Nullable List<String> globalEffectors,
+		@Nullable List<String> localEffectorFilter,
+		@Nullable List<String> embeddedEffectors)
+	{
+		this.globalEffectors = globalEffectors;
+		this.localEffectorFilter = localEffectorFilter;
+		this.embeddedEffectors = embeddedEffectors;
+	}
+
+	@Nullable
+	public List<String> getGlobalEffectors()
+	{
+		return globalEffectors;
+	}
+
+	@Nullable
+	public List<String> getLocalEffectorFilter()
+	{
+		return localEffectorFilter;
+	}
+
+	@Nullable
+	public List<String> getEmbeddedEffectors()
+	{
+		return embeddedEffectors;
+	}
+
+	public int getEffectorSeed()
+	{
+		return effectorSeed;
+	}
+
+	public float getAge()
+	{
+		return age;
+	}
+
+	public void setVelocity(float velX, float velY, float velZ)
+	{
+		this.velX = velX;
+		this.velY = velY;
+		this.velZ = velZ;
+	}
+
+	public void setPosition(float x, float y, float z)
+	{
+		this.x = x;
+		this.y = y;
+		this.z = z;
+	}
+
+	public void addPosition(float dx, float dy, float dz)
+	{
+		this.x += dx;
+		this.y += dy;
+		this.z += dz;
+	}
+
+	public void setSpawnColorArgb(int argb)
+	{
+		this.spawnColorArgb = argb;
+	}
+
+	public boolean isHelixLatched()
+	{
+		return helixLatched;
+	}
+
+	public float getHelixT()
+	{
+		return helixT;
+	}
+
+	public void setHelix(boolean latched, float t)
+	{
+		this.helixLatched = latched;
+		this.helixT = t;
+	}
+
+	public void clearHelix()
+	{
+		helixLatched = false;
+		helixT = 0f;
+	}
+
+	public void markPathGuided()
+	{
+		pathGuided = true;
 	}
 
 	void update(float dt)
 	{
 		age += dt;
+		pathGuided = false;
 		float rot = style.getRotationSpeed();
 		if (rot != 0f)
 		{
@@ -178,6 +291,39 @@ class Particle
 		x += (velX + style.getWindX() + (float) Math.sin(t) * wobbleAmp) * dt;
 		y += (velY + style.getWindY() + (float) Math.cos(t * 1.3f) * wobbleAmp) * dt;
 		// Wind Z is up-positive like Rise; scene z is negative-up, so subtract.
+		z += (velZ - style.getWindZ()) * dt;
+	}
+
+	/**
+	 * Integrate after effectors. When path-guided (whirlpool), position was
+	 * already written by the effector and only age advances.
+	 */
+	public void updateAfterEffectors(float dt)
+	{
+		boolean guided = pathGuided;
+		pathGuided = false;
+		age += dt;
+		if (guided)
+		{
+			return;
+		}
+		float rot = style.getRotationSpeed();
+		if (rot != 0f)
+		{
+			yaw += rot * dt;
+		}
+		velZ += style.getGravity() * dt;
+		float drag = style.getDragPerSec();
+		if (drag > 0f)
+		{
+			float keep = Math.max(0f, 1f - drag * dt);
+			velX *= keep;
+			velY *= keep;
+			velZ *= keep;
+		}
+		float t = age * wobbleFreq + wobblePhase;
+		x += (velX + style.getWindX() + (float) Math.sin(t) * wobbleAmp) * dt;
+		y += (velY + style.getWindY() + (float) Math.cos(t * 1.3f) * wobbleAmp) * dt;
 		z += (velZ - style.getWindZ()) * dt;
 	}
 
