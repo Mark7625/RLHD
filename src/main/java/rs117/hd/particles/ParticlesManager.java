@@ -83,15 +83,15 @@ import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
-import rs117.hd.particles.effector.ActiveEffectorState;
+import rs117.hd.particles.effector.EffectorDefinition.ActiveState;
 import rs117.hd.particles.effector.EffectorDefinition;
 import rs117.hd.particles.effector.EffectorDefinitionManager;
 import rs117.hd.particles.effector.EffectorEffect;
-import rs117.hd.particles.effector.EffectorPlacement;
-import rs117.hd.particles.effector.PushEffect;
-import rs117.hd.particles.effector.RadialEffect;
-import rs117.hd.particles.effector.WhirlpoolEffect;
-import rs117.hd.particles.effector.WindEffect;
+import rs117.hd.particles.effector.EffectorDefinition.Placement;
+import rs117.hd.particles.effector.EffectorEffect.Push;
+import rs117.hd.particles.effector.EffectorEffect.Radial;
+import rs117.hd.particles.effector.EffectorEffect.Whirlpool;
+import rs117.hd.particles.effector.EffectorEffect.Wind;
 import rs117.hd.particles.debug.EffectorDebugOverlay;
 import rs117.hd.particles.debug.ParticleDebugOverlay;
 
@@ -105,7 +105,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private static class ActiveEmitter
 	{
 		final ParticleStyle style;
-		final ParticleStyleSet styleSet;
+		final ParticleStyle.StyleSet styleSet;
 		final int[] vertices;
 
 		final int[] faceCorners;
@@ -132,15 +132,15 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 		ActiveEmitter(ParticleStyle style, int[] vertices, int[][] chains)
 		{
-			this(ParticleStyleSet.of(style), vertices, EMPTY_INTS, chains);
+			this(ParticleStyle.StyleSet.of(style), vertices, EMPTY_INTS, chains);
 		}
 
 		ActiveEmitter(ParticleStyle style, int[] vertices, int[] faceCorners, int[][] chains)
 		{
-			this(ParticleStyleSet.of(style), vertices, faceCorners, chains);
+			this(ParticleStyle.StyleSet.of(style), vertices, faceCorners, chains);
 		}
 
-		ActiveEmitter(ParticleStyleSet styleSet, int[] vertices, int[] faceCorners, int[][] chains)
+		ActiveEmitter(ParticleStyle.StyleSet styleSet, int[] vertices, int[] faceCorners, int[][] chains)
 		{
 			this.styleSet = styleSet;
 			this.style = styleSet.primary();
@@ -323,7 +323,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private static class GraphicEmitter
 	{
 		final ParticleStyle style;
-		final ParticleStyleSet styleSet;
+		final ParticleStyle.StyleSet styleSet;
 		@Nullable
 		final String signature;
 		final int[] locals;
@@ -332,7 +332,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		final List<ActiveEmitter> resolved = new ArrayList<>();
 		boolean resolveTried;
 
-		GraphicEmitter(ParticleStyleSet styleSet, @Nullable String signature, int[] locals, int[] faceLocals)
+		GraphicEmitter(ParticleStyle.StyleSet styleSet, @Nullable String signature, int[] locals, int[] faceLocals)
 		{
 			this.styleSet = styleSet;
 			this.style = styleSet.primary();
@@ -401,9 +401,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	{
 		final int projectileId;
 		final ParticleStyle style;
-		final ParticleStyleSet styleSet;
+		final ParticleStyle.StyleSet styleSet;
 
-		ActiveProjectileProfile(int projectileId, ParticleStyleSet styleSet)
+		ActiveProjectileProfile(int projectileId, ParticleStyle.StyleSet styleSet)
 		{
 			this.projectileId = projectileId;
 			this.styleSet = styleSet;
@@ -427,7 +427,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	{
 		final AABB aabb;
 		final ParticleStyle style;
-		final ParticleStyleSet styleSet;
+		final ParticleStyle.StyleSet styleSet;
 		final float particlesPerTile;
 		final float densityScale;
 		final List<String> globalEffectors;
@@ -435,7 +435,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		final List<String> embeddedEffectors;
 		double spawnAccum;
 
-		ActiveWeatherZone(AABB aabb, ParticleStyleSet styleSet, float particlesPerTile, float densityScale,
+		ActiveWeatherZone(AABB aabb, ParticleStyle.StyleSet styleSet, float particlesPerTile, float densityScale,
 			List<String> globalEffectors, List<String> localEffectorFilter, List<String> embeddedEffectors)
 		{
 			this.aabb = aabb;
@@ -450,7 +450,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	}
 
 	private final List<ActiveWeatherZone> activeWeatherZones = new ArrayList<>();
-	private final Map<String, List<ActiveEffectorState>> activeEffectorsById = new HashMap<>();
+	private final Map<String, List<ActiveState>> activeEffectorsById = new HashMap<>();
 
 	private final LinkedHashMap<Integer, long[]> recentProjectiles = new LinkedHashMap<>();
 	private int stylesRevision = -1;
@@ -1023,7 +1023,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		try
 		{
 			SceneContext ctx = hdPlugin.getSceneContext();
-			Map<String, List<ActiveEffectorState>> effectors = ctx != null && ctx.sceneBase != null
+			Map<String, List<ActiveState>> effectors = ctx != null && ctx.sceneBase != null
 				? buildActiveEffectorsById(ctx)
 				: Map.of();
 			particleSystem.update(dt, effectors, effectorDefinitions, deathStats);
@@ -1679,7 +1679,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					continue;
 				}
-				ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+				ParticleStyle.StyleSet styleSet = renderer.getStyleSet(entry.getKey());
 				if (styleSet == null)
 				{
 					continue;
@@ -1712,7 +1712,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				continue;
 			}
-			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			ParticleStyle.StyleSet styleSet = renderer.getStyleSet(entry.getKey());
 			if (styleSet != null)
 			{
 				activeProjectileProfiles.add(new ActiveProjectileProfile(profile.getProjectileId(), styleSet));
@@ -1728,7 +1728,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	}
 
 	@Nullable
-	private ActiveEmitter resolveMeshEmitter(ParticleStyleSet styleSet, ModelSnapshot snapshot,
+	private ActiveEmitter resolveMeshEmitter(ParticleStyle.StyleSet styleSet, ModelSnapshot snapshot,
 		ModelSnapshot.Piece piece, EmitterProfile profile)
 	{
 		ParticleStyle style = styleSet.primary();
@@ -2599,9 +2599,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				String type = effect.type != null ? effect.type.name().toLowerCase() : "unknown";
 				effects.append(type);
 				details.append("• ").append(type);
-				if (effect instanceof WindEffect)
+				if (effect instanceof Wind)
 				{
-					WindEffect wind = (WindEffect) effect;
+					Wind wind = (Wind) effect;
 					details.append("  speed=").append(wind.speed)
 						.append(" intensity=").append(wind.intensity)
 						.append(" turb=").append(wind.turbulence)
@@ -2609,24 +2609,24 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 						.append(" lift=").append(wind.lift)
 						.append(" response=").append(wind.response);
 				}
-				else if (effect instanceof WhirlpoolEffect)
+				else if (effect instanceof Whirlpool)
 				{
-					WhirlpoolEffect whirl = (WhirlpoolEffect) effect;
+					Whirlpool whirl = (Whirlpool) effect;
 					details.append("  strength=").append(whirl.strength)
 						.append(" sink=").append(whirl.sink);
 				}
-				else if (effect instanceof RadialEffect)
+				else if (effect instanceof Radial)
 				{
-					details.append("  strength=").append(((RadialEffect) effect).strength);
+					details.append("  strength=").append(((Radial) effect).strength);
 				}
-				else if (effect instanceof PushEffect)
+				else if (effect instanceof Push)
 				{
-					details.append("  strength=").append(((PushEffect) effect).strength);
+					details.append("  strength=").append(((Push) effect).strength);
 				}
 				details.append('\n');
 			}
 			List<String> placementLines = new ArrayList<>();
-			for (EffectorPlacement placement : effectorDefinitions.getAllPlacements())
+			for (Placement placement : effectorDefinitions.getAllPlacements())
 			{
 				if (!def.id.equals(placement.getEffectorId()))
 				{
@@ -2766,7 +2766,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				continue;
 			}
-			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			ParticleStyle.StyleSet styleSet = renderer.getStyleSet(entry.getKey());
 			if (styleSet == null)
 			{
 				continue;
@@ -3225,7 +3225,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				continue;
 			}
-			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			ParticleStyle.StyleSet styleSet = renderer.getStyleSet(entry.getKey());
 			if (styleSet == null)
 			{
 				continue;
@@ -3262,7 +3262,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				continue;
 			}
-			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			ParticleStyle.StyleSet styleSet = renderer.getStyleSet(entry.getKey());
 			if (styleSet == null)
 			{
 				continue;
@@ -3433,15 +3433,15 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		spawnWeatherAt(zone, lx, ly, spawnZ, worldPlane);
 	}
 
-	private Map<String, List<ActiveEffectorState>> buildActiveEffectorsById(SceneContext ctx)
+	private Map<String, List<ActiveState>> buildActiveEffectorsById(SceneContext ctx)
 	{
-		for (List<ActiveEffectorState> states : activeEffectorsById.values())
+		for (List<ActiveState> states : activeEffectorsById.values())
 		{
 			states.clear();
 		}
 		activeEffectorsById.clear();
 		float halfTile = LOCAL_TILE_SIZE / 2f;
-		for (EffectorPlacement placement : effectorDefinitions.getAllPlacements())
+		for (Placement placement : effectorDefinitions.getAllPlacements())
 		{
 			EffectorDefinition def = effectorDefinitions.getDefinition(placement.getEffectorId());
 			if (def == null)
@@ -3461,7 +3461,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			int ground = Perspective.getTileHeight(client, heightLp, loc[2]);
 			float z = ground - def.heightOffset;
 			activeEffectorsById.computeIfAbsent(def.id, k -> new ArrayList<>())
-				.add(new ActiveEffectorState(def.id, x, y, z, def));
+				.add(new ActiveState(def.id, x, y, z, def));
 		}
 		return activeEffectorsById;
 	}
@@ -3885,7 +3885,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				continue;
 			}
-			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			ParticleStyle.StyleSet styleSet = renderer.getStyleSet(entry.getKey());
 			if (styleSet == null)
 			{
 				continue;

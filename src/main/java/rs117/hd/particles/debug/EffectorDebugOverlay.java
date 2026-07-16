@@ -23,9 +23,9 @@ import rs117.hd.scene.SceneContext;
 import rs117.hd.particles.effector.EffectorDefinition;
 import rs117.hd.particles.effector.EffectorDefinitionManager;
 import rs117.hd.particles.effector.EffectorEffect;
-import rs117.hd.particles.effector.EffectorPlacement;
-import rs117.hd.particles.effector.WhirlpoolEffect;
-import rs117.hd.particles.effector.WindEffect;
+import rs117.hd.particles.effector.EffectorDefinition.Placement;
+import rs117.hd.particles.effector.EffectorEffect.Whirlpool;
+import rs117.hd.particles.effector.EffectorEffect.Wind;
 import rs117.hd.utils.Mat4;
 
 import static net.runelite.api.Perspective.LOCAL_TILE_SIZE;
@@ -78,7 +78,7 @@ public class EffectorDebugOverlay extends Overlay {
 		int[] local = new int[3];
 
 		g.setStroke(new BasicStroke(3f));
-		for (EffectorPlacement placement : effectorDefinitionManager.getAllPlacements()) {
+		for (Placement placement : effectorDefinitionManager.getAllPlacements()) {
 			if (placement.getPlane() != currentPlane) continue;
 
 			EffectorDefinition def = effectorDefinitionManager.getDefinition(placement.getEffectorId());
@@ -94,8 +94,8 @@ public class EffectorDebugOverlay extends Overlay {
 			float baseZ = centerLocalZ;
 			float baseY = terrainHeight(ctx, (int) centerLocalX, (int) centerLocalZ, loc[2]) - def.heightOffset;
 			float radius = computeDebugRadius(def);
-			WhirlpoolEffect whirlpool = findWhirlpoolEffect(def);
-			WindEffect wind = findWindEffect(def);
+			Whirlpool whirlpool = findWhirlpoolEffect(def);
+			Wind wind = findWindEffect(def);
 			boolean radialZone = def.radiusTiles > 0f && hasRadialEffect(def) && whirlpool == null;
 			boolean whirlpoolZone = def.radiusTiles > 0f && whirlpool != null;
 			boolean windZone = wind != null;
@@ -129,23 +129,23 @@ public class EffectorDebugOverlay extends Overlay {
 	}
 
 	@Nullable
-	private WindEffect findWindEffect(EffectorDefinition def) {
+	private Wind findWindEffect(EffectorDefinition def) {
 		for (EffectorEffect effect : def.effects) {
-			if (effect instanceof WindEffect) {
-				return (WindEffect) effect;
+			if (effect instanceof Wind) {
+				return (Wind) effect;
 			}
 		}
 		return null;
 	}
 
-	private float[] getWindDirection(WindEffect wind) {
+	private float[] getWindDirection(Wind wind) {
 		if (wind == null || !wind.hasWindDirection) {
 			return new float[] { 0f, 1f, 0f };
 		}
 		return new float[] { wind.windDirX, wind.windDirZ, wind.windDirY };
 	}
 
-	private float getWindSpreadGroundRadius(float zoneRadius, WindEffect wind) {
+	private float getWindSpreadGroundRadius(float zoneRadius, Wind wind) {
 		float scale = 1.04f + 0.35f * wind.directionVarianceScale + 0.08f * wind.turbulenceScale;
 		return zoneRadius * scale;
 	}
@@ -159,7 +159,7 @@ public class EffectorDebugOverlay extends Overlay {
 		float cz,
 		float radius,
 		EffectorDefinition def,
-		WindEffect wind
+		Wind wind
 	) {
 		float[] dir = getWindDirection(wind);
 		float dx = dir[0], dy = dir[1], dz = dir[2];
@@ -225,7 +225,7 @@ public class EffectorDebugOverlay extends Overlay {
 		float cy,
 		float cz,
 		EffectorDefinition def,
-		WindEffect wind,
+		Wind wind,
 		float spreadRadius
 	) {
 		int sx = projectX(proj, pt, cx, cy, cz);
@@ -326,10 +326,10 @@ public class EffectorDebugOverlay extends Overlay {
 	}
 
 	@Nullable
-	private WhirlpoolEffect findWhirlpoolEffect(EffectorDefinition def) {
+	private Whirlpool findWhirlpoolEffect(EffectorDefinition def) {
 		for (EffectorEffect effect : def.effects) {
-			if (effect instanceof WhirlpoolEffect) {
-				return (WhirlpoolEffect) effect;
+			if (effect instanceof Whirlpool) {
+				return (Whirlpool) effect;
 			}
 		}
 		return null;

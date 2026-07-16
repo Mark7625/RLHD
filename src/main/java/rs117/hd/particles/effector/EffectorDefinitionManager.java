@@ -36,8 +36,8 @@ public class EffectorDefinitionManager {
 	@Getter
 	private final Map<String, EffectorDefinition> definitions = new LinkedHashMap<>();
 	@Getter
-	private final List<EffectorPlacement> placements = new ArrayList<>();
-	private final Map<String, List<EffectorPlacement>> runtimePlacementsByOwner = new LinkedHashMap<>();
+	private final List<EffectorDefinition.Placement> placements = new ArrayList<>();
+	private final Map<String, List<EffectorDefinition.Placement>> runtimePlacementsByOwner = new LinkedHashMap<>();
 
 	private FileWatcher.UnregisterCallback watcher;
 
@@ -94,7 +94,7 @@ public class EffectorDefinitionManager {
 						if (p == null || p.length < 3) {
 							continue;
 						}
-						placements.add(new EffectorPlacement(p[0], p[1], p[2], def.id));
+						placements.add(new EffectorDefinition.Placement(p[0], p[1], p[2], def.id));
 					}
 				}
 			}
@@ -158,20 +158,20 @@ public class EffectorDefinitionManager {
 		}
 		runtimePlacementsByOwner
 			.computeIfAbsent(ownerId.toUpperCase(), k -> new ArrayList<>())
-			.add(new EffectorPlacement(worldX, worldY, plane, effectorId.toUpperCase()));
+			.add(new EffectorDefinition.Placement(worldX, worldY, plane, effectorId.toUpperCase()));
 	}
 
-	public List<EffectorPlacement> getAllPlacements() {
+	public List<EffectorDefinition.Placement> getAllPlacements() {
 		if (runtimePlacementsByOwner.isEmpty()) {
 			return placements;
 		}
 		int runtimeCount = 0;
-		for (List<EffectorPlacement> list : runtimePlacementsByOwner.values()) {
+		for (List<EffectorDefinition.Placement> list : runtimePlacementsByOwner.values()) {
 			runtimeCount += list.size();
 		}
-		List<EffectorPlacement> all = new ArrayList<>(placements.size() + runtimeCount);
+		List<EffectorDefinition.Placement> all = new ArrayList<>(placements.size() + runtimeCount);
 		all.addAll(placements);
-		for (List<EffectorPlacement> list : runtimePlacementsByOwner.values()) {
+		for (List<EffectorDefinition.Placement> list : runtimePlacementsByOwner.values()) {
 			all.addAll(list);
 		}
 		return all;

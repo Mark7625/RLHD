@@ -2,6 +2,10 @@ package rs117.hd.particles.effector;
 
 import java.util.ArrayList;
 import java.util.List;
+import rs117.hd.particles.effector.EffectorEffect.Attract;
+import rs117.hd.particles.effector.EffectorEffect.Repel;
+import rs117.hd.particles.effector.EffectorEffect.Whirlpool;
+import rs117.hd.particles.effector.EffectorEffect.Wind;
 
 public final class EffectorBuilder {
 
@@ -39,7 +43,7 @@ public final class EffectorBuilder {
 		float directionVariance,
 		float turbulence
 	) {
-		WindEffect effect = new WindEffect();
+		Wind effect = new Wind();
 		effect.direction = new float[] { dirX, dirY, dirZ };
 		effect.speed = speed;
 		effect.intensity = intensity;
@@ -50,7 +54,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder attract(int strength) {
-		AttractEffect effect = new AttractEffect();
+		Attract effect = new Attract();
 		effect.strength = strength;
 		effect.applyTo = EffectorEffect.ApplicationMode.VELOCITY;
 		effects.add(effect);
@@ -58,7 +62,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder repel(int strength) {
-		RepelEffect effect = new RepelEffect();
+		Repel effect = new Repel();
 		effect.strength = strength;
 		effect.applyTo = EffectorEffect.ApplicationMode.VELOCITY;
 		effects.add(effect);
@@ -66,7 +70,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder whirlpool(int strength, int sink) {
-		WhirlpoolEffect effect = new WhirlpoolEffect();
+		Whirlpool effect = new Whirlpool();
 		effect.strength = strength;
 		effect.sink = sink;
 		effects.add(effect);
@@ -111,7 +115,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder inverted(boolean inverted) {
-		WhirlpoolEffect last = lastWhirlpool();
+		Whirlpool last = lastWhirlpool();
 		if (last != null) {
 			last.inverted = inverted;
 		}
@@ -119,7 +123,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder clockwise(boolean clockwise) {
-		WhirlpoolEffect last = lastWhirlpool();
+		Whirlpool last = lastWhirlpool();
 		if (last != null) {
 			last.clockwise = clockwise;
 		}
@@ -127,7 +131,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder pathVariation(float pathVariation) {
-		WhirlpoolEffect last = lastWhirlpool();
+		Whirlpool last = lastWhirlpool();
 		if (last != null) {
 			last.pathVariation = pathVariation;
 		}
@@ -135,7 +139,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder targetColor(String hex) {
-		WhirlpoolEffect last = lastWhirlpool();
+		Whirlpool last = lastWhirlpool();
 		if (last != null) {
 			last.targetColor = hex;
 		}
@@ -143,7 +147,7 @@ public final class EffectorBuilder {
 	}
 
 	public EffectorBuilder colorBlend(EffectorEffect.ColorBlendMode mode) {
-		WhirlpoolEffect last = lastWhirlpool();
+		Whirlpool last = lastWhirlpool();
 		if (last != null) {
 			last.colorBlend = mode;
 		}
@@ -164,8 +168,8 @@ public final class EffectorBuilder {
 		return effects.isEmpty() ? null : effects.get(effects.size() - 1);
 	}
 
-	private WhirlpoolEffect lastWhirlpool() {
+	private Whirlpool lastWhirlpool() {
 		EffectorEffect last = last();
-		return last instanceof WhirlpoolEffect ? (WhirlpoolEffect) last : null;
+		return last instanceof Whirlpool ? (Whirlpool) last : null;
 	}
 }

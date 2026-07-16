@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import javax.annotation.Nullable;
+import lombok.Value;
 
 import static net.runelite.api.Perspective.LOCAL_TILE_SIZE;
 
@@ -23,7 +24,7 @@ public class EffectorDefinition {
 
 	@SerializedName("effects")
 	@Nullable
-	public List<EffectorEffectSlot> effectSlots;
+	public List<EffectorEffect.Slot> effectSlots;
 
 	public transient List<EffectorEffect> effects = Collections.emptyList();
 
@@ -42,7 +43,7 @@ public class EffectorDefinition {
 	public void postDecode() {
 		if (effectSlots != null && !effectSlots.isEmpty()) {
 			List<EffectorEffect> resolved = new ArrayList<>(effectSlots.size());
-			for (EffectorEffectSlot slot : effectSlots) {
+			for (EffectorEffect.Slot slot : effectSlots) {
 				if (slot == null) {
 					continue;
 				}
@@ -74,5 +75,22 @@ public class EffectorDefinition {
 
 	public boolean isUnlimitedRange() {
 		return maxRangeSq >= Long.MAX_VALUE / 2L;
+	}
+
+	@Value
+	public static class Placement {
+		int worldX;
+		int worldY;
+		int plane;
+		String effectorId;
+	}
+
+	@Value
+	public static class ActiveState {
+		String id;
+		float x;
+		float y;
+		float z;
+		EffectorDefinition def;
 	}
 }

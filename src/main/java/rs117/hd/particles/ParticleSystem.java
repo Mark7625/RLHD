@@ -12,7 +12,7 @@ import net.runelite.api.Client;
 import net.runelite.api.Perspective;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
-import rs117.hd.particles.effector.ActiveEffectorState;
+import rs117.hd.particles.effector.EffectorDefinition.ActiveState;
 import rs117.hd.particles.effector.EffectorApplier;
 import rs117.hd.particles.effector.EffectorDefinitionManager;
 
@@ -130,7 +130,7 @@ public class ParticleSystem
 		return t * t;
 	}
 
-	void update(float dt, @Nullable Map<String, List<ActiveEffectorState>> activeEffectorsById,
+	void update(float dt, @Nullable Map<String, List<ActiveState>> activeEffectorsById,
 		@Nullable EffectorDefinitionManager effectorDefinitions, Consumer<Particle> onDeath)
 	{
 		for (int i = particles.size() - 1; i >= 0; i--)

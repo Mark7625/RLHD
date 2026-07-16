@@ -20,7 +20,7 @@ public final class EffectorApplier
 	public static boolean apply(
 		Particle p,
 		float dt,
-		@Nullable Map<String, List<ActiveEffectorState>> activeEffectorsById,
+		@Nullable Map<String, List<EffectorDefinition.ActiveState>> activeEffectorsById,
 		@Nullable EffectorDefinitionManager effectorDefinitions
 	)
 	{
@@ -52,12 +52,12 @@ public final class EffectorApplier
 			{
 				for (String effectorId : localFilter)
 				{
-					List<ActiveEffectorState> states = activeEffectorsById.get(effectorId);
+					List<EffectorDefinition.ActiveState> states = activeEffectorsById.get(effectorId);
 					if (states == null)
 					{
 						continue;
 					}
-					for (ActiveEffectorState state : states)
+					for (EffectorDefinition.ActiveState state : states)
 					{
 						EffectorDefinition def = state.getDef();
 						if (def == null || def.scope == 1)
@@ -76,12 +76,12 @@ public final class EffectorApplier
 			{
 				for (String effectorId : globalIds)
 				{
-					List<ActiveEffectorState> states = activeEffectorsById.get(effectorId);
+					List<EffectorDefinition.ActiveState> states = activeEffectorsById.get(effectorId);
 					if (states == null)
 					{
 						continue;
 					}
-					for (ActiveEffectorState state : states)
+					for (EffectorDefinition.ActiveState state : states)
 					{
 						EffectorDefinition def = state.getDef();
 						if (def == null)
@@ -133,7 +133,7 @@ public final class EffectorApplier
 	private static int applyWorldEffector(
 		Particle p,
 		float tickDelta,
-		ActiveEffectorState state,
+		EffectorDefinition.ActiveState state,
 		EffectorDefinition def,
 		double[] v
 	)
@@ -256,13 +256,13 @@ public final class EffectorApplier
 		double[] v
 	)
 	{
-		if (!(effect instanceof PushEffect)
+		if (!(effect instanceof EffectorEffect.Push)
 			|| effect.signedMagnitude == 0
 			|| isImmuneToEffect(p.getEffectorSeed(), effect))
 		{
 			return false;
 		}
-		PushEffect push = (PushEffect) effect;
+		EffectorEffect.Push push = (EffectorEffect.Push) effect;
 		double strengthScale = effectStrengthScale(push);
 		if (strengthScale <= 0.0)
 		{
@@ -306,9 +306,9 @@ public final class EffectorApplier
 		{
 			return 0;
 		}
-		if (effect instanceof WindEffect)
+		if (effect instanceof EffectorEffect.Wind)
 		{
-			WindEffect wind = (WindEffect) effect;
+			EffectorEffect.Wind wind = (EffectorEffect.Wind) effect;
 			if (!wind.hasWindDirection)
 			{
 				return 0;
@@ -332,9 +332,9 @@ public final class EffectorApplier
 			return 0;
 		}
 
-		if (effect instanceof WhirlpoolEffect)
+		if (effect instanceof EffectorEffect.Whirlpool)
 		{
-			WhirlpoolEffect whirlpool = (WhirlpoolEffect) effect;
+			EffectorEffect.Whirlpool whirlpool = (EffectorEffect.Whirlpool) effect;
 			boolean complete = applyWhirlpool(p, tickDelta, dx, dy, dz, zoneRadius, whirlpool, strengthScale, v,
 				centerX, centerY, centerZ);
 			if (whirlpool.hasTargetColor)
@@ -350,9 +350,9 @@ public final class EffectorApplier
 			return flags;
 		}
 
-		if (effect instanceof PushEffect)
+		if (effect instanceof EffectorEffect.Push)
 		{
-			PushEffect push = (PushEffect) effect;
+			EffectorEffect.Push push = (EffectorEffect.Push) effect;
 			double intensity = push.intensity > 0f ? push.intensity : 1.0;
 			double mag = Math.abs(push.signedMagnitude);
 			if (mag > 0)
@@ -493,7 +493,7 @@ public final class EffectorApplier
 		float tickDelta,
 		double dist,
 		double zoneRadius,
-		WindEffect effect,
+		EffectorEffect.Wind effect,
 		double intensity,
 		double strengthScale,
 		double[] v
@@ -618,7 +618,7 @@ public final class EffectorApplier
 		double dy,
 		double dz,
 		double zoneRadius,
-		WhirlpoolEffect effect,
+		EffectorEffect.Whirlpool effect,
 		double strengthScale,
 		double[] v,
 		float centerX,
@@ -721,7 +721,7 @@ public final class EffectorApplier
 	}
 
 	private static double[] applyHelixVariation(
-		WhirlpoolEffect effect,
+		EffectorEffect.Whirlpool effect,
 		int particleIndex,
 		double travelT,
 		double angle,

@@ -102,7 +102,7 @@ class ParticleRenderer
 	private final List<RuneLiteObject> legacyPool = new ArrayList<>();
 	private int legacyUsed;
 
-	private final Map<String, ParticleStyleSet> styles = new HashMap<>();
+	private final Map<String, ParticleStyle.StyleSet> styles = new HashMap<>();
 	private ModelData sourceMesh;
 	private int templateVertexCount;
 	private int templateFaceCount;
@@ -127,12 +127,12 @@ class ParticleRenderer
 
 	ParticleStyle getStyle(String profileKey)
 	{
-		ParticleStyleSet set = styles.get(profileKey);
+		ParticleStyle.StyleSet set = styles.get(profileKey);
 		return set == null ? null : set.primary();
 	}
 
 	@Nullable
-	ParticleStyleSet getStyleSet(String profileKey)
+	ParticleStyle.StyleSet getStyleSet(String profileKey)
 	{
 		return styles.get(profileKey);
 	}
@@ -164,7 +164,7 @@ class ParticleRenderer
 		styles.clear();
 		for (Map.Entry<String, EmitterProfile> entry : profiles.entrySet())
 		{
-			ParticleStyleSet set = buildStyleSet(entry.getValue(), definitions);
+			ParticleStyle.StyleSet set = buildStyleSet(entry.getValue(), definitions);
 			if (set != null)
 			{
 				styles.put(entry.getKey(), set);
@@ -174,13 +174,13 @@ class ParticleRenderer
 	}
 
 	@Nullable
-	private ParticleStyleSet buildStyleSet(EmitterProfile profile, Map<String, ParticleDefinition> definitions)
+	private ParticleStyle.StyleSet buildStyleSet(EmitterProfile profile, Map<String, ParticleDefinition> definitions)
 	{
 		Map<String, Integer> particles = profile.resolvedParticles();
 		if (particles.isEmpty())
 		{
 			ParticleDefinition definition = ParticleDefinition.fromProfile(profile);
-			return ParticleStyleSet.of(buildStyle(definition, profile));
+			return ParticleStyle.StyleSet.of(buildStyle(definition, profile));
 		}
 
 		List<ParticleStyle> built = new ArrayList<>();
@@ -198,14 +198,14 @@ class ParticleRenderer
 		if (built.isEmpty())
 		{
 			ParticleDefinition definition = resolveDefinition(profile, definitions);
-			return ParticleStyleSet.of(buildStyle(definition, profile));
+			return ParticleStyle.StyleSet.of(buildStyle(definition, profile));
 		}
 		int[] weightArr = new int[weights.size()];
 		for (int i = 0; i < weights.size(); i++)
 		{
 			weightArr[i] = weights.get(i);
 		}
-		return new ParticleStyleSet(built.toArray(new ParticleStyle[0]), weightArr);
+		return new ParticleStyle.StyleSet(built.toArray(new ParticleStyle[0]), weightArr);
 	}
 
 	private static ParticleDefinition resolveDefinition(EmitterProfile profile,
