@@ -6,10 +6,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
-/**
- * Stable id helpers for particle definitions: human-readable slugs from names,
- * with target-specific suffixes when names collide.
- */
 final class ParticleIds
 {
 	private static final Pattern NON_SLUG = Pattern.compile("[^a-z0-9]+");
@@ -62,13 +58,11 @@ final class ParticleIds
 		return sb.length() == 0 ? slug : sb.toString();
 	}
 
-	/** True when a map key looks like a mesh topology signature, not a slug. */
 	static boolean isMeshSignatureKey(@Nullable String key)
 	{
 		return key != null && key.matches(".*\\d+v\\d+f.*");
 	}
 
-	/** Slug to title-case for UI; uses definition id when the emitter key is a legacy signature. */
 	static String emitterLabelKey(String emitterKey, @Nullable EmitterProfile profile)
 	{
 		if (profile != null)
@@ -83,7 +77,6 @@ final class ParticleIds
 		return emitterKey;
 	}
 
-	/** True when the profile carries an authored display name, not a slug/signature placeholder. */
 	static boolean hasProperEmitterName(@Nullable String name, String key, @Nullable String signature)
 	{
 		if (name == null || name.isEmpty())
@@ -94,11 +87,10 @@ final class ParticleIds
 		{
 			return false;
 		}
-		// Legacy auto labels like "328v 642f" or mesh signature strings
+
 		return !name.matches(".*\\d+v\\d+f.*");
 	}
 
-	/** List/menu label: authored name when set, otherwise title-cased slug / definition id. */
 	static String emitterListName(String emitterKey, @Nullable EmitterProfile profile)
 	{
 		if (profile != null

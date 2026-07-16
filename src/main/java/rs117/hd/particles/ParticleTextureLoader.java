@@ -22,11 +22,6 @@ import static org.lwjgl.opengl.GL33C.*;
 import static rs117.hd.renderer.zone.ZoneRenderer.TEXTURE_UNIT_PARTICLE;
 import static rs117.hd.utils.ResourcePath.path;
 
-/**
- * GPU particle texture array. Layer 0 is the procedural soft disc (default when
- * no texture file is set); layers 1..N are lazily loaded PNGs from the
- * particles textures folder.
- */
 @Slf4j
 @Singleton
 class ParticleTextureLoader

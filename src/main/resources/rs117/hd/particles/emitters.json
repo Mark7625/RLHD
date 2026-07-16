@@ -1,8 +1,7 @@
 [
   {
     "description": "Max Capes",
-    "particleId": "max_capes",
-    "folder": "Max capes",
+    "particles": { "max_capes": 1 },
     "playerEmitters": [
       {
         "signature": "328v642f-f25c0ffabb19a211",
@@ -32,8 +31,7 @@
   },
   {
     "description": "Saradomin Halo",
-    "particleId": "saradomin_halo",
-    "folder": "Halos",
+    "particles": { "saradomin_halo": 1 },
     "playerEmitters": [
       {
         "signature": "26v48f-ef67c52174caf551",
@@ -69,8 +67,7 @@
   },
   {
     "description": "Zamorak Halo",
-    "particleId": "zamorak_halo",
-    "folder": "Halos",
+    "particles": { "zamorak_halo": 1 },
     "playerEmitters": [
       {
         "signature": "58v116f-d015065015fdde2a",
@@ -103,8 +100,7 @@
   },
   {
     "description": "Guthix Halo",
-    "particleId": "guthix_halo",
-    "folder": "Halos",
+    "particles": { "guthix_halo": 1 },
     "playerEmitters": [
       {
         "signature": "70v136f-53d0da04c1ed3a54",
@@ -132,8 +128,7 @@
   },
   {
     "description": "Armadyl Halo",
-    "particleId": "armadyl_halo",
-    "folder": "Halos",
+    "particles": { "armadyl_halo": 1 },
     "playerEmitters": [
       {
         "signature": "52v100f-d697c6e2c14a916b",
@@ -158,8 +153,7 @@
   },
   {
     "description": "Seren Halo",
-    "particleId": "seren_halo",
-    "folder": "Halos",
+    "particles": { "seren_halo": 1 },
     "playerEmitters": [
       {
         "signature": "16v32f-4ee9dac2dbd52779",
@@ -186,8 +180,7 @@
   },
   {
     "description": "Ancient Halo",
-    "particleId": "ancient_halo",
-    "folder": "Halos",
+    "particles": { "ancient_halo": 1 },
     "playerEmitters": [
       {
         "signature": "40v80f-19ca02f6dfaa1173",
@@ -243,8 +236,7 @@
   },
   {
     "description": "Brassica Halo",
-    "particleId": "brassica_halo",
-    "folder": "Halos",
+    "particles": { "brassica_halo": 1 },
     "playerEmitters": [
       {
         "signature": "20v20f-a034b05653ba8be5",
@@ -276,8 +268,7 @@
   },
   {
     "description": "Dizana S Max Cape",
-    "particleId": "dizana_s_max_cape",
-    "folder": "Max capes",
+    "particles": { "dizana_s_max_cape": 1 },
     "playerEmitters": [
       {
         "signature": "398v741f-77deb4cf6903ca6d",
@@ -307,8 +298,7 @@
   },
   {
     "description": "Holy Scythe Of Vitur Layer 1",
-    "particleId": "holy_scythe_of_vitur_layer_1",
-    "folder": "Holy scythe of vitur",
+    "particles": { "holy_scythe_of_vitur_layer_1": 1 },
     "playerEmitters": [
       {
         "signature": "145v304f-eab385d106feddf4",
@@ -339,8 +329,7 @@
   },
   {
     "description": "Harmonised Nightmare Staff",
-    "particleId": "harmonised_nightmare_staff",
-    "folder": "Nightmare staves",
+    "particles": { "harmonised_nightmare_staff": 1 },
     "playerEmitters": [
       {
         "signature": "63v144f-d2c3e6312d6cc67b",
@@ -356,8 +345,7 @@
   },
   {
     "description": "Tumeken S Shadow Layer 1",
-    "particleId": "tumeken_s_shadow_layer_1",
-    "folder": "Tumeken's shadow",
+    "particles": { "tumeken_s_shadow_layer_1": 1 },
     "playerEmitters": [
       {
         "signature": "198v392f-49df8eda91eb1f62",
@@ -374,8 +362,7 @@
   },
   {
     "description": "Tumeken S Shadow Layer 2",
-    "particleId": "tumeken_s_shadow_layer_2",
-    "folder": "Tumeken's shadow",
+    "particles": { "tumeken_s_shadow_layer_2": 1 },
     "playerEmitters": [
       {
         "signature": "26v48f-74a1632b153934c",
@@ -415,8 +402,7 @@
   },
   {
     "description": "Infernal Max Cape",
-    "particleId": "infernal_max_cape",
-    "folder": "Max capes",
+    "particles": { "infernal_max_cape": 1 },
     "playerEmitters": [
       {
         "signature": "278v522f-85f219cca4203ac8",
@@ -442,8 +428,7 @@
   },
   {
     "description": "Volatile Nightmare Staff",
-    "particleId": "volatile_nightmare_staff",
-    "folder": "Nightmare staves",
+    "particles": { "volatile_nightmare_staff": 1 },
     "playerEmitters": [
       {
         "signature": "63v144f-d2c3e6312d6cc67b",
@@ -459,8 +444,7 @@
   },
   {
     "description": "Eldritch Nightmare Staff",
-    "particleId": "eldritch_nightmare_staff",
-    "folder": "Nightmare staves",
+    "particles": { "eldritch_nightmare_staff": 1 },
     "playerEmitters": [
       {
         "signature": "63v144f-d2c3e6312d6cc67b",
@@ -476,8 +460,7 @@
   },
   {
     "description": "Dragonfire Shield Layer 1",
-    "particleId": "dragonfire_shield_layer_1",
-    "folder": "Dragonfire shield",
+    "particles": { "dragonfire_shield_layer_1": 1 },
     "playerEmitters": [
       {
         "signature": "177v328f-83977b840d84309c",
@@ -496,8 +479,7 @@
   },
   {
     "description": "White Crystal Crown",
-    "particleId": "white_crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "white_crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -513,8 +495,7 @@
   },
   {
     "description": "Purple Crystal Crown",
-    "particleId": "purple_crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "purple_crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -530,8 +511,7 @@
   },
   {
     "description": "Green Crystal Crown",
-    "particleId": "green_crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "green_crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -547,8 +527,7 @@
   },
   {
     "description": "Yellow Crystal Crown",
-    "particleId": "yellow_crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "yellow_crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -564,8 +543,7 @@
   },
   {
     "description": "Crystal Crown",
-    "particleId": "crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -581,8 +559,7 @@
   },
   {
     "description": "Red Crystal Crown",
-    "particleId": "red_crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "red_crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -598,8 +575,7 @@
   },
   {
     "description": "Blue Crystal Crown",
-    "particleId": "blue_crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "blue_crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -615,8 +591,7 @@
   },
   {
     "description": "Black Crystal Crown",
-    "particleId": "black_crystal_crown",
-    "folder": "Crystal crowns",
+    "particles": { "black_crystal_crown": 1 },
     "playerEmitters": [
       {
         "signature": "146v288f-b41de6227ad92788",
@@ -632,8 +607,7 @@
   },
   {
     "description": "Ice Ancient Sceptre",
-    "particleId": "ice_ancient_sceptre",
-    "folder": "Ancient sceptres",
+    "particles": { "ice_ancient_sceptre": 1 },
     "playerEmitters": [
       {
         "signature": "106v218f-836432dbb7073ff",
@@ -657,8 +631,7 @@
   },
   {
     "description": "Blood Ancient Sceptre",
-    "particleId": "blood_ancient_sceptre",
-    "folder": "Ancient sceptres",
+    "particles": { "blood_ancient_sceptre": 1 },
     "playerEmitters": [
       {
         "signature": "106v218f-836432dbb7073ff",
@@ -682,8 +655,7 @@
   },
   {
     "description": "Shadow Ancient Sceptre",
-    "particleId": "shadow_ancient_sceptre",
-    "folder": "Ancient sceptres",
+    "particles": { "shadow_ancient_sceptre": 1 },
     "playerEmitters": [
       {
         "signature": "106v218f-836432dbb7073ff",
@@ -707,8 +679,7 @@
   },
   {
     "description": "Smoke Ancient Sceptre",
-    "particleId": "smoke_ancient_sceptre",
-    "folder": "Ancient sceptres",
+    "particles": { "smoke_ancient_sceptre": 1 },
     "playerEmitters": [
       {
         "signature": "106v218f-836432dbb7073ff",
@@ -732,8 +703,7 @@
   },
   {
     "description": "Bowfa Black Projectile",
-    "particleId": "bowfa_black_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_black_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -746,8 +716,7 @@
   },
   {
     "description": "Bowfa Blue Projectile",
-    "particleId": "bowfa_blue_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_blue_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -760,8 +729,7 @@
   },
   {
     "description": "Bowfa Crystal Projectile",
-    "particleId": "bowfa_crystal_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_crystal_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -775,8 +743,7 @@
   },
   {
     "description": "Bowfa Yellow Projectile",
-    "particleId": "bowfa_yellow_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_yellow_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -789,8 +756,7 @@
   },
   {
     "description": "Bowfa Green Projectile",
-    "particleId": "bowfa_green_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_green_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -803,8 +769,7 @@
   },
   {
     "description": "Bowfa Purple Projectile",
-    "particleId": "bowfa_purple_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_purple_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -817,8 +782,7 @@
   },
   {
     "description": "Bowfa White Projectile",
-    "particleId": "bowfa_white_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_white_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -832,8 +796,7 @@
   },
   {
     "description": "Bowfa Red Projectile",
-    "particleId": "bowfa_red_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_red_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -846,8 +809,7 @@
   },
   {
     "description": "Bowfa Dmm Projectile",
-    "particleId": "bowfa_dmm_projectile",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_dmm_projectile": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -861,8 +823,7 @@
   },
   {
     "description": "Bowfa Dmm Projectile 2",
-    "particleId": "bowfa_dmm_projectile_2",
-    "folder": "Bowfa projectiles",
+    "particles": { "bowfa_dmm_projectile_2": 1 },
     "projectileEmitters": [
       {
         "projectile": "SP_ATTACK_ARROW_TRAVEL_FAERDHINEN_IORWERTH",
@@ -876,8 +837,7 @@
   },
   {
     "description": "Max Capes 319v640f-4c7",
-    "particleId": "max_capes_319v640f-4c7",
-    "folder": "Max capes",
+    "particles": { "max_capes_319v640f-4c7": 1 },
     "playerEmitters": [
       {
         "signature": "319v640f-4c7ce39777bc9e93",
@@ -909,8 +869,7 @@
   },
   {
     "description": "Dizana S Max Cape 397v739f-856",
-    "particleId": "dizana_s_max_cape_397v739f-856",
-    "folder": "Max capes",
+    "particles": { "dizana_s_max_cape_397v739f-856": 1 },
     "playerEmitters": [
       {
         "signature": "397v739f-8568c9e6b75aaf24",
@@ -942,8 +901,7 @@
   },
   {
     "description": "Infernal Max Cape 314v634f-988",
-    "particleId": "infernal_max_cape_314v634f-988",
-    "folder": "Max capes",
+    "particles": { "infernal_max_cape_314v634f-988": 1 },
     "playerEmitters": [
       {
         "signature": "314v634f-988881dc9787f2e",
@@ -970,8 +928,7 @@
   },
   {
     "description": "Fire Max Cape",
-    "particleId": "fire_max_cape",
-    "folder": "Max capes",
+    "particles": { "fire_max_cape": 1 },
     "playerEmitters": [
       {
         "signature": "279v534f-1af49032e4642585",
@@ -999,8 +956,7 @@
   },
   {
     "description": "Fire Max Cape 282v534f-285",
-    "particleId": "fire_max_cape_282v534f-285",
-    "folder": "Max capes",
+    "particles": { "fire_max_cape_282v534f-285": 1 },
     "playerEmitters": [
       {
         "signature": "282v534f-2859722e0992de00",
@@ -1035,8 +991,7 @@
   },
   {
     "description": "Wall Torches",
-    "particleId": "wall_torches",
-    "folder": "Torches",
+    "particles": { "wall_torches": 1 },
     "objectEmitters": [
       {
         "object": "TORCH",
@@ -1050,8 +1005,7 @@
   },
   {
     "description": "Foresters Campfires",
-    "particleId": "foresters_campfires",
-    "folder": "Campfires",
+    "particles": { "foresters_campfires": 1 },
     "objectEmitters": [
       {
         "object": "FORESTRY_FIRE",
@@ -1067,8 +1021,7 @@
   },
   {
     "description": "Fires",
-    "particleId": "fires",
-    "folder": "Campfires",
+    "particles": { "fires": 1 },
     "objectEmitters": [
       {
         "object": "FIRE",
@@ -1084,7 +1037,7 @@
   },
   {
     "description": "Amulet Of Rancour S",
-    "particleId": "amulet_of_rancour_s",
+    "particles": { "amulet_of_rancour_s": 1 },
     "playerEmitters": [
       {
         "signature": "38v72f-e50db64dc4332e25",
@@ -1100,8 +1053,7 @@
   },
   {
     "description": "Butterfly",
-    "particleId": "butterfly",
-    "folder": "Butterflies",
+    "particles": { "butterfly": 1 },
     "npcEmitters": [
       {
         "npc": "BUTTERFLY2",
@@ -1114,8 +1066,7 @@
   },
   {
     "description": "Butterfly Npc234",
-    "particleId": "butterfly_npc234",
-    "folder": "Butterflies",
+    "particles": { "butterfly_npc234": 1 },
     "npcEmitters": [
       {
         "npc": "BUTTERFLY",
@@ -1128,8 +1079,7 @@
   },
   {
     "description": "Black Warlock Butterfly",
-    "particleId": "black_warlock_butterfly",
-    "folder": "Butterflies",
+    "particles": { "black_warlock_butterfly": 1 },
     "npcEmitters": [
       {
         "npc": "BUTTERFLY_WARLOCK",
@@ -1142,8 +1092,7 @@
   },
   {
     "description": "Butterfly Npc238",
-    "particleId": "butterfly_npc238",
-    "folder": "Butterflies",
+    "particles": { "butterfly_npc238": 1 },
     "npcEmitters": [
       {
         "npc": "BUTTERFLY_VICEROY",
@@ -1156,8 +1105,7 @@
   },
   {
     "description": "Sapphire Glacialis",
-    "particleId": "sapphire_glacialis",
-    "folder": "Butterflies",
+    "particles": { "sapphire_glacialis": 1 },
     "npcEmitters": [
       {
         "npc": "BUTTERFLY_GLACIALIS",
@@ -1170,8 +1118,7 @@
   },
   {
     "description": "Fire",
-    "particleId": "fire",
-    "folder": "Campfires",
+    "particles": { "fire": 1 },
     "objectEmitters": [
       {
         "object": "TROLL_STRONGHOLD_CAMP_FIRE",
@@ -1184,7 +1131,7 @@
   },
   {
     "description": "Fairy Ring",
-    "particleId": "fairy_ring",
+    "particles": { "fairy_ring": 1 },
     "objectEmitters": [
       {
         "object": "FAIRYRING_MINORHUB",
@@ -1197,8 +1144,7 @@
   },
   {
     "description": "Standing Torch",
-    "particleId": "standing_torch",
-    "folder": "Torches",
+    "particles": { "standing_torch": 1 },
     "objectEmitters": [
       {
         "object": "BRIMSTONE_CRUDE_TORCH",
@@ -1211,8 +1157,7 @@
   },
   {
     "description": "Torch",
-    "particleId": "torch",
-    "folder": "Torches",
+    "particles": { "torch": 1 },
     "objectEmitters": [
       {
         "object": "BRIMSTONE_STONE_TORCH",
@@ -1228,8 +1173,7 @@
   },
   {
     "description": "Mage Spawn Thrall Layer 2",
-    "particleId": "mage_spawn_thrall_layer_2",
-    "folder": "Thrall spawns",
+    "particles": { "mage_spawn_thrall_layer_2": 1 },
     "graphicEmitters": [
       {
         "graphic": "RESURRECT_GHOST_CAST_SPOTANIM"
@@ -1238,8 +1182,7 @@
   },
   {
     "description": "Ranged Spawn Thrall Layer 1",
-    "particleId": "ranged_spawn_thrall_layer_1",
-    "folder": "Thrall spawns",
+    "particles": { "ranged_spawn_thrall_layer_1": 1 },
     "graphicEmitters": [
       {
         "graphic": "RESURRECT_SKELETON_CAST_SPOTANIM"
@@ -1248,8 +1191,7 @@
   },
   {
     "description": "Melee Spawn Thrall Layer 2",
-    "particleId": "melee_spawn_thrall_layer_2",
-    "folder": "Thrall spawns",
+    "particles": { "melee_spawn_thrall_layer_2": 1 },
     "graphicEmitters": [
       {
         "graphic": "RESURRECT_ZOMBIE_CAST_SPOTANIM"
@@ -1258,7 +1200,7 @@
   },
   {
     "description": "Portal Nexus",
-    "particleId": "portal_nexus",
+    "particles": { "portal_nexus": 1 },
     "objectEmitters": [
       {
         "object": "POH_NEXUS_PORTAL_LEAGUE_5",
@@ -1334,8 +1276,7 @@
   },
   {
     "description": "Altar Of The Occult",
-    "particleId": "altar_of_the_occult",
-    "folder": "Altars",
+    "particles": { "altar_of_the_occult": 1 },
     "objectEmitters": [
       {
         "object": "POH_ALTAR_OCCULT",
@@ -1348,8 +1289,7 @@
   },
   {
     "description": "Altar",
-    "particleId": "altar",
-    "folder": "Altars",
+    "particles": { "altar": 1 },
     "objectEmitters": [
       {
         "object": "HOSIDIUS_ALTAR",
@@ -1362,8 +1302,7 @@
   },
   {
     "description": "Fire Obj10433",
-    "particleId": "fire_obj10433",
-    "folder": "Campfires",
+    "particles": { "fire_obj10433": 1 },
     "objectEmitters": [
       {
         "object": "ELID_SPIRIT_FIRE",
@@ -1376,8 +1315,7 @@
   },
   {
     "description": "Assembler Max Cape",
-    "particleId": "assembler_max_cape",
-    "folder": "Max capes",
+    "particles": { "assembler_max_cape": 1 },
     "playerEmitters": [
       {
         "signature": "319v642f-18ce17f0cdb33fd7",
@@ -1410,8 +1348,7 @@
   },
   {
     "description": "Mage Spawn Thrall Layer 1",
-    "particleId": "mage_spawn_thrall_layer_1",
-    "folder": "Thrall spawns",
+    "particles": { "mage_spawn_thrall_layer_1": 1 },
     "graphicEmitters": [
       {
         "graphic": "RESURRECT_GHOST_CAST_SPOTANIM"
@@ -1420,8 +1357,7 @@
   },
   {
     "description": "Melee Spawn Thrall Layer 1",
-    "particleId": "melee_spawn_thrall_layer_1",
-    "folder": "Thrall spawns",
+    "particles": { "melee_spawn_thrall_layer_1": 1 },
     "graphicEmitters": [
       {
         "graphic": "RESURRECT_ZOMBIE_CAST_SPOTANIM"
@@ -1430,8 +1366,7 @@
   },
   {
     "description": "Ranged Spawn Thrall Layer 2",
-    "particleId": "ranged_spawn_thrall_layer_2",
-    "folder": "Thrall spawns",
+    "particles": { "ranged_spawn_thrall_layer_2": 1 },
     "graphicEmitters": [
       {
         "graphic": "RESURRECT_SKELETON_CAST_SPOTANIM"
@@ -1440,9 +1375,8 @@
   },
   {
     "description": "Scythe Swing East",
-    "particleId": "scythe_swing_east",
+    "particles": { "scythe_swing_east": 1 },
     "enabled": false,
-    "folder": "Scythe swing",
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_EAST_RED",
@@ -1452,9 +1386,8 @@
   },
   {
     "description": "Scythe Swing North",
-    "particleId": "scythe_swing_north",
+    "particles": { "scythe_swing_north": 1 },
     "enabled": false,
-    "folder": "Scythe swing",
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_NORTH_RED",
@@ -1464,9 +1397,8 @@
   },
   {
     "description": "Scythe Swing West",
-    "particleId": "scythe_swing_west",
+    "particles": { "scythe_swing_west": 1 },
     "enabled": false,
-    "folder": "Scythe swing",
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_WEST_RED",
@@ -1476,9 +1408,8 @@
   },
   {
     "description": "Scythe Swing South",
-    "particleId": "scythe_swing_south",
+    "particles": { "scythe_swing_south": 1 },
     "enabled": false,
-    "folder": "Scythe swing",
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_SOUTH_RED",
@@ -1488,8 +1419,7 @@
   },
   {
     "description": "Sang Scythe Swing South",
-    "particleId": "sang_scythe_swing_south",
-    "folder": "Sang scythe swing",
+    "particles": { "sang_scythe_swing_south": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_SOUTH_DARKRED",
@@ -1499,8 +1429,7 @@
   },
   {
     "description": "Sang Scythe Swing North",
-    "particleId": "sang_scythe_swing_north",
-    "folder": "Sang scythe swing",
+    "particles": { "sang_scythe_swing_north": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_NORTH_DARKRED",
@@ -1510,8 +1439,7 @@
   },
   {
     "description": "Holy Scythe Swing South",
-    "particleId": "holy_scythe_swing_south",
-    "folder": "Holy scythe swing",
+    "particles": { "holy_scythe_swing_south": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_SOUTH_BLUE",
@@ -1521,8 +1449,7 @@
   },
   {
     "description": "Holy Scythe Swing East",
-    "particleId": "holy_scythe_swing_east",
-    "folder": "Holy scythe swing",
+    "particles": { "holy_scythe_swing_east": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_EAST_BLUE",
@@ -1532,8 +1459,7 @@
   },
   {
     "description": "Holy Scythe Swing North",
-    "particleId": "holy_scythe_swing_north",
-    "folder": "Holy scythe swing",
+    "particles": { "holy_scythe_swing_north": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_NORTH_BLUE",
@@ -1543,8 +1469,7 @@
   },
   {
     "description": "Sang Scythe Swing East",
-    "particleId": "sang_scythe_swing_east",
-    "folder": "Sang scythe swing",
+    "particles": { "sang_scythe_swing_east": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_EAST_DARKRED",
@@ -1554,8 +1479,7 @@
   },
   {
     "description": "Sang Scythe Swing West",
-    "particleId": "sang_scythe_swing_west",
-    "folder": "Sang scythe swing",
+    "particles": { "sang_scythe_swing_west": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_WEST_DARKRED",
@@ -1565,8 +1489,7 @@
   },
   {
     "description": "Holy Scythe Swing West",
-    "particleId": "holy_scythe_swing_west",
-    "folder": "Holy scythe swing",
+    "particles": { "holy_scythe_swing_west": 1 },
     "graphicEmitters": [
       {
         "graphic": "DRAGON_HALBERD_SPECIAL_WEST_BLUE",
@@ -1576,8 +1499,7 @@
   },
   {
     "description": "Dragonfire Shield Layer 2",
-    "particleId": "dragonfire_shield_layer_2",
-    "folder": "Dragonfire shield",
+    "particles": { "dragonfire_shield_layer_2": 1 },
     "playerEmitters": [
       {
         "signature": "177v328f-83977b840d84309c",
@@ -1597,8 +1519,7 @@
   },
   {
     "description": "Holy Scythe Of Vitur Layer 2",
-    "particleId": "holy_scythe_of_vitur_layer_2",
-    "folder": "Holy scythe of vitur",
+    "particles": { "holy_scythe_of_vitur_layer_2": 1 },
     "playerEmitters": [
       {
         "signature": "145v304f-eab385d106feddf4",
@@ -1626,7 +1547,7 @@
   },
   {
     "description": "Sanguine Scythe Of Vitur",
-    "particleId": "sanguine_scythe_of_vitur",
+    "particles": { "sanguine_scythe_of_vitur": 1 },
     "playerEmitters": [
       {
         "signature": "274v554f-bcfb87894c616017",
@@ -1655,7 +1576,7 @@
   },
   {
     "description": "Scythe Of Vitur",
-    "particleId": "scythe_of_vitur",
+    "particles": { "scythe_of_vitur": 1 },
     "enabled": false,
     "wip": true,
     "playerEmitters": [
@@ -1683,8 +1604,7 @@
   },
   {
     "description": "Lava Battlestaff",
-    "particleId": "lava_battlestaff",
-    "folder": "Battlestaves",
+    "particles": { "lava_battlestaff": 1 },
     "playerEmitters": [
       {
         "signature": "79v152f-168fa3aa9394661",
@@ -1700,8 +1620,7 @@
   },
   {
     "description": "Dust Battlestaff",
-    "particleId": "dust_battlestaff",
-    "folder": "Battlestaves",
+    "particles": { "dust_battlestaff": 1 },
     "playerEmitters": [
       {
         "signature": "26v48f-6a2b6426ac7b57a",
@@ -1741,8 +1660,7 @@
   },
   {
     "description": "Mud Battlestaff",
-    "particleId": "mud_battlestaff",
-    "folder": "Battlestaves",
+    "particles": { "mud_battlestaff": 1 },
     "playerEmitters": [
       {
         "signature": "75v144f-a50c13733767c1f7",
@@ -1760,8 +1678,7 @@
   },
   {
     "description": "Smoke Battlestaff",
-    "particleId": "smoke_battlestaff",
-    "folder": "Battlestaves",
+    "particles": { "smoke_battlestaff": 1 },
     "playerEmitters": [
       {
         "signature": "48v86f-6f19ee9e2de19f30",
@@ -1781,8 +1698,7 @@
   },
   {
     "description": "Steam Battlestaff",
-    "particleId": "steam_battlestaff",
-    "folder": "Battlestaves",
+    "particles": { "steam_battlestaff": 1 },
     "playerEmitters": [
       {
         "signature": "42v80f-67c937abc2c99f1",
@@ -1799,7 +1715,7 @@
   },
   {
     "description": "Occult Necklace Or",
-    "particleId": "occult_necklace_or",
+    "particles": { "occult_necklace_or": 1 },
     "playerEmitters": [
       {
         "signature": "72v97f-a7e7a9765c43aba8",
@@ -1817,7 +1733,7 @@
   },
   {
     "description": "Crimson Kisten",
-    "particleId": "crimson_kisten",
+    "particles": { "crimson_kisten": 1 },
     "playerEmitters": [
       {
         "signature": "93v182f-737c89d06cc98788",
@@ -1845,8 +1761,7 @@
   },
   {
     "description": "Holy Scythe Of Vitur Layer 3",
-    "particleId": "holy_scythe_of_vitur_layer_3",
-    "folder": "Holy scythe of vitur",
+    "particles": { "holy_scythe_of_vitur_layer_3": 1 },
     "playerEmitters": [
       {
         "signature": "145v304f-eab385d106feddf4",
@@ -1876,8 +1791,7 @@
   },
   {
     "description": "Maggot Marquess",
-    "particleId": "maggot_marquess",
-    "folder": "Maggot marquess",
+    "particles": { "maggot_marquess": 1 },
     "npcEmitters": [
       {
         "npc": "MAGGOT_KING_PET",
@@ -1891,7 +1805,7 @@
   },
   {
     "description": "Holy Ghrazi Rapier",
-    "particleId": "holy_ghrazi_rapier",
+    "particles": { "holy_ghrazi_rapier": 1 },
     "playerEmitters": [
       {
         "signature": "51v94f-a028504714c25608",
@@ -1919,7 +1833,7 @@
   },
   {
     "description": "Holy Sang Staff",
-    "particleId": "holy_sang_staff",
+    "particles": { "holy_sang_staff": 1 },
     "playerEmitters": [
       {
         "signature": "265v538f-b430fda5f698b2e5",
@@ -1947,8 +1861,7 @@
   },
   {
     "description": "Avernic Hilt 6 Layer 1",
-    "particleId": "avernic_hilt_6_layer_1",
-    "folder": "Avernic defender hilt 6",
+    "particles": { "avernic_hilt_6_layer_1": 1 },
     "playerEmitters": [
       {
         "signature": "91v178f-1bb1b4a304f4704b",
@@ -1970,8 +1883,7 @@
   },
   {
     "description": "Avernic Hilt 6 Layer 2",
-    "particleId": "avernic_hilt_6_layer_2",
-    "folder": "Avernic defender hilt 6",
+    "particles": { "avernic_hilt_6_layer_2": 1 },
     "playerEmitters": [
       {
         "signature": "91v178f-1bb1b4a304f4704b",
@@ -2012,7 +1924,7 @@
   },
   {
     "description": "Osmumten S Fang Or",
-    "particleId": "osmumten_s_fang_or",
+    "particles": { "osmumten_s_fang_or": 1 },
     "playerEmitters": [
       {
         "signature": "37v68f-c107c2cb2e86c92",
@@ -2033,7 +1945,7 @@
   },
   {
     "description": "Mahogany Adventure Log",
-    "particleId": "mahogany_adventure_log",
+    "particles": { "mahogany_adventure_log": 1 },
     "objectEmitters": [
       {
         "object": "POH_ADVENTURE_LOG_1",
@@ -2046,8 +1958,7 @@
   },
   {
     "description": "Nid",
-    "particleId": "nid",
-    "folder": "Nid",
+    "particles": { "nid": 1 },
     "npcEmitters": [
       {
         "npc": "POH_ARAXXOR_PET",
@@ -2061,8 +1972,7 @@
   },
   {
     "description": "Maggot Marquess Npc16293",
-    "particleId": "maggot_marquess_npc16293",
-    "folder": "Maggot marquess",
+    "particles": { "maggot_marquess_npc16293": 1 },
     "npcEmitters": [
       {
         "npc": "POH_MAGGOT_KING_PET",
@@ -2076,8 +1986,7 @@
   },
   {
     "description": "Nid Npc13683",
-    "particleId": "nid_npc13683",
-    "folder": "Nid",
+    "particles": { "nid_npc13683": 1 },
     "npcEmitters": [
       {
         "npc": "ARAXXOR_PET",
@@ -2091,7 +2000,7 @@
   },
   {
     "description": "Wintertodt snow",
-    "particleId": "wintertodt_snow",
+    "particles": { "wintertodt_snow": 1 },
     "weatherEmitters": [
       {
         "weatherAreas": [
@@ -2109,10 +2018,7 @@
   },
   {
     "description": "Ice mountain snow",
-    "particleIds": [
-      "ice_mountain_snow",
-      "ice_mountain_snow_fine"
-    ],
+    "particles": { "ice_mountain_snow": 1, "ice_mountain_snow_fine": 1 },
     "weatherEmitters": [
       {
         "weatherAreas": [
@@ -2130,7 +2036,7 @@
   },
   {
     "description": "Wilderness falloff falling ash",
-    "particleId": "wild_falloff_ash",
+    "particles": { "wild_falloff_ash": 1 },
     "weatherEmitters": [
       {
         "weatherAreas": [
@@ -2142,7 +2048,7 @@
   },
   {
     "description": "Test snow area",
-    "particleId": "wintertodt_snow",
+    "particles": { "wintertodt_snow": 1 },
     "weatherEmitters": [
       {
         "weatherAreas": [

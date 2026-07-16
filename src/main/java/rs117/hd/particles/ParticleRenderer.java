@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -20,69 +21,24 @@ import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.gameval.ItemID;
 
-/**
- * Renders particles as camera-facing soft discs, batched into one merged
- * scene model per occupied tile.
- *
- * The client draws renderables through per-tile slots, and a tile only holds
- * a few - hundreds of individual RuneLiteObjects stacked on the same tile
- * mostly don't draw. So, like the game's own area effects, all particles on a
- * tile are merged into a single model rendered by one pooled RuneLiteObject.
- *
- * To keep the hot path allocation-free, batches are pre-built "canvases":
- * a model merged and lit ONCE from K disc slots, whose live vertex,
- * transparency and color arrays are then overwritten in place every tick -
- * no clones, merges or relights at steady state. Vertices are billboarded
- * toward the camera during the write; transparency (fade x radial falloff)
- * and colors are array-copied from pre-baked per-style templates, only when
- * a slot's style, size or fade step changes. Both lit and unlit color arrays
- * are written since renderers differ in which they consume.
- *
- * The engine welds identical-position vertices when merging, which would
- * break slot slicing, so the canvas prototype gets tiny per-vertex epsilon
- * offsets and the build is verified; on failure the renderer falls back to
- * legacy per-tick merging.
- *
- * All methods must be called on the client thread.
- */
 @Slf4j
 class ParticleRenderer
 {
-	/**
-	 * Thickness of the billboard lens relative to its radius. Nonzero so the
-	 * two hemispheres of the flattened source mesh aren't perfectly coplanar.
-	 */
+
 	private static final float LENS_FLATTEN = 0.12f;
-	/**
-	 * High ambient and weak directional light so discs read as self-lit glow
-	 * instead of shaded surfaces.
-	 */
+
 	private static final int LIGHT_AMBIENT = 90;
 	private static final int LIGHT_CONTRAST = 2000;
-	/**
-	 * Caps per batch model, from the GPU plugin's FacePrioritySorter budgets
-	 * (6500 vertices, 4000 faces per priority - our faces share one priority).
-	 * A tile gets multiple batch objects if its particles exceed a canvas.
-	 */
+
 	private static final int MAX_FACES_PER_BATCH = 3500;
 	private static final int MAX_VERTICES_PER_BATCH = 6000;
 	private static final byte INVISIBLE = (byte) 254;
 
-	/**
-	 * Fixed volume around the tile center that canvas geometry must stay
-	 * inside. Model bounds are computed ONCE over this volume at build time
-	 * (the engine caches bounds; recomputing on mutated models is a no-op),
-	 * so runtime writes are clamped into it - otherwise the GPU plugin's
-	 * depth sort asserts on vertices outside the frozen radius.
-	 */
 	private static final float VOLUME_HORIZONTAL = 256f;
 	private static final float VOLUME_UP = -1200f;
 	private static final float VOLUME_DOWN = 200f;
 	private static final float CLAMP_MARGIN = 56f;
 
-	/**
-	 * A pre-merged, pre-lit batch model whose arrays are rewritten in place.
-	 */
 	private class BatchCanvas
 	{
 		final ModelData modelData;
@@ -100,10 +56,7 @@ class ParticleRenderer
 		LocalPoint centerLp;
 		int centerHeight;
 		int usedSlots;
-		/**
-		 * Highest slot count written since slots were last cleared; slots in
-		 * [usedSlots, highWater) hold stale geometry and need clearing.
-		 */
+
 		int highWater;
 
 		BatchCanvas(ModelData merged)
@@ -123,9 +76,6 @@ class ParticleRenderer
 			slotVariant = new int[slotsPerCanvas];
 			Arrays.fill(slotVariant, -1);
 
-			// Lock in bounds NOW, while the geometry spans the whole clamp
-			// volume: the engine computes bounds once and caches, so this is
-			// the only computation the model ever gets
 			lit.calculateBoundsCylinder();
 			for (int slot = 0; slot < slotsPerCanvas; slot++)
 			{
@@ -145,32 +95,18 @@ class ParticleRenderer
 	private boolean canvasModeFailed;
 	private ModelData canvasProto;
 	private int slotsPerCanvas;
-	/**
-	 * Per-tick scratch for O(1) canvas claims: tile -> the canvas currently
-	 * filling for that tile, plus a cursor into the pool. Claims only ever
-	 * advance the cursor, so canvases claimed this tick are exactly the pool
-	 * prefix [0, idleCursor).
-	 */
+
 	private final Map<Long, BatchCanvas> tileCanvases = new HashMap<>();
 	private int idleCursor;
 
-	/**
-	 * Legacy per-tick merge path, kept as fallback if canvas slicing fails.
-	 */
 	private final List<RuneLiteObject> legacyPool = new ArrayList<>();
 	private int legacyUsed;
 
-	/**
-	 * Resolved styles by profile key, rebuilt when profiles or definitions change.
-	 */
-	private final Map<String, ParticleStyle> styles = new HashMap<>();
+	private final Map<String, ParticleStyleSet> styles = new HashMap<>();
 	private ModelData sourceMesh;
 	private int templateVertexCount;
 	private int templateFaceCount;
 
-	/**
-	 * Diagnostics.
-	 */
 	@Getter
 	private int activeObjects;
 	@Getter
@@ -189,19 +125,18 @@ class ParticleRenderer
 		return sourceMesh != null && !styles.isEmpty();
 	}
 
-	/**
-	 * @return the resolved style for a profile key, or null
-	 */
 	ParticleStyle getStyle(String profileKey)
+	{
+		ParticleStyleSet set = styles.get(profileKey);
+		return set == null ? null : set.primary();
+	}
+
+	@Nullable
+	ParticleStyleSet getStyleSet(String profileKey)
 	{
 		return styles.get(profileKey);
 	}
 
-	/**
-	 * (Re)build disc templates for every profile's style.
-	 *
-	 * @return true on success
-	 */
 	boolean rebuildStyles(Map<String, EmitterProfile> profiles, Map<String, ParticleDefinition> definitions)
 	{
 		if (sourceMesh == null)
@@ -219,8 +154,6 @@ class ParticleRenderer
 				MAX_VERTICES_PER_BATCH / Math.max(1, templateVertexCount)));
 			if (slotsPerCanvas < 8)
 			{
-				// Canvas bounds need the eight corner slots; a mesh this heavy
-				// can't batch safely, so take the per-tick merge path instead
 				log.warn("Particle mesh too heavy for canvas batching ({}v {}f); using per-tick merging",
 					templateVertexCount, templateFaceCount);
 				canvasModeFailed = true;
@@ -231,10 +164,48 @@ class ParticleRenderer
 		styles.clear();
 		for (Map.Entry<String, EmitterProfile> entry : profiles.entrySet())
 		{
-			ParticleDefinition definition = resolveDefinition(entry.getValue(), definitions);
-			styles.put(entry.getKey(), buildStyle(definition, entry.getValue()));
+			ParticleStyleSet set = buildStyleSet(entry.getValue(), definitions);
+			if (set != null)
+			{
+				styles.put(entry.getKey(), set);
+			}
 		}
 		return true;
+	}
+
+	@Nullable
+	private ParticleStyleSet buildStyleSet(EmitterProfile profile, Map<String, ParticleDefinition> definitions)
+	{
+		Map<String, Integer> particles = profile.resolvedParticles();
+		if (particles.isEmpty())
+		{
+			ParticleDefinition definition = ParticleDefinition.fromProfile(profile);
+			return ParticleStyleSet.of(buildStyle(definition, profile));
+		}
+
+		List<ParticleStyle> built = new ArrayList<>();
+		List<Integer> weights = new ArrayList<>();
+		for (Map.Entry<String, Integer> particle : particles.entrySet())
+		{
+			ParticleDefinition definition = definitions.get(particle.getKey());
+			if (definition == null)
+			{
+				continue;
+			}
+			built.add(buildStyle(definition, profile));
+			weights.add(Math.max(1, particle.getValue() == null ? 1 : particle.getValue()));
+		}
+		if (built.isEmpty())
+		{
+			ParticleDefinition definition = resolveDefinition(profile, definitions);
+			return ParticleStyleSet.of(buildStyle(definition, profile));
+		}
+		int[] weightArr = new int[weights.size()];
+		for (int i = 0; i < weights.size(); i++)
+		{
+			weightArr[i] = weights.get(i);
+		}
+		return new ParticleStyleSet(built.toArray(new ParticleStyle[0]), weightArr);
 	}
 
 	private static ParticleDefinition resolveDefinition(EmitterProfile profile,
@@ -244,6 +215,15 @@ class ParticleRenderer
 		if (id != null && !id.isEmpty())
 		{
 			ParticleDefinition definition = definitions.get(id);
+			if (definition != null)
+			{
+				return definition;
+			}
+		}
+		Map<String, Integer> particles = profile.resolvedParticles();
+		for (String particleId : particles.keySet())
+		{
+			ParticleDefinition definition = definitions.get(particleId);
 			if (definition != null)
 			{
 				return definition;
@@ -318,12 +298,6 @@ class ParticleRenderer
 		return new ParticleStyle(templates, lit1, lit2, lit3, definition, profile);
 	}
 
-	/**
-	 * The canvas prototype is the disc topology with every vertex nudged by a
-	 * unique epsilon, so the engine's identical-position vertex welding can't
-	 * fuse slots (or vertices within a slot) when canvases are merged.
-	 * Positions are overwritten every tick, so the nudges never render.
-	 */
 	private void buildCanvasProto()
 	{
 		canvasProto = sourceMesh.shallowCopy().cloneVertices();
@@ -338,9 +312,6 @@ class ParticleRenderer
 		}
 	}
 
-	/**
-	 * Linear per-channel interpolation between two ARGB colours.
-	 */
 	private static int lerpArgb(int a, int b, float t)
 	{
 		int aa = (a >>> 24) & 0xFF, ar = (a >>> 16) & 0xFF, ag = (a >>> 8) & 0xFF, ab = a & 0xFF;
@@ -352,31 +323,17 @@ class ParticleRenderer
 		return (oa << 24) | (or << 16) | (og << 8) | ob;
 	}
 
-	/**
-	 * The disc topology every particle is molded from. Spherify normalizes
-	 * the shape and size, so the pick trades vertex count (written per
-	 * particle per tick) against how round the sphere projection comes out;
-	 * the orb reads best. Slot capacity adapts to whatever this returns.
-	 */
 	private ModelData loadSourceMesh()
 	{
 		ItemComposition comp = client.getItemDefinition(ItemID.DS2_ORB_INERT);
 		return client.loadModelData(comp.getInventoryModel());
 	}
 
-	/**
-	 * Alpha over normalized age: smooth rise to a mid-life peak and gentle
-	 * decay, instead of popping in at full brightness.
-	 */
 	private static float envelope(float ageFraction)
 	{
 		return (float) Math.pow(Math.sin(Math.PI * ageFraction), 0.8);
 	}
 
-	/**
-	 * Push all live particles into batch models. Call once per client tick,
-	 * after simulation.
-	 */
 	void sync(List<Particle> particles, int worldView, int level)
 	{
 		activeObjects = 0;
@@ -389,10 +346,6 @@ class ParticleRenderer
 			return;
 		}
 
-		// Billboard basis: face every disc toward the camera, exactly. On the
-		// GPU the scene is rendered with the floating point camera, which can
-		// deviate from the int JAU camera - use whichever the renderer uses,
-		// mirroring Perspective.localToCanvas
 		float yaw;
 		float pitch;
 		if (client.isGpu())
@@ -427,7 +380,7 @@ class ParticleRenderer
 		}
 		tileCanvases.clear();
 		idleCursor = 0;
-		// Consecutive particles usually share a tile; the memo skips the map
+
 		long lastKey = Long.MIN_VALUE;
 		BatchCanvas lastCanvas = null;
 
@@ -458,7 +411,7 @@ class ParticleRenderer
 				canvas = claimCanvas(tileKey, worldView, level);
 				if (canvas == null)
 				{
-					// Canvas build failed; legacy path takes over next tick
+
 					return;
 				}
 				lastKey = tileKey;
@@ -480,7 +433,6 @@ class ParticleRenderer
 				continue;
 			}
 
-			// Collapse slots that were written last tick but not this one
 			for (int slot = canvas.usedSlots; slot < canvas.highWater; slot++)
 			{
 				clearSlot(canvas, slot);
@@ -496,13 +448,6 @@ class ParticleRenderer
 		}
 	}
 
-	/**
-	 * Find this tick's canvas for a tile (one with free slots), claiming an
-	 * idle canvas or building a new one as needed. O(1): a map resolves the
-	 * tile's current canvas and the cursor hands out idle ones in pool order.
-	 * Canvas count grows to the peak concurrent demand and is reused
-	 * thereafter.
-	 */
 	private BatchCanvas claimCanvas(long tileKey, int worldView, int level)
 	{
 		BatchCanvas current = tileCanvases.get(tileKey);
@@ -542,15 +487,7 @@ class ParticleRenderer
 		ModelData[] parts = new ModelData[slotsPerCanvas];
 		for (int i = 0; i < slotsPerCanvas; i++)
 		{
-			// Distinct whole-unit offsets so welding can't fuse slots (the
-			// epsilons are sub-unit). The first eight slots pin the corners of
-			// the clamp volume, so the bounds computed ONCE over this geometry
-			// cover everything runtime writes are clamped to no matter how few
-			// slots the mesh's budget allows - the old interior-only spread
-			// silently needed 216+ slots for full coverage and asserted the
-			// GPU depth sort when a heavier mesh shrank the slot count. The
-			// rest spread through the interior, shifted off the corner lattice
-			// so no offset ever repeats.
+
 			int x;
 			int y;
 			int z;
@@ -583,12 +520,6 @@ class ParticleRenderer
 		return new BatchCanvas(merged);
 	}
 
-	/**
-	 * Overwrite one slot of a canvas with a particle: billboarded vertices
-	 * always; transparencies only when the slot's size or fade step changed;
-	 * colors only when its style changed - colors are fade-independent, the
-	 * life envelope rides entirely in transparency.
-	 */
 	private void writeSlot(BatchCanvas canvas, int slot, Particle p,
 		float sinYaw, float cosYaw, float sinPitch, float cosPitch)
 	{
@@ -596,10 +527,6 @@ class ParticleRenderer
 		int size = p.getSizeVariant();
 		int fade = fadeStepForParticle(p);
 
-		// Per-particle base-size jitter: a uniform scale on the disc that rides
-		// on top of the pre-baked auto-variation. Capped so growth can't push
-		// the scaled disc out of the bounds volume (the un-jittered variant
-		// already fits); shrinking is always safe.
 		float sizeScale = p.getSizeScale();
 		float variantRadius = style.getBaseSize() * 0.5f * ParticleStyle.SIZE_MULTIPLIERS[size];
 		if (sizeScale > 1f && variantRadius > 1f)
@@ -612,8 +539,6 @@ class ParticleRenderer
 		float dy = p.getZ() - canvas.centerHeight;
 		float dz = p.getY() - canvas.centerLp.getY();
 
-		// Nudge toward the camera so garment faces that beat their neighbors
-		// by render priority (a cape over a skirt) don't swallow particles
 		float bias = style.getDepthBias();
 		if (bias > 0)
 		{
@@ -622,17 +547,10 @@ class ParticleRenderer
 			dz -= bias * cosYaw * cosPitch;
 		}
 
-		// Clamp into the bounds volume the canvas was built over; vertices
-		// outside the once-computed model radius break the GPU depth sort
 		dx = clamp(dx, -VOLUME_HORIZONTAL + CLAMP_MARGIN, VOLUME_HORIZONTAL - CLAMP_MARGIN);
 		dy = clamp(dy, VOLUME_UP + CLAMP_MARGIN, VOLUME_DOWN - CLAMP_MARGIN);
 		dz = clamp(dz, -VOLUME_HORIZONTAL + CLAMP_MARGIN, VOLUME_HORIZONTAL - CLAMP_MARGIN);
 
-		// Velocity-aligned stretch: elongate the disc along the particle's
-		// screen-projected velocity (drips read as falling streaks). Capped
-		// so the stretched radius stays within CLAMP_MARGIN and thus in the
-		// bounds volume. du/dv is the velocity's direction in the billboard's
-		// local (x,y) plane; the model frame is X=east, Y=height, Z=north.
 		float stretch = style.getStretchFactor();
 		float du = 0f;
 		float dv = 0f;
@@ -643,10 +561,7 @@ class ParticleRenderer
 			{
 				stretch = Math.min(stretch, Math.max(1f, (CLAMP_MARGIN - 1f) / discRadius));
 			}
-			// Ramp toward the (already bounds-capped) peak over the particle's
-			// life: a droplet holds its round shape while falling, then
-			// elongates late as it "lets go". Late-biased so the stretch stays
-			// subtle until the end. rampStart 1 = full stretch from spawn.
+
 			float rampStart = style.getStretchRampStart();
 			if (rampStart < 1f)
 			{
@@ -683,18 +598,15 @@ class ParticleRenderer
 
 			if (stretched)
 			{
-				// Scale the component along the velocity direction, leaving
-				// the perpendicular unchanged - an elongated streak
+
 				float along = (stretch - 1f) * (x * du + y * dv);
 				x += along * du;
 				y += along * dv;
 			}
 
-			// Pitch: (0,0,1) -> (0, sinPitch, cosPitch)
 			float y1 = y * cosPitch + z * sinPitch;
 			float z1 = -y * sinPitch + z * cosPitch;
 
-			// Yaw: (0, sp, cp) -> (-sinYaw*cp, sp, cosYaw*cp) = camera forward
 			float x1 = -z1 * sinYaw + x * cosYaw;
 			float z2 = z1 * cosYaw + x * sinYaw;
 
@@ -710,9 +622,7 @@ class ParticleRenderer
 		{
 			canvas.slotStyle[slot] = style;
 			canvas.slotVariant[slot] = -1;
-			// Without a gradient the colour is constant over life, so copy it
-			// once when the slot changes hands between styles. Unlit colors are
-			// for renderers that relight, lit for the others.
+
 			if (!gradient)
 			{
 				System.arraycopy(style.getTemplates()[size][0].getFaceColors(), 0,
@@ -727,7 +637,7 @@ class ParticleRenderer
 			canvas.slotVariant[slot] = variant;
 			System.arraycopy(style.getTemplates()[size][fade].getFaceTransparencies(), 0,
 				canvas.transparencies, faceBase, templateFaceCount);
-			// With a gradient the colour moves each fade step, so recopy it here
+
 			if (gradient)
 			{
 				System.arraycopy(style.getTemplates()[size][fade].getFaceColors(), 0,
@@ -756,9 +666,6 @@ class ParticleRenderer
 		canvas.slotVariant[slot] = -1;
 	}
 
-	/**
-	 * Legacy fallback: merge and light fresh batch models every tick.
-	 */
 	private void syncLegacy(List<Particle> particles, WorldView wv, int worldView, int level,
 		float sinYaw, float cosYaw, float sinPitch, float cosPitch)
 	{
@@ -883,9 +790,6 @@ class ParticleRenderer
 		return obj;
 	}
 
-	/**
-	 * Deactivate all batch objects, e.g. on logout or shutdown.
-	 */
 	void reset()
 	{
 		tileCanvases.clear();
@@ -907,9 +811,6 @@ class ParticleRenderer
 		activeObjects = 0;
 	}
 
-	/**
-	 * @return particles killed for leaving the scene since the last call
-	 */
 	int drainOutOfSceneKills()
 	{
 		int kills = outOfSceneKills;
@@ -934,12 +835,6 @@ class ParticleRenderer
 		return fade;
 	}
 
-	/**
-	 * Reshape a mesh into a sphere by projecting every vertex onto a sphere of
-	 * the given radius around the mesh centroid. Topology is unchanged, so any
-	 * reasonably round source model becomes a clean ball. The result is centered
-	 * on the model origin so particles sit exactly on their emit position.
-	 */
 	private static void spherify(ModelData model, float radius)
 	{
 		float[] xs = model.getVerticesX();
@@ -970,7 +865,7 @@ class ParticleRenderer
 			float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
 			if (len < 0.001f)
 			{
-				// Degenerate vertex at the centroid; push it to the pole
+
 				xs[i] = 0;
 				ys[i] = -radius;
 				zs[i] = 0;
@@ -982,11 +877,6 @@ class ParticleRenderer
 		}
 	}
 
-	/**
-	 * Squash the sphere along z into a thin lens: a billboard "quad" with the
-	 * source mesh's topology. The disc spans x (horizontal) and y (vertical),
-	 * facing along z.
-	 */
 	private static void flatten(ModelData model, float factor)
 	{
 		float[] zs = model.getVerticesZ();
@@ -996,12 +886,6 @@ class ParticleRenderer
 		}
 	}
 
-	/**
-	 * Per-face alpha multiplier realizing the profile's shape as a soft mask
-	 * over the disc, evaluated at each face centroid in the disc plane (x
-	 * horizontal, y vertical). Default is the (1 - t^2)^2 radial glow; the
-	 * others carve a silhouette while staying soft. Baked once per style.
-	 */
 	private static float[] shapeFalloff(ModelData model, float radius, Shape shape)
 	{
 		float[] xs = model.getVerticesX();
@@ -1027,21 +911,13 @@ class ParticleRenderer
 	{
 		if (shape == Shape.DIAMOND)
 		{
-			// Geometry carries the silhouette; keep the interior a soft glow
-			// (bright core, dimmer points) that never fully vanishes so the
-			// warped points stay visible
+
 			return 0.35f + 0.65f * (1f - t * t);
 		}
 		float a = 1f - t * t;
 		return a * a;
 	}
 
-	/**
-	 * Reposition the flattened disc's vertices into a four-point diamond by
-	 * scaling each vertex's radius by a function of its angle (peaks on the
-	 * axes). Topology is unchanged so the batch canvas is unaffected; Default
-	 * is left round. x is horizontal, y vertical.
-	 */
 	private static void shapeWarp(ModelData model, float radius, Shape shape)
 	{
 		if (shape != Shape.DIAMOND)
@@ -1059,7 +935,7 @@ class ParticleRenderer
 			{
 				continue;
 			}
-			// Four peaks on the axes; square sharpens the points
+
 			float p = 0.5f + 0.5f * (float) Math.cos(4.0 * Math.atan2(y, x));
 			float f = 0.3f + 0.7f * p * p;
 			xs[i] = x * f;

@@ -58,20 +58,9 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import lombok.Getter;
 
-/**
- * Dev tool window with a target mode selector: player-model authoring
- * (emitter profiles and mesh pieces on the left with a per-profile style
- * editor, orbitable wireframe viewport on the right; clicking a vertex
- * toggles it as an emitter) and projectile authoring (profiles plus a live
- * capture list of recently seen projectile IDs). Profiles can be duplicated
- * and gated on worn item IDs so recolored variants of one model get their
- * own particles.
- */
 class ModelViewerFrame extends JFrame
 {
-	/**
-	 * Everything the viewer needs from the plugin. All methods run on the EDT.
-	 */
+
 	interface Callbacks
 	{
 		void refreshSnapshot();
@@ -84,7 +73,6 @@ class ModelViewerFrame extends JFrame
 
 		void selectionChanged();
 
-		/** True when the viewport should accept vertex/face picking (player or loaded target mesh). */
 		boolean canPickVertices();
 
 		@Nullable
@@ -118,32 +106,14 @@ class ModelViewerFrame extends JFrame
 
 		List<String> areaNames();
 
-		/**
-		 * Capture a nearby instance of this scenery object into the viewer.
-		 */
 		void loadObject(int objectId);
 
-		/**
-		 * Capture a nearby instance of this NPC into the viewer.
-		 */
 		void loadNpc(int npcId);
 
-		/**
-		 * Capture a live instance of this spot anim / graphic into the
-		 * viewer for vertex picking.
-		 */
 		void loadGraphic(int graphicId);
 
-		/**
-		 * Pose the loaded NPC's cache mesh at every frame of this animation
-		 * ID, arriving as an exact-frame recording. NPC snapshots only.
-		 */
 		void poseAnimation(int animId);
 
-		/**
-		 * The user manually returned to the model view; drop any object
-		 * context and show the player again.
-		 */
 		void playerViewSelected();
 
 		void setParticleOverlayActive(boolean active);
@@ -179,9 +149,6 @@ class ModelViewerFrame extends JFrame
 		}
 	}
 
-	/**
-	 * Scenery object kind on a tile — used to filter the in-scene object list.
-	 */
 	enum ObjectKind
 	{
 		GAME_OBJECT("Game object"),
@@ -244,9 +211,6 @@ class ModelViewerFrame extends JFrame
 		}
 	}
 
-	/**
-	 * A scenery object in the loaded scene, for the world-object capture list.
-	 */
 	static class ObjectSighting
 	{
 		final int id;
@@ -265,11 +229,6 @@ class ModelViewerFrame extends JFrame
 		}
 	}
 
-	/**
-	 * A spot anim / graphics ID recently seen, for the graphics capture
-	 * list. Spot anims have no name in the cache, so source is who played
-	 * it ("tile" for a graphics object).
-	 */
 	static class GraphicSighting
 	{
 		final int id;
@@ -286,9 +245,6 @@ class ModelViewerFrame extends JFrame
 		}
 	}
 
-	/**
-	 * One list entry per profile, or per piece if it has no profiles.
-	 */
 	static class ProfileEntry
 	{
 		final String key;
@@ -308,9 +264,7 @@ class ModelViewerFrame extends JFrame
 		final int pieceIndex;
 		@Nullable
 		final String profileKey;
-		/**
-		 * Projectile ID of a capture-list row, or -1.
-		 */
+
 		final int captureId;
 
 		Row(int pieceIndex, @Nullable String profileKey)
@@ -373,7 +327,6 @@ class ModelViewerFrame extends JFrame
 	private final JComboBox<String> weatherAreaCombo = new JComboBox<>();
 	private final JPanel addPanelHolder = new JPanel(new BorderLayout());
 
-	// Animation scrubber below the viewport, shown while a recording exists
 	private final JSlider scrubSlider = new JSlider(0, 0, 0);
 	private final JLabel scrubLabel = new JLabel(" ");
 	private final JPanel scrubPanel = new JPanel(new BorderLayout(6, 0));
@@ -382,12 +335,11 @@ class ModelViewerFrame extends JFrame
 	private float[][] recordingZs;
 	private int[] recordingFrames;
 
-	// Style editor controls
 	private final JButton colorButton = new JButton();
 	private final JCheckBox colorFadeCheck = new JCheckBox();
 	private final JButton endColorButton = new JButton();
 	private final JSpinner fadeStartSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 100, 5));
-	// Rows hidden while colour-over-life is off, to declutter the common case
+
 	private JComponent endColorRow;
 	private JComponent fadeStartRow;
 	private final JComboBox<Shape> shapeCombo = new JComboBox<>(Shape.values());
@@ -512,7 +464,6 @@ class ModelViewerFrame extends JFrame
 	private int appliedPieceIndex = Integer.MIN_VALUE;
 	private int lastAutoLoadedCaptureId = -1;
 
-	// Latest data from the plugin, cached so mode switches can rebuild rows
 	private Map<String, List<ProfileEntry>> profilesBySignature = Map.of();
 	private List<ProfileEntry> projectileEntries = List.of();
 	private List<int[]> recentProjectiles = List.of();
@@ -643,8 +594,7 @@ class ModelViewerFrame extends JFrame
 			applyMode(modeSelector.getSelectedIndex());
 			if (modeSelector.getSelectedIndex() == 0)
 			{
-				// Manual return to the model view always means the player;
-				// object snapshots only arrive via Load
+
 				callbacks.playerViewSelected();
 			}
 			if (snapshot != null)
@@ -680,7 +630,7 @@ class ModelViewerFrame extends JFrame
 		});
 
 		JButton export = new JButton("Export");
-		export.setToolTipText("Write emitters.json + definitions.json + folders.json");
+		export.setToolTipText("Write emitters.json + definitions.json");
 		export.addActionListener(e -> callbacks.exportBundle());
 
 		ParticleDevUi.styleCombo(modeSelector);
@@ -1349,25 +1299,17 @@ class ModelViewerFrame extends JFrame
 			return;
 		}
 		lastAutoLoadedCaptureId = id;
-		// Short-lived gfx are usually gone before Load can be clicked; the
-		// plugin arms a capture and calls notifyGraphicSnapshot when the mesh lands
+
 		callbacks.loadGraphic(id);
 		viewport.setPieceFilter(-1);
 		appliedPieceIndex = -1;
 	}
 
-	/**
-	 * Show a message in the editor hint line. EDT only.
-	 */
 	void showHint(String text)
 	{
-		// Hints are shown via tooltips / in-game context; no header line in the panel.
+
 	}
 
-	/**
-	 * Graphic capture landed in the viewer; refresh the list without leaving
-	 * Graphics mode. EDT only.
-	 */
 	void notifyGraphicSnapshot()
 	{
 		if (snapshot != null)
@@ -1376,15 +1318,9 @@ class ModelViewerFrame extends JFrame
 		}
 	}
 
-	/**
-	 * Hand a finished animation recording to the scrubber: per-sample vertex
-	 * positions over the current snapshot's topology, plus each sample's
-	 * animation frame (-1 when the source exposes none). EDT only.
-	 */
 	void setRecording(float[][] xs, float[][] ys, float[][] zs, int[] frames)
 	{
-		// Recordings arrive without re-pushing a snapshot, so ignore any
-		// whose topology doesn't match what the viewer currently shows
+
 		if (snapshot == null || xs.length == 0 || xs[0].length != snapshot.getVertexCount())
 		{
 			return;
@@ -1423,10 +1359,6 @@ class ModelViewerFrame extends JFrame
 		viewport.setPositionOverride(null, null, null);
 	}
 
-	/**
-	 * The typed ID, falling back to the selected capture row; clears the
-	 * field on success.
-	 */
 	private int parseIdOrSelection(JTextField field)
 	{
 		int id = -1;
@@ -2097,10 +2029,6 @@ class ModelViewerFrame extends JFrame
 		return selectedProfileKey == null ? null : callbacks.profile(selectedProfileKey);
 	}
 
-	/**
-	 * Reload the style editor from the selected profile, e.g. after a vertex
-	 * toggle created one. Must be called on the Swing EDT.
-	 */
 	void refreshStyleEditor()
 	{
 		EmitterProfile profile = selectedProfile();
@@ -2340,18 +2268,13 @@ class ModelViewerFrame extends JFrame
 		}
 	}
 
-	/**
-	 * The end colour and its fade-start only matter while colour-over-life is
-	 * enabled, so they follow the checkbox.
-	 */
 	private void syncColorFadeEnabled()
 	{
 		boolean on = colorFadeCheck.isEnabled() && colorFadeCheck.isSelected();
 		endColorButton.setEnabled(on);
 		fadeStartSpinner.setEnabled(on);
 		colorPreviewPanel.setVisible(on);
-		// Fold the end colour and fade-start rows away entirely while off, so
-		// the common single-colour profile shows two fewer rows
+
 		if (endColorRow != null)
 		{
 			endColorRow.setVisible(on);
@@ -2564,10 +2487,6 @@ class ModelViewerFrame extends JFrame
 		return ids;
 	}
 
-	/**
-	 * Swap in a new snapshot and fresh profile data. Must be called on the
-	 * Swing EDT.
-	 */
 	void setSnapshot(ModelSnapshot snapshot, Set<Integer> selectedVertices,
 		Map<String, List<ProfileEntry>> profilesBySignature, List<String> wornItems,
 		List<ProfileEntry> projectileEntries, List<int[]> recentProjectiles,
@@ -2606,7 +2525,6 @@ class ModelViewerFrame extends JFrame
 			wornItemsCombo.setModel(new DefaultComboBoxModel<>(wornItems.toArray(new String[0])));
 		}
 
-		// Editing a profile from the sidebar lands in the matching target mode.
 		if (pendingSelection != null)
 		{
 			int mode = 0;
@@ -2726,10 +2644,6 @@ class ModelViewerFrame extends JFrame
 		refreshStyleEditor();
 	}
 
-	/**
-	 * Rebuild the rows with fresh profile data, e.g. after a vertex click
-	 * created a profile. Keeps the camera. EDT only.
-	 */
 	void refreshRows(Map<String, List<ProfileEntry>> profilesBySignature, List<ProfileEntry> projectileEntries,
 		List<ProfileEntry> objectEntries, List<ProfileEntry> npcEntries, List<ProfileEntry> graphicEntries,
 		List<ProfileEntry> weatherEntries)
@@ -2942,7 +2856,7 @@ class ModelViewerFrame extends JFrame
 		{
 			applyRowSelection(rows.get(selectRow));
 		}
-		// In-scene rows are sightings only; keep the active profile for editing.
+
 		if (!savedEmitterList && !inModelMode() && pendingProfile != null)
 		{
 			selectedProfileKey = pendingProfile;
@@ -3018,26 +2932,16 @@ class ModelViewerFrame extends JFrame
 		}
 	}
 
-	/**
-	 * Select the row of this profile when the next snapshot loads,
-	 * e.g. when editing a saved profile from the sidebar. EDT only.
-	 */
 	void selectProfileOnNextSnapshot(String profileKey)
 	{
 		pendingSelection = profileKey;
 	}
 
-	/**
-	 * Update the highlighted emitter vertices. Must be called on the Swing EDT.
-	 */
 	void setSelectedVertices(Set<Integer> selectedVertices)
 	{
 		viewport.setSelectedVertices(selectedVertices);
 	}
 
-	/**
-	 * Update the highlighted emitter faces. Must be called on the Swing EDT.
-	 */
 	void setSelectedFaces(Set<Integer> selectedFaces)
 	{
 		viewport.setSelectedFaces(selectedFaces);

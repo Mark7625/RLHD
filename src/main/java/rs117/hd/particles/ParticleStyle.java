@@ -5,129 +5,62 @@ import javax.annotation.Nullable;
 import lombok.Getter;
 import net.runelite.api.ModelData;
 
-/**
- * Resolved runtime style for one emitter piece: pre-baked disc templates for
- * every (size variant, fade step) plus the emission parameters. Built by
- * {@link ParticleRenderer} from an {@link EmitterProfile}; immutable once built.
- */
 @Getter
 public class ParticleStyle
 {
 	static final int FADE_STEPS = 12;
-	/**
-	 * Per-particle random size multipliers; this fixed spread makes the cloud
-	 * read as organic instead of uniform beads. The profile's size jitter is a
-	 * separate, per-particle scaling of the base that rides on top of these.
-	 */
+
 	static final float[] SIZE_MULTIPLIERS = {0.65f, 1.0f, 1.4f};
-	/**
-	 * The lowest particle size we allow; also the floor of the jitter range.
-	 */
+
 	static final int MIN_SIZE = 2;
 
-	/**
-	 * Unlit disc templates indexed [size variant][fade step], facing +z,
-	 * centered on the origin.
-	 */
 	private final ModelData[][] templates;
-	/**
-	 * Pre-lit per-face colors indexed [fade step], copied into batch canvases
-	 * in place of per-tick relighting. Colour is constant across a particle's
-	 * life unless a colour gradient is set, so without one every fade step
-	 * holds the same array and the batch copies it just once per style.
-	 */
+
 	private final int[][] litColors1;
 	private final int[][] litColors2;
 	private final int[][] litColors3;
-	/**
-	 * The colour changes over life (end colour differs from start), so the
-	 * batch must recopy the lit colours each fade step, not once per style.
-	 */
+
 	private final boolean colorGradient;
 	private final float lifetimeSec;
 	private final float particlesPerSecond;
-	/**
-	 * Particles per tile of anchor movement; 0 = off. See EmitterProfile.
-	 */
+
 	private final float trailDensity;
 	private final float riseSpeed;
 	private final float spreadSpeed;
-	/**
-	 * Per-particle random size spread around the base, in local units; 0 = every
-	 * particle the base size. Realized as a per-particle scale at spawn, on top
-	 * of the fixed {@link #SIZE_MULTIPLIERS} auto-variation. See EmitterProfile.
-	 */
+
 	private final int sizeJitter;
-	/**
-	 * Downward acceleration in local units per second squared; see
-	 * EmitterProfile.
-	 */
+
 	private final float gravity;
-	/**
-	 * Steady world-aligned wind drift in local units per second (X east,
-	 * Y north, Z up); see EmitterProfile.
-	 */
+
 	private final float windX;
 	private final float windY;
 	private final float windZ;
-	/**
-	 * Fraction of a particle's own velocity shed per second (0 = none); see
-	 * EmitterProfile.
-	 */
+
 	private final float dragPerSec;
-	/**
-	 * Radial spawn velocity from the emitter centroid, outward (+) / inward (-),
-	 * local units per second; see EmitterProfile.
-	 */
+
 	private final float vortex;
-	/**
-	 * Emit-point scale about the centroid as a multiplier (1 = unchanged); see
-	 * EmitterProfile.
-	 */
+
 	private final float emitScale;
-	/**
-	 * Billboard elongation factor along screen velocity (1 = round); see
-	 * EmitterProfile.
-	 */
+
 	private final float stretchFactor;
-	/**
-	 * Life fraction at which stretch begins as a multiplier (1 = full stretch
-	 * from spawn, 0 = starts round and ramps up over life). See EmitterProfile.
-	 */
+
 	private final float stretchRampStart;
-	/**
-	 * The profile's base diameter; the renderer needs it to cap the stretch
-	 * so an elongated billboard stays inside the batch bounds volume.
-	 */
+
 	private final int baseSize;
 	private final float spawnJitter;
 	private final int featherStrength;
-	/**
-	 * Midpoints inserted between mesh-adjacent emitter vertices;
-	 * see EmitterProfile.
-	 */
+
 	private final int interpolation;
-	/**
-	 * Camera-ward render nudge in local units; see EmitterProfile.
-	 */
+
 	private final float depthBias;
-	/**
-	 * Lifetime multiplier while the wearer walks or runs; see EmitterProfile.
-	 */
+
 	private final float movementLifetimeScale;
-	/**
-	 * Fixed emit offset from the vertex in model space, applied before the
-	 * player's facing rotation so it turns with them. X sideways, Y
-	 * forward/back, Z up (positive).
-	 */
+
 	private final float offsetX;
 	private final float offsetY;
 	private final float offsetZ;
 	private final Set<Integer> animationIds;
-	/**
-	 * Flattened [start0, end0, start1, end1, ...] frame windows for action
-	 * animation matches, or null for all frames.
-	 */
+
 	private final int[] animFrameRanges;
 	private final int startArgb;
 	private final int endArgb;
@@ -217,12 +150,6 @@ public class ParticleStyle
 		return 1f - p.lifeFraction();
 	}
 
-	/**
-	 * Parse "9-13, 15-19, 25" into flattened start/end pairs; single numbers
-	 * become one-frame windows, junk tokens are ignored.
-	 *
-	 * @return null when no valid ranges (= all frames pass)
-	 */
 	private static int[] parseFrameRanges(String text)
 	{
 		if (text == null || text.isEmpty())
@@ -260,10 +187,6 @@ public class ParticleStyle
 		return ranges;
 	}
 
-	/**
-	 * The frame-window check alone, for spot anim gating where the graphic
-	 * ID itself already gates. No windows = every frame passes.
-	 */
 	boolean frameMatches(int frame)
 	{
 		if (animFrameRanges == null)
@@ -280,11 +203,6 @@ public class ParticleStyle
 		return false;
 	}
 
-	/**
-	 * Animation gate: emit only while the player's action or pose animation
-	 * matches, with optional frame windows on action matches. An empty gate
-	 * always passes; live particles are unaffected and fade out naturally.
-	 */
 	boolean animationMatches(int actionAnimation, int actionFrame, int poseAnimation)
 	{
 		if (animationIds.isEmpty())

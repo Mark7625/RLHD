@@ -10,18 +10,6 @@ import javax.annotation.Nullable;
 import lombok.Getter;
 import net.runelite.api.Model;
 
-/**
- * An immutable copy of a posed model's geometry, decomposed into connected
- * mesh pieces (groups of faces that share edges). Vertex indices match the
- * live model, so a vertex picked here can be used directly as an emitter anchor.
- *
- * Each piece carries a topology signature that is stable across model
- * recomposition: when equipment changes, a piece's global vertex indices shift
- * but its internal structure does not, so the signature (face wiring expressed
- * in piece-local vertex ranks) re-identifies the same piece in the new
- * composite. Emitters are stored per signature with piece-local indices and
- * mapped back to global indices against whatever model is currently worn.
- */
 @Getter
 class ModelSnapshot
 {
@@ -33,21 +21,18 @@ class ModelSnapshot
 	private final int[] faceIndices1;
 	private final int[] faceIndices2;
 	private final int[] faceIndices3;
-	/** Per-face HSL at corner vertices (see {@link Model#getFaceColors1()} etc.). */
+
 	private final int[] faceColors1;
 	private final int[] faceColors2;
 	private final int[] faceColors3;
-	/** Base recolour before lighting, when the model exposes it. */
+
 	private final short[] unlitFaceColors;
-	/** Vanilla texture id per face, or null. */
+
 	private final short[] faceTextures;
-	/** Per-face transparency bytes, or null when the model has none. */
+
 	private final byte[] faceTransparencies;
 	private final List<Piece> pieces;
 
-	/**
-	 * Piece index per vertex, -1 for vertices not referenced by any face.
-	 */
 	private final int[] vertexToPiece;
 
 	@Getter
@@ -55,31 +40,13 @@ class ModelSnapshot
 	{
 		private final String signature;
 		private final int[] faces;
-		/**
-		 * Global vertex indices in first-appearance order over the piece's face
-		 * stream; the position of a vertex in this array is its piece-local
-		 * index. Appearance order (unlike global index order) is unaffected by
-		 * the engine welding a vertex into another model's index range, so
-		 * local indices and signatures survive e.g. head models touching the
-		 * cape when a face-revealing helmet is worn.
-		 */
+
 		private final int[] vertices;
-		/**
-		 * Signatures this piece would produce under the three reversed-winding
-		 * visit orders. A mirrored placement of the same mesh (some wall
-		 * orientations flip the model, reversing triangle winding) hashes as
-		 * one of these, so a profile authored on either handedness matches
-		 * both. Field-confirmed 2026-07: same-ID wall torches produced 9v8f
-		 * pieces with different hashes per orientation.
-		 */
+
 		private final String[] mirrorSignatures;
-		/**
-		 * First-appearance vertex orders for each mirror variant, so a
-		 * profile matched through a mirror signature maps its piece-local
-		 * indices onto the mirrored counterpart vertices.
-		 */
+
 		private final int[][] mirrorVertices;
-		// Lookup: sorted globals with their parallel local indices
+
 		private final int[] sortedVertices;
 		private final int[] sortedToLocal;
 
@@ -100,30 +67,18 @@ class ModelSnapshot
 			}
 		}
 
-		/**
-		 * @return the piece-local index of a global vertex, or -1
-		 */
 		int localIndexOf(int globalVertex)
 		{
 			int pos = Arrays.binarySearch(sortedVertices, globalVertex);
 			return pos < 0 ? -1 : sortedToLocal[pos];
 		}
 
-		/**
-		 * Piece-local face rank: position in {@link #faces} (ascending global
-		 * face order within the component). Stable across recomposition.
-		 *
-		 * @return local face index, or -1
-		 */
 		int localFaceIndexOf(int globalFace)
 		{
 			int pos = Arrays.binarySearch(faces, globalFace);
 			return pos < 0 ? -1 : pos;
 		}
 
-		/**
-		 * Does this signature identify the piece, in either handedness?
-		 */
 		boolean matchesSignature(String sig)
 		{
 			if (signature.equals(sig))
@@ -140,10 +95,6 @@ class ModelSnapshot
 			return false;
 		}
 
-		/**
-		 * The local-to-global vertex order under whichever labeling produced
-		 * this signature; the direct order when it isn't a mirror match.
-		 */
 		int[] verticesFor(String sig)
 		{
 			if (signature.equals(sig))
@@ -161,16 +112,11 @@ class ModelSnapshot
 		}
 	}
 
-	/**
-	 * Copy geometry from a model. Face colour arrays are omitted; use
-	 * {@link #captureForViewer(Model)} when the dev viewer needs them.
-	 */
 	static ModelSnapshot capture(Model model)
 	{
 		return capture(model, false);
 	}
 
-	/** Geometry plus per-face colour data for the dev viewer. */
 	static ModelSnapshot captureForViewer(Model model)
 	{
 		return capture(model, true);
@@ -237,9 +183,6 @@ class ModelSnapshot
 		this.pieces = decompose();
 	}
 
-	/**
-	 * @return the piece a vertex belongs to, or null
-	 */
 	Piece pieceContaining(int vertex)
 	{
 		if (vertex < 0 || vertex >= vertexCount || vertexToPiece[vertex] < 0)
@@ -249,9 +192,6 @@ class ModelSnapshot
 		return pieces.get(vertexToPiece[vertex]);
 	}
 
-	/**
-	 * @return the piece a face belongs to, or null when the face is unused
-	 */
 	@Nullable
 	Piece pieceContainingFace(int face)
 	{
@@ -269,13 +209,6 @@ class ModelSnapshot
 		return null;
 	}
 
-	/**
-	 * Union-find over faces joined by shared edges, yielding connected
-	 * components. Edge (not vertex) connectivity matters: the engine welds
-	 * identical-position vertices of different equipment models together, so
-	 * a single touching point (e.g. a face-revealing helmet's head model
-	 * against the cape) would otherwise fuse separate pieces into one.
-	 */
 	private List<Piece> decompose()
 	{
 		int[] parent = new int[faceCount];
@@ -292,15 +225,12 @@ class ModelSnapshot
 			unionEdge(edgeToFace, parent, f, faceIndices1[f], faceIndices3[f]);
 		}
 
-		// Group faces by component root, in ascending face order
 		Map<Integer, List<Integer>> facesByRoot = new HashMap<>();
 		for (int f = 0; f < faceCount; f++)
 		{
 			facesByRoot.computeIfAbsent(find(parent, f), k -> new ArrayList<>()).add(f);
 		}
 
-		// Piece-local vertex labels by first appearance in the face stream;
-		// stamp marks which piece a label belongs to so the arrays are shared
 		int[] label = new int[vertexCount];
 		int[] stamp = new int[vertexCount];
 		int stampValue = 0;
@@ -317,9 +247,6 @@ class ModelSnapshot
 			int[] verts = appearance.stream().mapToInt(Integer::intValue).toArray();
 			String signature = verts.length + "v" + faces.length + "f-" + Long.toHexString(hash);
 
-			// The three reversed-winding visit orders: a mirrored placement
-			// of this mesh hashes as one of them (which one depends on the
-			// index pair the engine swaps when flipping)
 			String[] mirrorSignatures = new String[3];
 			int[][] mirrorVertices = new int[3][];
 			for (int m = 0; m < 3; m++)
@@ -339,8 +266,6 @@ class ModelSnapshot
 		}
 		result.sort(Comparator.comparingInt((Piece p) -> p.faces.length).reversed());
 
-		// A welded vertex can belong to several pieces; the first (largest)
-		// piece claims it for click mapping
 		Arrays.fill(vertexToPiece, -1);
 		for (int i = 0; i < result.size(); i++)
 		{
@@ -396,7 +321,7 @@ class ModelSnapshot
 		{
 			root = parent[root];
 		}
-		// Path compression
+
 		while (parent[i] != root)
 		{
 			int next = parent[i];

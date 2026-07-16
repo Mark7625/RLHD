@@ -99,69 +99,51 @@ import rs117.hd.particles.debug.ParticleDebugOverlay;
 @Singleton
 public class ParticlesManager implements ModelViewerFrame.Callbacks
 {
-	/** Must match {@link ParticlePass} billboard draw cap. */
+
 	static final int MAX_DRAWN_PARTICLES = 2048;
-	/**
-	 * One enabled emitter profile resolved onto the current model: its style,
-	 * global vertex indices, optional face triangles, spawn accumulator, and
-	 * its slice of the shared anchor arrays.
-	 */
+
 	private static class ActiveEmitter
 	{
 		final ParticleStyle style;
+		final ParticleStyleSet styleSet;
 		final int[] vertices;
-		/**
-		 * Global face corner triplets {@code [f0a,f0b,f0c, f1a,...]}; empty
-		 * when the profile has no triangle emitters.
-		 */
+
 		final int[] faceCorners;
-		/**
-		 * Feathering: emitter vertices chained along mesh edges, as anchor
-		 * offsets within this emitter; null when feathering is off.
-		 */
+
 		final int[][] chains;
-		/**
-		 * O(1) uniform sampling over all chain positions.
-		 */
+
 		final int[] sampleChainOf;
 		final int[] samplePosOf;
-		/**
-		 * Interpolated midpoints appended after the real anchors, one set
-		 * per chain segment; zero when interpolation is off.
-		 */
+
 		final int extraAnchors;
 		double carry;
 		int anchorStart;
 		int anchorCount;
-		/**
-		 * Every real vertex resolved an anchor this tick, so chain indices
-		 * line up for feathering and interpolation.
-		 */
+
 		boolean featherReady;
-		/**
-		 * Centroid of this tick's anchors, computed only when the style needs
-		 * it (emit scale or vortex active). The reference point both effects
-		 * are measured from.
-		 */
+
 		float cx;
 		float cy;
 		float cz;
-		/**
-		 * World positions of face corners this tick ({@code faceCorners.length}),
-		 * filled during anchoring so emit can barycentric-sample triangles.
-		 */
+
 		float[] faceWorldX = EMPTY_FLOATS;
 		float[] faceWorldY = EMPTY_FLOATS;
 		float[] faceWorldZ = EMPTY_FLOATS;
 
 		ActiveEmitter(ParticleStyle style, int[] vertices, int[][] chains)
 		{
-			this(style, vertices, EMPTY_INTS, chains);
+			this(ParticleStyleSet.of(style), vertices, EMPTY_INTS, chains);
 		}
 
 		ActiveEmitter(ParticleStyle style, int[] vertices, int[] faceCorners, int[][] chains)
 		{
-			this.style = style;
+			this(ParticleStyleSet.of(style), vertices, faceCorners, chains);
+		}
+
+		ActiveEmitter(ParticleStyleSet styleSet, int[] vertices, int[] faceCorners, int[][] chains)
+		{
+			this.styleSet = styleSet;
+			this.style = styleSet.primary();
 			this.vertices = vertices;
 			this.faceCorners = faceCorners == null ? EMPTY_INTS : faceCorners;
 			this.chains = chains;
@@ -261,19 +243,8 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private boolean particleOverlayActive;
 	private boolean effectorOverlayActive;
 
-	/**
-	 * Preview the shipped experience from a developer client: treats
-	 * developer mode as off everywhere (authoring UI, WIP category gating).
-	 * The dev harness always launches with developer mode on, so this is the
-	 * only way to see the player view locally. Safe to ship true by accident
-	 * - players already run without developer mode.
-	 */
 	private static final boolean PREVIEW_PLAYER_VIEW = false;
 
-	/**
-	 * Authoring tools (vertex picker, profile edit controls) only exist in
-	 * developer mode; shipped users get read-only presets with toggles.
-	 */
 	@Inject
 	@Named("developerMode")
 	private boolean developerMode;
@@ -292,11 +263,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private EmitterStore store;
 	private ModelViewerFrame viewerFrame;
 
-	/**
-	 * Per-player emitter state: resolution cache against that player's gear,
-	 * transformed anchors, and trail history. Every player in the scene gets
-	 * particles, not just the local one. Client thread.
-	 */
 	private static class PlayerEmitters
 	{
 		final List<ActiveEmitter> emitters = new ArrayList<>();
@@ -304,24 +270,15 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int revision = -1;
 		float[] anchorXs = new float[0];
 		float[] anchorYs = new float[0];
-		/**
-		 * Absolute scene z (negative up), based on the same base height the
-		 * engine renders the model at, so anchors stay glued on slopes.
-		 */
+
 		float[] anchorZs = new float[0];
-		// Last tick's anchors: spawns spread along each anchor's movement
-		// segment so fast-moving emitters lay a smooth trail, not clumps
+
 		float[] prevXs = new float[0];
 		float[] prevYs = new float[0];
 		float[] prevZs = new float[0];
-		/**
-		 * Fractional carry of distance-based emission per anchor slot.
-		 */
+
 		float[] trailCarry = new float[0];
-		/**
-		 * Rate carries for point emission from the actor's active spot
-		 * anims, by graphic ID. Lazily created; most actors have none.
-		 */
+
 		@Nullable
 		Map<Integer, double[]> spotAnimCarries;
 		int anchorCount;
@@ -332,46 +289,18 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 	private final Map<Player, PlayerEmitters> playerEmitters = new HashMap<>();
 	private int playerStamp;
-	/**
-	 * Mirror of the engine's stacked-actor claim (tileLastDrawnActor): among
-	 * players standing exactly at tile center, one draws per tile, with
-	 * precedence local player -> the local player's player combat target ->
-	 * size-1 centered NPCs -> remaining players by ascending player index.
-	 * Field-validated with the hover-menu oracle (see updateStackOracle):
-	 * idle stacks matched ascending Player.getId() consistently, and getId()
-	 * agreed with the menu identifiers everywhere tested. This map holds the
-	 * lowest-index centered player per tile; the precedence layers above it
-	 * are applied in the drawn gate. Reused per tick.
-	 */
+
 	private final Map<Long, Player> tileOwners = new HashMap<>();
-	/**
-	 * Tiles claimed by a size-1 NPC standing at their center; the engine's
-	 * NPC pass runs before non-local players, so those players aren't drawn.
-	 */
+
 	private final Set<Long> npcClaimedTiles = new HashSet<>();
-	/**
-	 * The drawn NPC per stacked tile: among size-1 NPCs at a tile center, our
-	 * current-best rule for which the engine draws (highest scene index; the
-	 * true rule is still being validated with the NPC stack oracle). Undrawn
-	 * stack members are gated out of emission so their particles don't double
-	 * up on the drawn npc. Reused per tick.
-	 */
+
 	private final Map<Long, NPC> npcTileOwners = new HashMap<>();
-	/**
-	 * This tick's higher-precedence claims: the local player's tile beats
-	 * everyone on it, and their player combat target's tile beats NPC claims
-	 * and index order.
-	 */
+
 	private long localClaimKey = Long.MIN_VALUE;
 	private long targetClaimKey = Long.MIN_VALUE;
 	@Nullable
 	private Player localClaimTarget;
 
-	/**
-	 * Per-instance emitter state for tracked scenery. Objects are static or
-	 * engine-animated in place, so there is no trail, movement or stack
-	 * state - just resolved emitters and this tick's anchors. Client thread.
-	 */
 	private static class ObjectEmitters
 	{
 		final List<ActiveEmitter> emitters = new ArrayList<>();
@@ -383,83 +312,47 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		boolean loggedResolveMiss;
 	}
 
-	/**
-	 * Tracked scenery instances, maintained by spawn/despawn events plus a
-	 * scene rescan when the profile store changes. Client thread.
-	 */
 	private final Map<TileObject, ObjectEmitters> objectEmitters = new HashMap<>();
-	/**
-	 * Object IDs that carry at least one object profile; spawns of anything
-	 * else are ignored without allocation.
-	 */
+
 	private Set<Integer> profiledObjectIds = Set.of();
 	private int profiledIdsRevision = -1;
 
-	/**
-	 * Tracked NPC instances; NPCs reuse the player emitter state since they
-	 * move and animate the same way. Client thread.
-	 */
 	private final Map<NPC, PlayerEmitters> npcEmitters = new HashMap<>();
 	private Set<Integer> profiledNpcIds = Set.of();
 
-	/**
-	 * One enabled graphic profile resolved for emission: point-based when no
-	 * vertices were picked, otherwise anchored to the spot anim model's
-	 * piece vertices. Graphic models are single cache models, so the global
-	 * indices resolved from the first instance hold for every instance.
-	 */
 	private static class GraphicEmitter
 	{
 		final ParticleStyle style;
+		final ParticleStyleSet styleSet;
 		@Nullable
 		final String signature;
 		final int[] locals;
 		final int[] faceLocals;
-		/**
-		 * One resolved emitter per matching piece: vertices are model
-		 * globals, chains present when feathering.
-		 */
+
 		final List<ActiveEmitter> resolved = new ArrayList<>();
 		boolean resolveTried;
 
-		GraphicEmitter(ParticleStyle style, @Nullable String signature, int[] locals, int[] faceLocals)
+		GraphicEmitter(ParticleStyleSet styleSet, @Nullable String signature, int[] locals, int[] faceLocals)
 		{
-			this.style = style;
+			this.styleSet = styleSet;
+			this.style = styleSet.primary();
 			this.signature = signature;
 			this.locals = locals;
 			this.faceLocals = faceLocals == null ? EMPTY_INTS : faceLocals;
 		}
 	}
 
-	/**
-	 * Enabled graphic profiles by spot anim ID: emission at graphics objects
-	 * and on actors playing the spot anim. Client thread.
-	 */
 	private final Map<Integer, List<GraphicEmitter>> graphicEmitters = new HashMap<>();
-	/**
-	 * Rate carries per live graphics object, swept against the live set.
-	 */
+
 	private final Map<GraphicsObject, double[]> graphicCarries = new HashMap<>();
 	private final Set<GraphicsObject> liveGraphics = new HashSet<>();
-	/**
-	 * Recently seen spot anim / graphics IDs for the capture list, as
-	 * id -> [count, lastSeenMs].
-	 */
+
 	private final Map<Integer, long[]> recentGraphics = new LinkedHashMap<>();
-	/**
-	 * Last-seen source label per graphic ID (the actor who played it, or
-	 * "tile"); spot anims have no cache name, so this stands in for one.
-	 */
+
 	private final Map<Integer, String> recentGraphicSource = new HashMap<>();
-	/**
-	 * Graphic ID armed for deferred viewer capture: spell gfx are gone
-	 * before Load can be clicked, so the mesh is grabbed the next time the
-	 * graphic plays. -1 when idle. Client thread.
-	 */
+
 	private int pendingGraphicCapture = -1;
 
-	// Debug marker aggregate across all players, read by the overlay; only
-	// filled while markers are shown. Client thread.
 	@Getter
 	private int anchorCount;
 	@Getter
@@ -472,42 +365,21 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private int anchorWorldView = -1;
 	@Getter
 	private int anchorLevel;
-	/**
-	 * Smoothed feather paths for the debug overlay, one flat [x,y,z, ...] per
-	 * chain. Rebuilt per tick only while markers are shown.
-	 */
+
 	@Getter
 	private final List<float[]> featherDebugPaths = new ArrayList<>();
-	/**
-	 * Segments longer than this are teleports/rebinds, not movement.
-	 */
+
 	private static final float MAX_TRAIL_SEGMENT = 256f;
 
-	/**
-	 * The last snapshot loaded into the viewer; vertex toggles resolve their
-	 * piece against it. EDT only.
-	 */
 	private ModelSnapshot viewerSnapshot;
 
-	/**
-	 * The scenery object or NPC ID the viewer's snapshot was captured from,
-	 * or -1 when it shows the player. Decides which profile family vertex
-	 * clicks create. EDT only; snapshot captures receive them as parameters.
-	 */
 	private int viewerObjectId = -1;
 	private int viewerNpcId = -1;
 	private int viewerGraphicId = -1;
-	/**
-	 * Game name of the loaded object or NPC, resolved at capture time on the
-	 * client thread; null when unavailable. New profiles are named after it.
-	 * EDT only.
-	 */
+
 	@Nullable
 	private String viewerTargetName;
 
-	// Animation recording for the viewer scrubber: per-tick vertex position
-	// samples over one topology, plus each sample's animation frame.
-	// Client thread.
 	private int recordTicksLeft;
 	private int recordObjectId = -1;
 	private int recordNpcId = -1;
@@ -523,32 +395,22 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private final List<float[]> recordZs = new ArrayList<>();
 	private final List<Integer> recordFrames = new ArrayList<>();
 
-	/**
-	 * Piece signatures present on the currently worn model; written on the
-	 * client thread, read by the sidebar for its "worn" indicator.
-	 */
 	private volatile Set<String> presentSignatures = Set.of();
 
-	/**
-	 * A projectile-targeted profile that passed its gear gate; matched
-	 * against active projectiles by ID every tick.
-	 */
 	private static class ActiveProjectileProfile
 	{
 		final int projectileId;
 		final ParticleStyle style;
+		final ParticleStyleSet styleSet;
 
-		ActiveProjectileProfile(int projectileId, ParticleStyle style)
+		ActiveProjectileProfile(int projectileId, ParticleStyleSet styleSet)
 		{
 			this.projectileId = projectileId;
-			this.style = style;
+			this.styleSet = styleSet;
+			this.style = styleSet.primary();
 		}
 	}
 
-	/**
-	 * Per-projectile state: last tick's position for trail segments, and
-	 * fractional emission carries per matched style.
-	 */
 	private static class ProjectileTracker
 	{
 		float prevX, prevY, prevZ;
@@ -557,20 +419,15 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		final Map<ParticleStyle, double[]> carries = new HashMap<>();
 	}
 
-	// Projectile emission state; profile list is gear-gated by the local
-	// player and rebuilt with their resolution. Client thread.
 	private final List<ActiveProjectileProfile> activeProjectileProfiles = new ArrayList<>();
 	private final Map<Projectile, ProjectileTracker> projectileTrackers = new HashMap<>();
 	private int projectileStamp;
 
-	/**
-	 * One AABB cylinder per enabled weather profile; spawn rate comes from
-	 * {@link EmitterProfile#getWeatherParticlesPerTile()}.
-	 */
 	private static class ActiveWeatherZone
 	{
 		final AABB aabb;
 		final ParticleStyle style;
+		final ParticleStyleSet styleSet;
 		final float particlesPerTile;
 		final float densityScale;
 		final List<String> globalEffectors;
@@ -578,11 +435,12 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		final List<String> embeddedEffectors;
 		double spawnAccum;
 
-		ActiveWeatherZone(AABB aabb, ParticleStyle style, float particlesPerTile, float densityScale,
+		ActiveWeatherZone(AABB aabb, ParticleStyleSet styleSet, float particlesPerTile, float densityScale,
 			List<String> globalEffectors, List<String> localEffectorFilter, List<String> embeddedEffectors)
 		{
 			this.aabb = aabb;
-			this.style = style;
+			this.styleSet = styleSet;
+			this.style = styleSet.primary();
 			this.particlesPerTile = particlesPerTile;
 			this.densityScale = densityScale;
 			this.globalEffectors = globalEffectors;
@@ -593,14 +451,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 	private final List<ActiveWeatherZone> activeWeatherZones = new ArrayList<>();
 	private final Map<String, List<ActiveEffectorState>> activeEffectorsById = new HashMap<>();
-	/**
-	 * Recently seen projectile IDs -> [count, lastSeenMs], for the picker's
-	 * capture list. Client thread.
-	 */
+
 	private final LinkedHashMap<Integer, long[]> recentProjectiles = new LinkedHashMap<>();
 	private int stylesRevision = -1;
 
-	// Reused consumers; a method reference expression allocates per evaluation
 	private final java.util.function.Consumer<Particle> deathStats = this::onParticleDeath;
 	private static final java.util.function.Consumer<Particle> DISCARD = p ->
 	{
@@ -609,15 +463,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private long lastNanos;
 	private int lastLevel = -1;
 
-	// Diagnostics, aggregated over one-second windows and shown by the overlay
 	private long statsWindowStart;
 	private int windowSpawns;
 	private int windowDeaths;
 	private float windowDeathAgeSum;
-	/**
-	 * Most recent non-idle action animation, sticky so short animations can be
-	 * read off the stats line for authoring animation gates.
-	 */
+
 	private int lastActionAnimation = -1;
 	@Getter
 	private String statsLine = "";
@@ -640,17 +490,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private int activeWeatherZoneCount;
 	private long cpuAccumNanos;
 	private int cpuSampleCount;
-	/**
-	 * Stack-oracle diagnostic line for the hovered tile; empty outside
-	 * developer mode. See {@link #updateStackOracle}.
-	 */
+
 	@Getter
 	private String oracleLine = "";
 	private String lastOracleDump = "";
-	/**
-	 * NPC stacked-draw oracle line for the hovered tile; empty outside
-	 * developer mode. See {@link #updateNpcStackOracle}.
-	 */
+
 	@Getter
 	private String npcOracleLine = "";
 	private String lastNpcOracleDump = "";
@@ -663,7 +507,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		statsWindowStart = lastNanos;
 		stylesRevision = -1;
 		playerEmitters.clear();
-		// Migration: the Just me checkbox became the Apply to dropdown
+
 		if ("true".equals(configManager.getConfiguration(HdPluginConfig.CONFIG_GROUP, "justMe"))
 			&& configManager.getConfiguration(HdPluginConfig.CONFIG_GROUP, "particleApplyTo") == null)
 		{
@@ -720,9 +564,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			viewerSnapshot = null;
 		});
 
-		// Capture the instance: a quick disable-enable reassigns the field
-		// before this lambda runs, which would reset the NEW renderer and
-		// orphan the old one's still-active scene objects
 		final ParticleRenderer stopped = renderer;
 		clientThread.invokeLater(() ->
 		{
@@ -753,7 +594,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		// particle sidebar removed; config hook kept for future use
+
 	}
 
 	@Subscribe
@@ -827,7 +668,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	@Subscribe
 	public void onNpcChanged(NpcChanged event)
 	{
-		// Transmog changed the ID; drop state and re-evaluate tracking
+
 		npcEmitters.remove(event.getNpc());
 		trackNpc(event.getNpc());
 	}
@@ -856,12 +697,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Dev-mode sweep for the capture list: live graphics objects and every
-	 * actor's spot anim list. Events alone miss list-borne spot anims (the
-	 * GraphicChanged event tracks only the legacy single-graphic slot) and
-	 * short-lived entries can be evicted before the list is read.
-	 */
 	private void pollGraphicSightings()
 	{
 		for (GraphicsObject graphic : client.getTopLevelWorldView().getGraphicsObjects())
@@ -895,16 +730,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Record a spot anim / graphics ID sighting for the capture list,
-	 * evicting the stalest entry past the cap.
-	 */
 	private void noteGraphic(int id, String source)
 	{
 		if (!developerMode)
 		{
-			// The capture list is authoring-only; skip the bookkeeping for
-			// shipped users, who can never open the picker to read it
+
 			return;
 		}
 		long[] seen = recentGraphics.get(id);
@@ -914,7 +744,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			seen[1] = System.currentTimeMillis();
 			if (source != null && !"tile".equals(source))
 			{
-				// Prefer a named actor source over the generic tile label
+
 				recentGraphicSource.put(id, source);
 			}
 			return;
@@ -938,10 +768,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		recentGraphicSource.put(id, source);
 	}
 
-	/**
-	 * A short label for a graphic's source: the actor's name, else "player"
-	 * or "npc" when unnamed.
-	 */
 	private static String actorLabel(Actor actor)
 	{
 		String name = cleanTargetName(actor.getName());
@@ -958,8 +784,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		switch (event.getGameState())
 		{
 			case LOADING:
-				// The scene is rebasing; live particles' local coordinates
-				// become meaningless, and scenery respawns with fresh events
+
 				particleSystem.clear(DISCARD);
 				renderer.reset();
 				objectEmitters.clear();
@@ -967,11 +792,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				graphicCarries.clear();
 				break;
 			case LOGGED_IN:
-				// Player models are rebuilt on scene load and their vertex
-				// indices can change; re-resolve emitters against the new
-				// models or emission goes subtly wrong until gear is re-equipped.
-				// Invalidate only - the draw-order mirror must survive, since
-				// these players never left the engine's processing list.
+
 				invalidateResolutions();
 				break;
 			default:
@@ -985,24 +806,18 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		long now = System.nanoTime();
 		float dt = (now - lastNanos) / 1_000_000_000f;
 		lastNanos = now;
-		// Clamp dt so hitches don't cause bursts or huge integration steps
+
 		dt = Math.min(dt, 0.1f);
 
-		// Rebuild styles when profiles change; batches pick the new templates
-		// up immediately since they're re-merged every tick. Read the revision
-		// BEFORE the snapshot: an edit landing in between then leaves
-		// stylesRevision behind, forcing a clean rebuild next tick instead of
-		// recording content it never saw
 		int storeRevision = store.getRevision();
 		if (stylesRevision != storeRevision && renderer.rebuildStyles(store.snapshotAll(), store.snapshotDefinitions()))
 		{
 			stylesRevision = storeRevision;
-			// Emitters hold style references; re-resolve everyone
+
 			invalidateResolutions();
 			rebuildWeatherZones();
 		}
-		// Gate on renderer readiness so styles resolve on the first rebuild;
-		// before the particle mesh loads, getStyle would return null forever
+
 		if (renderer.isReady() && profiledIdsRevision != storeRevision)
 		{
 			profiledIdsRevision = storeRevision;
@@ -1023,15 +838,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// Drop all particles when the scene plane changes; their positions
-		// are only meaningful on the level they spawned on
 		int level = localPlayer.getWorldView().getPlane();
 		if (level != lastLevel)
 		{
 			particleSystem.clear(DISCARD);
-			// Break trail continuity too: the inter-floor height (~240) is
-			// under MAX_TRAIL_SEGMENT, so stale prev anchors would smear a
-			// vertical streak between floors on the first tick up a staircase
+
 			for (PlayerEmitters pe : playerEmitters.values())
 			{
 				pe.prevCount = 0;
@@ -1042,18 +853,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		anchorWorldView = localPlayer.getLocalLocation().getWorldView();
 		anchorLevel = level;
 
-		// Debug aggregates rebuilt during the player loop
-		// Marker circles are a dev authoring aid; users only get the text line
 		boolean markers = false;
 		anchorCount = 0;
 		featherDebugPaths.clear();
 
-		// Stacked-actor claim mirror (tileLastDrawnActor /
-		// tileLastOccupiedCycle): the engine's dedup only applies to actors
-		// standing exactly at tile center - movers and the local player
-		// always draw. The winner precedence below was field-validated with
-		// the hover-menu oracle after the original deob-derived mirror
-		// failed; see updateStackOracle.
 		playerStamp++;
 		tileOwners.clear();
 		npcClaimedTiles.clear();
@@ -1077,9 +880,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 			long key = ((long) (lp.getX() >> 7) << 32) | ((lp.getY() >> 7) & 0xffffffffL);
 			npcClaimedTiles.add(key);
-			// Current draw-winner hypothesis among stacked NPCs: highest scene
-			// index (lowest was falsified by the oracle). Still being pinned
-			// down - see updateNpcStackOracle, which scores it live.
+
 			NPC owner = npcTileOwners.get(key);
 			if (owner == null || npc.getIndex() > owner.getIndex())
 			{
@@ -1119,9 +920,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int radiusUnits = config.particleEffectRadius() * 128;
 		LocalPoint localLp = localPlayer.getLocalLocation();
 
-		// Every provably drawn player emits, not just the local one.
-		// players() spans all four planes of the scene, but the client only
-		// draws the current one - other planes must not emit at all.
 		for (Player player : client.getTopLevelWorldView().players())
 		{
 			if (player == null)
@@ -1139,8 +937,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					|| (applyTo == HdPluginConfig.ParticleApplyTo.FRIENDS && !player.isFriend())
 					|| player.getLocalLocation().distanceTo(localLp) > radiusUnits))
 			{
-				// Out of scope by user preference; the hidden branch below
-				// still clears their state so re-entry starts clean
+
 				drawn = false;
 			}
 			else if (player.getWorldLocation().getPlane() != level)
@@ -1153,8 +950,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 			else
 			{
-				// Engine claim precedence for a centered stack member; movers
-				// and the local player were already granted above
+
 				long key = tileKey(player);
 				if (key == localClaimKey)
 				{
@@ -1175,8 +971,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 			if (!drawn)
 			{
-				// Hidden under a stack: stop emitting and break trail
-				// continuity so un-stacking doesn't lerp from stale positions
+
 				pe.anchorCount = 0;
 				pe.prevCount = 0;
 				for (ActiveEmitter emitter : pe.emitters)
@@ -1297,15 +1092,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return count;
 	}
 
-	/**
-	 * Dev diagnostic: the hover menu lists every player in a stack and the
-	 * engine puts the DRAWN player's entry on top - ground truth for the
-	 * stack winner that no API exposes, and that seven falsified
-	 * reconstruction attempts never had. While hovering a stack, show the
-	 * oracle winner next to the gate's decision and the lowest/highest
-	 * menu-index candidates, and log one full state dump per distinct
-	 * situation so the true precedence rule can be mined offline.
-	 */
 	private void updateStackOracle(int level)
 	{
 		oracleLine = "";
@@ -1314,8 +1100,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// Menus build bottom-up: the last vanilla player entry renders as the
-		// top row. Only vanilla options - plugin-injected entries would lie.
 		MenuEntry[] entries = client.getMenu().getMenuEntries();
 		Player winner = null;
 		Map<Player, Integer> menuIndices = new HashMap<>();
@@ -1381,10 +1165,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 		}
 
-		// The shippable rule, scored live against the oracle: the engine's
-		// claim precedence (local -> local's player target -> size-1 centered
-		// NPC -> ascending index), with indices from Player.getId() - the
-		// scene-wide source the rule would use outside the hovered tile
 		Player localPlayer = client.getLocalPlayer();
 		Player pred = null;
 		String predWhy;
@@ -1418,16 +1198,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				predWhy = "idx";
 			}
 		}
-		// Menus never list the local player, so when we predict ourselves the
-		// oracle cannot confirm it - that is blindness, not a falsification
+
 		String predText = (pred == null ? predWhy : pred.getName() + "[" + predWhy + "]")
 			+ (!isCentered(winner) ? " n/a-moving"
 			: pred == winner ? " MATCH"
 			: pred == localPlayer ? " oracle-blind-self"
 			: " MISS");
 
-		// Does the scene-wide index source agree with the menu identifiers?
-		// A disagreement here would explain the old engine-mirror failures.
 		boolean idxOk = true;
 		for (Player p : stack)
 		{
@@ -1438,9 +1215,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 		}
 
-		// Mirror the scope filters (Apply to, effect radius) the drawn loop
-		// applies before the claim - the claim can approve a player that
-		// scope then excludes, which otherwise reads as a MATCH that fails
 		String scoped = "";
 		if (winner != localPlayer)
 		{
@@ -1457,8 +1231,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 		}
 
-		// Resolution state: 0 emitters = their gear matched no enabled
-		// preset; emitters but 0 anchors = blocked by the gate or scope
 		PlayerEmitters winnerPe = playerEmitters.get(winner);
 		String emitState = winnerPe == null
 			? "emit -"
@@ -1473,8 +1245,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			+ " | idxSrc " + (idxOk ? "ok" : "MISMATCH")
 			+ " | " + emitState + scoped;
 
-		// One dump per distinct situation, with everything a candidate
-		// precedence rule could depend on
 		StringBuilder dump = new StringBuilder("stack oracle: drawn=")
 			.append(winner.getName()).append('#').append(menuIndices.getOrDefault(winner, -1))
 			.append(" gate=").append(gate)
@@ -1517,14 +1287,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Dev diagnostic, the NPC analog of {@link #updateStackOracle}: the hover
-	 * menu's top NPC entry is the DRAWN npc among a stack - ground truth no API
-	 * exposes - scored live against the candidate rule (lowest scene index
-	 * wins) so the true stacked-NPC draw order can be mined before an emission
-	 * gate is wired. Works on any NPCs, not just profiled ones, so stacks can
-	 * be sampled wherever they occur.
-	 */
 	private void updateNpcStackOracle(int level)
 	{
 		npcOracleLine = "";
@@ -1533,8 +1295,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// Menus build bottom-up: the last vanilla NPC entry renders as the top
-		// row, which is the drawn npc. Only vanilla options - plugin entries lie
 		MenuEntry[] entries = client.getMenu().getMenuEntries();
 		NPC winner = null;
 		Map<NPC, Integer> menuIndices = new HashMap<>();
@@ -1552,8 +1312,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// The stack: centered size-1 NPCs sharing the drawn npc's tile. Only
-		// size-1 centered actors are deduped by the engine; movers always draw
 		long key = tileKey(winner);
 		List<NPC> stack = new ArrayList<>();
 		for (NPC npc : client.getTopLevelWorldView().npcs())
@@ -1573,10 +1331,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 		}
 
-		// Score several candidate rules at once so the true one shows itself:
-		// lowest / highest scene index, and first / last in the scene's NPC
-		// iteration order (the stack is built in that order). Whichever stays
-		// green across stacks is the rule to wire the gate to.
 		NPC lowestIdx = null;
 		NPC highestIdx = null;
 		for (NPC npc : stack)
@@ -1594,8 +1348,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		NPC lastIter = stack.isEmpty() ? null : stack.get(stack.size() - 1);
 		boolean scoreable = isCentered(winner);
 
-		// Does the scene-wide index (getIndex) agree with the menu identifier?
-		// A mismatch would mean getIndex is the wrong source for the rule
 		boolean idxOk = true;
 		for (NPC npc : stack)
 		{
@@ -1616,8 +1368,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			+ " | last" + predMark(lastIter, winner, scoreable)
 			+ " | idxSrc " + (idxOk ? "ok" : "MISMATCH");
 
-		// One dump per distinct situation, with everything a rule could depend
-		// on: iteration position, scene index, type id, menu identifier, pos
 		StringBuilder dump = new StringBuilder("npc stack oracle: drawn=")
 			.append(winner.getName()).append('#').append(winner.getIndex())
 			.append("(it").append(winnerIter).append(')')
@@ -1644,10 +1394,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * One candidate predictor's result against the oracle winner: its index
-	 * plus Y (match), n (miss), or ? (winner is a mover, not scoreable).
-	 */
 	private static String predMark(NPC pred, NPC winner, boolean scoreable)
 	{
 		if (pred == null)
@@ -1675,7 +1421,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private void onParticleDeath(Particle p)
 	{
 		windowDeaths++;
-		// 1.0 = lived its full lifetime; below that it was killed early
+
 		windowDeathAgeSum += 1f - p.lifeFraction();
 	}
 
@@ -1707,13 +1453,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		windowDeathAgeSum = 0;
 	}
 
-	/**
-	 * Transform a player's active emitter vertices from their posed model
-	 * into world (local scene) coordinates.
-	 */
 	private void updateAnchors(PlayerEmitters pe, Actor player, boolean markers)
 	{
-		// Keep last tick's anchors for movement-segment interpolation
+
 		pe.prevCount = pe.anchorCount;
 		if (pe.anchorCount > 0)
 		{
@@ -1757,15 +1499,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			pe.anchorZs = new float[totalVertices];
 		}
 
-		// Rotate model space into the world by the player's current facing
 		int orientation = player.getCurrentOrientation();
 		int sin = Perspective.SINE[orientation];
 		int cos = Perspective.COSINE[orientation];
 		LocalPoint lp = player.getLocalLocation();
-		// The engine renders the whole model relative to a single base height:
-		// the tile height averaged over the actor's footprint, adjusted by the
-		// current animation - the same formula ModelOutlineRenderer uses. A
-		// plain point getTileHeight desyncs from the model on uneven ground.
+
 		int playerBaseZ = Perspective.getFootprintTileHeight(client, lp, anchorLevel, player.getFootprintSize())
 			- player.getAnimationHeightOffset();
 
@@ -1773,7 +1511,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			emitter.anchorStart = pe.anchorCount;
 			emitter.anchorCount = 0;
-			// Style offset in model space, so it rotates with the player
+
 			ParticleStyle style = emitter.style;
 			for (int v : emitter.vertices)
 			{
@@ -1787,7 +1525,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 				pe.anchorXs[pe.anchorCount] = lp.getX() + (vz * sin + vx * cos) / 65536f;
 				pe.anchorYs[pe.anchorCount] = lp.getY() + (vz * cos - vx * sin) / 65536f;
-				// Model y is already in the engine's negative-up convention
+
 				pe.anchorZs[pe.anchorCount] = playerBaseZ + vy;
 				pe.anchorCount++;
 				emitter.anchorCount++;
@@ -1809,7 +1547,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			pe.trailCarry = new float[pe.anchorXs.length];
 		}
-		// Anchor slots only correspond across ticks while the layout is stable
+
 		if (pe.rebuilt || pe.prevCount != pe.anchorCount)
 		{
 			pe.prevCount = 0;
@@ -1823,10 +1561,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Aggregate this player's anchors and feathered emission lines into the
-	 * overlay's debug arrays, for tuning.
-	 */
 	private void appendDebugMarkers(PlayerEmitters pe)
 	{
 		int needed = anchorCount + pe.anchorCount;
@@ -1844,8 +1578,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		for (ActiveEmitter emitter : pe.emitters)
 		{
 			int w = emitter.style.getFeatherStrength();
-			// featherReady, not the raw count: interpolation appends extra
-			// anchors so anchorCount exceeds vertices.length when both are on
+
 			if (w <= 0 || emitter.chains == null || !emitter.featherReady)
 			{
 				continue;
@@ -1868,10 +1601,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * @return whether an anchor's movement since last tick is usable as an
-	 * emission segment (layout stable and not a teleport-sized jump)
-	 */
 	private static boolean segmentUsable(PlayerEmitters pe, int a)
 	{
 		if (pe.prevCount != pe.anchorCount)
@@ -1892,11 +1621,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
-	/**
-	 * Map stored piece-local emitters onto one player's composite model,
-	 * honoring each profile's worn item filter against that player's gear.
-	 * Cached: re-runs only when their equipment or the profile store changes.
-	 */
 	private void resolvePlayer(PlayerEmitters pe, Player player)
 	{
 		PlayerComposition composition = player.getPlayerComposition();
@@ -1907,7 +1631,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// Compare gear directly; building a key string every tick is garbage
 		int[] equipmentIds = composition.getEquipmentIds();
 		int revision = store.getRevision();
 		if (Arrays.equals(equipmentIds, pe.equipmentIds) && revision == pe.revision)
@@ -1929,7 +1652,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		Set<Integer> wornItemIds = wornItemIds(composition);
 		EmitterStore.Snapshot snap = store.snapshot();
 		Map<String, EmitterProfile> profiles = snap.profiles;
-		Map<String, ProfileFolder> folders = snap.folders;
 		ModelSnapshot snapshot = ModelSnapshot.capture(model);
 
 		pe.emitters.clear();
@@ -1946,24 +1668,24 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				EmitterProfile profile = entry.getValue();
 				if (!EmitterProfile.TARGET_PLAYER.equals(profile.getTargetType())
 					|| !piece.matchesSignature(profile.getSignature())
-					|| !ParticlesPanel.effectiveEnabled(profile, folders)
+					|| !ParticlesPanel.effectiveEnabled(profile)
 					|| (profile.getVertices().isEmpty() && profile.getFaces().isEmpty())
-					|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
-				{
-					continue;
-				}
-				// Item variant gate: distinguishes recolored items sharing a mesh
-				if (!profile.getItemIds().isEmpty() && Collections.disjoint(profile.getItemIds(), wornItemIds))
-				{
-					continue;
-				}
-				ParticleStyle style = renderer.getStyle(entry.getKey());
-				if (style == null)
+					|| (!developerMode && ParticlesPanel.effectiveWip(profile)))
 				{
 					continue;
 				}
 
-				ActiveEmitter emitter = resolveMeshEmitter(style, snapshot, piece, profile);
+				if (!profile.getItemIds().isEmpty() && Collections.disjoint(profile.getItemIds(), wornItemIds))
+				{
+					continue;
+				}
+				ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+				if (styleSet == null)
+				{
+					continue;
+				}
+
+				ActiveEmitter emitter = resolveMeshEmitter(styleSet, snapshot, piece, profile);
 				if (emitter != null)
 				{
 					pe.emitters.add(emitter);
@@ -1976,15 +1698,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// Local-player extras: the sidebar's worn indicator, and projectile
-		// profiles gear-gated by the local player's equipment
 		activeProjectileProfiles.clear();
 		for (Map.Entry<String, EmitterProfile> entry : profiles.entrySet())
 		{
 			EmitterProfile profile = entry.getValue();
-			if (!profile.isProjectileTarget() || !ParticlesPanel.effectiveEnabled(profile, folders)
+			if (!profile.isProjectileTarget() || !ParticlesPanel.effectiveEnabled(profile)
 				|| profile.getProjectileId() < 0
-				|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
+				|| (!developerMode && ParticlesPanel.effectiveWip(profile)))
 			{
 				continue;
 			}
@@ -1992,10 +1712,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			{
 				continue;
 			}
-			ParticleStyle style = renderer.getStyle(entry.getKey());
-			if (style != null)
+			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			if (styleSet != null)
 			{
-				activeProjectileProfiles.add(new ActiveProjectileProfile(profile.getProjectileId(), style));
+				activeProjectileProfiles.add(new ActiveProjectileProfile(profile.getProjectileId(), styleSet));
 			}
 		}
 		projectileTrackers.clear();
@@ -2007,14 +1727,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Resolve piece-local vertex and face indices into a live {@link ActiveEmitter}.
-	 * Returns null when neither set maps onto the piece.
-	 */
 	@Nullable
-	private ActiveEmitter resolveMeshEmitter(ParticleStyle style, ModelSnapshot snapshot,
+	private ActiveEmitter resolveMeshEmitter(ParticleStyleSet styleSet, ModelSnapshot snapshot,
 		ModelSnapshot.Piece piece, EmitterProfile profile)
 	{
+		ParticleStyle style = styleSet.primary();
 		int[] pieceVerts = piece.verticesFor(profile.getSignature());
 		List<Integer> globals = new ArrayList<>();
 		for (int local : profile.getVertices())
@@ -2037,12 +1754,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int[][] chains = vertices.length > 0 && (style.getFeatherStrength() > 0 || style.getInterpolation() > 0)
 			? buildChains(snapshot, piece, vertices)
 			: null;
-		return new ActiveEmitter(style, vertices, faceCorners, chains);
+		return new ActiveEmitter(styleSet, vertices, faceCorners, chains);
 	}
 
-	/**
-	 * Map piece-local face ranks to global corner triple streams for emission.
-	 */
 	private static int[] resolveFaceCorners(ModelSnapshot snapshot, ModelSnapshot.Piece piece,
 		Set<Integer> localFaces)
 	{
@@ -2078,12 +1792,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return out;
 	}
 
-	/**
-	 * Chain an emitter's vertices along the mesh edges of their piece, for
-	 * feathered emission. Each chain is a walkable path of anchor offsets;
-	 * vertices with no emitter neighbor become single-point chains. Cold
-	 * path, runs only at emitter resolution.
-	 */
 	private static int[][] buildChains(ModelSnapshot snapshot, ModelSnapshot.Piece piece, int[] emitterVertices)
 	{
 		Map<Integer, Integer> offsetOf = new HashMap<>();
@@ -2092,7 +1800,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			offsetOf.put(emitterVertices[i], i);
 		}
 
-		// Adjacency between emitter vertices sharing a mesh edge
 		List<List<Integer>> adjacency = new ArrayList<>(emitterVertices.length);
 		for (int i = 0; i < emitterVertices.length; i++)
 		{
@@ -2109,7 +1816,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			chainEdge(offsetOf, adjacency, seenEdges, f1[f], f3[f]);
 		}
 
-		// Walk paths from endpoints and junctions first, then leftover cycles
 		boolean[] visited = new boolean[emitterVertices.length];
 		List<List<Integer>> chains = new ArrayList<>();
 		for (int pass = 0; pass < 2; pass++)
@@ -2160,16 +1866,8 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return result;
 	}
 
-	/**
-	 * Distance particles will feather across even without a connecting mesh
-	 * edge, e.g. between the separate puffs of a fur trim.
-	 */
 	private static final float CHAIN_BRIDGE_DISTANCE = 40f;
 
-	/**
-	 * Repeatedly join chains whose endpoints are close in space, reversing as
-	 * needed so the joined path stays walkable. Cold path.
-	 */
 	private static void bridgeChains(ModelSnapshot snapshot, int[] emitterVertices, List<List<Integer>> chains)
 	{
 		boolean merged = true;
@@ -2183,7 +1881,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					List<Integer> a = chains.get(i);
 					List<Integer> b = chains.get(j);
-					// Endpoint pairings: a-head/tail against b-head/tail
+
 					if (endpointsClose(snapshot, emitterVertices, a.get(a.size() - 1), b.get(0)))
 					{
 						a.addAll(b);
@@ -2241,10 +1939,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Force re-resolution for everyone without touching the draw-order
-	 * mirror, e.g. when styles rebuild or models are recreated on scene load.
-	 */
 	private void invalidateResolutions()
 	{
 		for (PlayerEmitters pe : playerEmitters.values())
@@ -2253,10 +1947,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Standing exactly at a tile center - the only state the engine's
-	 * stacked-actor dedup applies to.
-	 */
 	private static boolean isCentered(Actor actor)
 	{
 		LocalPoint lp = actor.getLocalLocation();
@@ -2269,10 +1959,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return ((long) (lp.getX() >> 7) << 32) | ((lp.getY() >> 7) & 0xffffffffL);
 	}
 
-	/**
-	 * A size-1 NPC standing exactly at its tile center: the only NPCs the
-	 * engine dedups when stacked, and thus the only ones the draw gate covers.
-	 */
 	private static boolean isCenteredSize1(NPC npc)
 	{
 		if (!isCentered(npc))
@@ -2319,7 +2005,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// Animation gate inputs from THIS player, shared by their emitters
 		int actionAnimation = player.getAnimation();
 		int actionFrame = player.getAnimationFrame();
 		int poseAnimation = player.getPoseAnimation();
@@ -2328,9 +2013,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			lastActionAnimation = actionAnimation != -1 ? actionAnimation : lastActionAnimation;
 		}
-		// Movement lifetime: a full-lifetime plume smears a tile behind a
-		// moving wearer, so profiles can shorten it while THIS player's walk
-		// or run pose animation is playing (weapon-specific poses included)
+
 		boolean moving = poseAnimation == player.getRunAnimation() || poseAnimation == player.getWalkAnimation();
 
 		int budget = config.particleMaxParticles();
@@ -2349,13 +2032,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			ParticleStyle style = emitter.style;
 			if (!style.animationMatches(actionAnimation, actionFrame, poseAnimation))
 			{
-				// Reset so the gate opening doesn't release a burst
+
 				emitter.carry = 0;
 				continue;
 			}
 
-			// Time-based emission, throttled to what the budget can sustain:
-			// outrunning it makes births and deaths synchronize into waves
 			float sustainable = budget / style.getLifetimeSec() * 0.95f;
 			float rate = Math.min(style.getParticlesPerSecond() * densityScale, sustainable);
 			emitter.carry += rate * dt;
@@ -2390,8 +2071,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				}
 			}
 
-			// Distance-based emission: spread spawns evenly along each
-			// anchor's movement this tick, for ribbon-like weapon trails
 			float density = style.getTrailDensity() * densityScale;
 			if (density <= 0 || emitter.anchorCount == 0)
 			{
@@ -2413,20 +2092,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					{
 						return;
 					}
-					// Stratified positions along the segment: an even ribbon
+
 					spawnParticle(pe, emitter, a, (i + random.nextFloat()) / n, lifeScale);
 				}
 			}
 		}
 	}
 
-
-	/**
-	 * World-space corner positions for face emission this tick.
-	 * {@code actorSpace}: player/NPC offsets (X east-in-model, Y height as -Z,
-	 * Z north-in-model) with yaw; scene objects use pre-rotated verts and
-	 * world-axis offsets instead.
-	 */
 	private void fillFaceWorldPositions(ActiveEmitter emitter, float[] vx, float[] vy, float[] vz,
 		int vertexCount, float offX, float offY, float offZ,
 		float baseX, float baseY, float baseZ, int sin, int cos, boolean actorSpace)
@@ -2473,7 +2145,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/** Prefer face sites proportionally when both verts and faces are present. */
 	private boolean shouldSpawnOnFace(ActiveEmitter emitter)
 	{
 		int faces = emitter.faceCount();
@@ -2488,7 +2159,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return random.nextInt(emitter.anchorCount + faces) < faces;
 	}
 
-	/** Uniform barycentric sample on a random authored triangle. */
 	private void spawnOnFace(ActiveEmitter emitter, float lifeScale)
 	{
 		int faces = emitter.faceCount();
@@ -2522,13 +2192,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			emitter.cy = sy * inv;
 			emitter.cz = sz * inv;
 		}
-		spawnAt(emitter.style, x, y, z, emitter.cx, emitter.cy, emitter.cz, lifeScale);
+		spawnAt(emitter.styleSet.pick(random), x, y, z, emitter.cx, emitter.cy, emitter.cz, lifeScale);
 	}
 
-	/**
-	 * Spawn one particle at fraction t along the anchor's movement segment
-	 * since last tick (falling back to its current position), plus jitter.
-	 */
 	private void spawnParticle(PlayerEmitters pe, ActiveEmitter emitter, int a, float t, float lifeScale)
 	{
 		float ax = pe.anchorXs[a];
@@ -2541,14 +2207,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			az = pe.prevZs[a] + (az - pe.prevZs[a]) * t;
 		}
 
-		spawnAt(emitter.style, ax, ay, az, emitter.cx, emitter.cy, emitter.cz, lifeScale);
+		spawnAt(emitter.styleSet.pick(random), ax, ay, az, emitter.cx, emitter.cy, emitter.cz, lifeScale);
 	}
 
-	/**
-	 * Spawn along the smoothed line through the emitter's vertex chains:
-	 * a quadratic curve through segment midpoints with the vertex as control
-	 * point, which rounds off jagged hem corners into a soft band.
-	 */
 	private void spawnFeathered(PlayerEmitters pe, ActiveEmitter emitter, float lifeScale)
 	{
 		int k = random.nextInt(emitter.sampleChainOf.length);
@@ -2569,7 +2230,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			smoothed(pe.anchorZs, emitter, chain, j, w),
 			smoothed(pe.anchorZs, emitter, chain, jC, w), t);
 
-		// Time-lerp along the anchors' movement this tick, like point spawns
 		if (segmentUsable(pe, emitter.anchorStart + chain[j]))
 		{
 			float timeT = random.nextFloat();
@@ -2587,13 +2247,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			z = pz + (z - pz) * timeT;
 		}
 
-		spawnAt(emitter.style, x, y, z, emitter.cx, emitter.cy, emitter.cz, lifeScale);
+		spawnAt(emitter.styleSet.pick(random), x, y, z, emitter.cx, emitter.cy, emitter.cz, lifeScale);
 	}
 
-	/**
-	 * Chain position averaged over a window of neighbors: the feathering
-	 * filter that turns a jagged vertex path into a smooth band.
-	 */
 	private float smoothed(float[] coords, ActiveEmitter emitter, int[] chain, int j, int w)
 	{
 		int from = Math.max(0, j - w);
@@ -2606,10 +2262,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return sum / (to - from + 1);
 	}
 
-	/**
-	 * Quadratic Bezier from midpoint(a,b) to midpoint(b,c) with b as control:
-	 * the smoothed-polyline curve.
-	 */
 	private static float quadratic(float a, float b, float c, float t)
 	{
 		float m1 = (a + b) / 2f;
@@ -2618,13 +2270,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return inv * inv * m1 + 2f * inv * t * b + t * t * m2;
 	}
 
-	/**
-	 * Emit for projectile-targeted profiles: every active projectile whose ID
-	 * matches an enabled profile emits along its movement segment - trail
-	 * density is the natural driver for comet tails. Also records recently
-	 * seen projectile IDs for the picker's capture list. The player animation
-	 * gate doesn't apply here; projectiles are inherently lifecycle-gated.
-	 */
 	private void emitProjectiles(float dt)
 	{
 		projectileStamp++;
@@ -2636,7 +2281,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			if (client.getGameCycle() < projectile.getStartCycle())
 			{
-				// Queued but not launched yet
+
 				continue;
 			}
 
@@ -2671,7 +2316,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				ParticleStyle style = profile.style;
 				double[] carries = tracker.carries.computeIfAbsent(style, s -> new double[2]);
 
-				// Time-based emission, spread along this tick's movement
 				float sustainable = budget / style.getLifetimeSec() * 0.95f;
 				carries[0] += Math.min(style.getParticlesPerSecond() * densityScale, sustainable) * dt;
 				int count = (int) carries[0];
@@ -2683,10 +2327,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 						return;
 					}
 					float t = segment ? random.nextFloat() : 1f;
-					spawnAt(style, px + (x - px) * t, py + (y - py) * t, pz + (z - pz) * t, 1f);
+					spawnAt(profile.styleSet.pick(random), px + (x - px) * t, py + (y - py) * t, pz + (z - pz) * t, 1f);
 				}
 
-				// Distance-based ribbon emission
 				if (style.getTrailDensity() > 0 && segment)
 				{
 					double owed = carries[1] + Math.sqrt(distSq) / 128f * style.getTrailDensity() * densityScale;
@@ -2699,13 +2342,12 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 							return;
 						}
 						float t = (i + random.nextFloat()) / n;
-						spawnAt(style, px + (x - px) * t, py + (y - py) * t, pz + (z - pz) * t, 1f);
+						spawnAt(profile.styleSet.pick(random), px + (x - px) * t, py + (y - py) * t, pz + (z - pz) * t, 1f);
 					}
 				}
 			}
 		}
 
-		// Drop trackers whose projectiles ended
 		Iterator<ProjectileTracker> it = projectileTrackers.values().iterator();
 		while (it.hasNext())
 		{
@@ -2746,19 +2388,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		recentProjectiles.put(projectileId, new long[]{1, nowMs});
 	}
 
-	/**
-	 * Whether a style's emit scale or vortex is active, so the emitter centroid
-	 * is worth computing this tick.
-	 */
 	private static boolean needsCentroid(ParticleStyle style)
 	{
 		return style.getEmitScale() != 1f || style.getVortex() != 0f;
 	}
 
-	/**
-	 * Store the mean of an emitter's anchors this tick as its centroid, the
-	 * reference point emit scale and vortex are measured from.
-	 */
 	private static void setCentroid(ActiveEmitter emitter, float[] xs, float[] ys, float[] zs)
 	{
 		float sx = 0f;
@@ -2778,11 +2412,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		emitter.cz = sz * inv;
 	}
 
-	/**
-	 * Spawn with no emitter centroid: emit scale and vortex are measured from a
-	 * centre, so single-point targets (projectiles, spot-anims) that call this
-	 * pass the point itself, making both a no-op.
-	 */
 	private void spawnAt(ParticleStyle style, float ax, float ay, float az, float lifeScale)
 	{
 		spawnAt(style, ax, ay, az, ax, ay, az, lifeScale);
@@ -2791,8 +2420,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private void spawnAt(ParticleStyle style, float ax, float ay, float az,
 		float cx, float cy, float cz, float lifeScale)
 	{
-		// Emit scale: pull the emit point toward the centroid (<1) or push it
-		// out (>1) before spawning, scaling the whole emitter ring in place
+
 		float emitScale = style.getEmitScale();
 		if (emitScale != 1f)
 		{
@@ -2801,7 +2429,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			az = cz + (az - cz) * emitScale;
 		}
 
-		// Spawn within a small volume around the point, not at it exactly
 		float jitter = style.getSpawnJitter();
 		double jitterAngle = random.nextFloat() * 2 * Math.PI;
 		float jitterRadius = jitter * (float) Math.sqrt(random.nextFloat());
@@ -2812,13 +2439,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		float spread = style.getSpreadSpeed();
 		float velX = (random.nextFloat() - 0.5f) * spread;
 		float velY = (random.nextFloat() - 0.5f) * spread;
-		// Scene z is negative-up, so rising means decreasing z
+
 		float velZ = -style.getRiseSpeed() * (0.75f + random.nextFloat() * 0.5f);
 
-		// Vortex: add a radial velocity of constant magnitude from the centroid
-		// through the (scaled) emit point - outward for +, inward for -. Uses
-		// the pre-jitter point so every particle from a vertex shares a clean
-		// radial direction.
 		float vortex = style.getVortex();
 		if (vortex != 0f)
 		{
@@ -2834,14 +2457,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				velZ += rz * scale;
 			}
 		}
-		// Slow sinusoidal drift; amplitude reuses the spread speed
+
 		float wobblePhase = random.nextFloat() * 2f * (float) Math.PI;
 		float wobbleFreq = 1.5f + random.nextFloat() * 2f;
 		int sizeVariant = random.nextInt(ParticleStyle.SIZE_MULTIPLIERS.length);
 
-		// Per-particle base-size jitter: pick a base in [size-jitter, size+jitter]
-		// (floored at the minimum size), then carry it as a uniform scale so the
-		// auto-variation still applies on top.
 		float sizeScale = 1f;
 		int sizeJitter = style.getSizeJitter();
 		if (sizeJitter > 0)
@@ -2894,10 +2514,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return -1;
 	}
 
-	/**
-	 * Open (or focus) the particle dev panel and load a fresh snapshot.
-	 * Called on the Swing EDT. Bound to Ctrl+F8 in developer mode.
-	 */
 	public void openViewer()
 	{
 		if (!developerMode)
@@ -3041,14 +2657,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return out;
 	}
 
-	// ==================== Scenery ====================
-
-	/**
-	 * Recompute which object IDs carry profiles and rescan the loaded scene
-	 * for instances. The scene walk is expensive but runs only when the
-	 * profile store changes; spawn events keep the registry current
-	 * otherwise.
-	 */
 	private void rebuildProfiledObjects()
 	{
 		Set<Integer> ids = new HashSet<>();
@@ -3104,10 +2712,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Resolve, anchor and emit for tracked scenery. No claim gate applies -
-	 * scenery never participates in the actor dedup - only plane and radius.
-	 */
 	private void processObjects(float dt, int level, int radiusUnits, LocalPoint localLp)
 	{
 		if (objectEmitters.isEmpty())
@@ -3139,17 +2743,12 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Map stored object profiles onto one instance's model, matching by
-	 * object ID plus piece signature.
-	 */
 	private void resolveObject(ObjectEmitters oe, TileObject object, int revision)
 	{
 		oe.revision = revision;
 		oe.emitters.clear();
 		EmitterStore.Snapshot snap = store.snapshot();
 		Map<String, EmitterProfile> profiles = snap.profiles;
-		Map<String, ProfileFolder> folders = snap.folders;
 		Model model = objectModel(object);
 		if (model == null)
 		{
@@ -3161,27 +2760,25 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			EmitterProfile profile = entry.getValue();
 			if (!profile.isObjectTarget() || profile.getObjectId() != object.getId()
-				|| !ParticlesPanel.effectiveEnabled(profile, folders)
+				|| !ParticlesPanel.effectiveEnabled(profile)
 				|| (profile.getVertices().isEmpty() && profile.getFaces().isEmpty())
-				|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
+				|| (!developerMode && ParticlesPanel.effectiveWip(profile)))
 			{
 				continue;
 			}
-			ParticleStyle style = renderer.getStyle(entry.getKey());
-			if (style == null)
+			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			if (styleSet == null)
 			{
 				continue;
 			}
-			// Attach to EVERY matching piece: identical twin fragments (a
-			// double sconce's two flames) share a signature and should all
-			// emit, matching the player path's behavior
+
 			for (ModelSnapshot.Piece piece : snapshot.getPieces())
 			{
 				if (!piece.matchesSignature(profile.getSignature()))
 				{
 					continue;
 				}
-				ActiveEmitter emitter = resolveMeshEmitter(style, snapshot, piece, profile);
+				ActiveEmitter emitter = resolveMeshEmitter(styleSet, snapshot, piece, profile);
 				if (emitter != null)
 				{
 					oe.emitters.add(emitter);
@@ -3194,12 +2791,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Hypothesis probe for placements matching nothing despite a profiled
-	 * ID: if the dump shows the same NvMf counts with a different hash
-	 * suffix, the placement uses a mirrored model whose reversed winding
-	 * changes the topology hash. Once per instance, debug level.
-	 */
 	private void logResolveMissOnce(ObjectEmitters oe, TileObject object,
 		Map<String, EmitterProfile> profiles, @Nullable Model primary)
 	{
@@ -3290,8 +2881,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					continue;
 				}
-				// Scene models arrive pre-rotated, so offsets apply on world
-				// axes: X east, Y north, Z up
+
 				oe.anchorXs[oe.anchorCount] = lp.getX() + vx[v] + style.getOffsetX();
 				oe.anchorYs[oe.anchorCount] = lp.getY() + vz[v] + style.getOffsetY();
 				oe.anchorZs[oe.anchorCount] = baseZ + vy[v] - style.getOffsetZ();
@@ -3386,17 +2976,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				else
 				{
 					int a = emitter.anchorStart + random.nextInt(emitter.anchorCount);
-					spawnAt(style, oe.anchorXs[a], oe.anchorYs[a], oe.anchorZs[a],
+					spawnAt(emitter.styleSet.pick(random), oe.anchorXs[a], oe.anchorYs[a], oe.anchorZs[a],
 						emitter.cx, emitter.cy, emitter.cz, 1f);
 				}
 			}
 		}
 	}
 
-	/**
-	 * Feathered spawn over static anchors: the smoothed-chain curve without
-	 * the movement lerp that the player variant threads through prev arrays.
-	 */
 	private void spawnFeatheredStatic(float[] xs, float[] ys, float[] zs, ActiveEmitter emitter,
 		boolean useCentroid)
 	{
@@ -3418,15 +3004,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			smoothed(zs, emitter, chain, j, w),
 			smoothed(zs, emitter, chain, jC, w), t);
 
-		// The graphic path has no persistent centroid, so it opts out and both
-		// centroid effects stay a no-op there.
 		if (useCentroid)
 		{
-			spawnAt(emitter.style, x, y, z, emitter.cx, emitter.cy, emitter.cz, 1f);
+			spawnAt(emitter.styleSet.pick(random), x, y, z, emitter.cx, emitter.cy, emitter.cz, 1f);
 		}
 		else
 		{
-			spawnAt(emitter.style, x, y, z, 1f);
+			spawnAt(emitter.styleSet.pick(random), x, y, z, 1f);
 		}
 	}
 
@@ -3468,11 +3052,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return null;
 	}
 
-	/**
-	 * The live animation frame of an animated object's renderable - the same
-	 * scene-side surface the Identificator plugin reads - or -1 for static
-	 * placements.
-	 */
 	private static int objectAnimFrame(@Nullable TileObject object)
 	{
 		Renderable renderable = null;
@@ -3503,11 +3082,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return renderable instanceof DynamicObject ? ((DynamicObject) renderable).getAnimFrame() : -1;
 	}
 
-	/**
-	 * Every scenery instance on one plane of the loaded scene, deduplicated
-	 * (multi-tile objects appear on each covered tile). Dev-tool path only -
-	 * this walks the whole scene.
-	 */
 	private List<TileObject> sceneObjects(int plane)
 	{
 		List<TileObject> out = new ArrayList<>();
@@ -3549,10 +3123,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return out;
 	}
 
-	/**
-	 * Every scenery type on the loaded plane for the viewer capture list: one
-	 * entry per object ID with instance count and nearest distance. Client thread.
-	 */
 	private List<ModelViewerFrame.ObjectSighting> sceneObjectSightings()
 	{
 		Player player = client.getLocalPlayer();
@@ -3612,16 +3182,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return name != null ? name : "object_" + objectId;
 	}
 
-	/**
-	 * Nearby scenery for the viewer's capture list: one entry per object ID,
-	 * nearest instance, sorted by distance. Client thread.
-	 */
 	private List<ModelViewerFrame.ObjectSighting> nearbySightings()
 	{
 		return sceneObjectSightings();
 	}
-
-	// ==================== NPCs and graphics ====================
 
 	private void rebuildProfiledNpcs()
 	{
@@ -3652,18 +3216,17 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	{
 		graphicEmitters.clear();
 		EmitterStore.Snapshot snap = store.snapshot();
-		Map<String, ProfileFolder> folders = snap.folders;
 		for (Map.Entry<String, EmitterProfile> entry : snap.profiles.entrySet())
 		{
 			EmitterProfile profile = entry.getValue();
 			if (!profile.isGraphicTarget() || profile.getGraphicId() < 0
-				|| !ParticlesPanel.effectiveEnabled(profile, folders)
-				|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
+				|| !ParticlesPanel.effectiveEnabled(profile)
+				|| (!developerMode && ParticlesPanel.effectiveWip(profile)))
 			{
 				continue;
 			}
-			ParticleStyle style = renderer.getStyle(entry.getKey());
-			if (style == null)
+			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			if (styleSet == null)
 			{
 				continue;
 			}
@@ -3680,7 +3243,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				faceLocals[i++] = local;
 			}
 			graphicEmitters.computeIfAbsent(profile.getGraphicId(), k -> new ArrayList<>())
-				.add(new GraphicEmitter(style, profile.getSignature(), locals, faceLocals));
+				.add(new GraphicEmitter(styleSet, profile.getSignature(), locals, faceLocals));
 		}
 	}
 
@@ -3688,20 +3251,19 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	{
 		activeWeatherZones.clear();
 		EmitterStore.Snapshot snap = store.snapshot();
-		Map<String, ProfileFolder> folders = snap.folders;
 		for (Map.Entry<String, EmitterProfile> entry : snap.profiles.entrySet())
 		{
 			EmitterProfile profile = entry.getValue();
 			if (!profile.isWeatherTarget()
 				|| profile.getWeatherAreas() == null || profile.getWeatherAreas().isEmpty()
 				|| profile.getWeatherParticlesPerTile() <= 0f
-				|| !ParticlesPanel.effectiveEnabled(profile, folders)
-				|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
+				|| !ParticlesPanel.effectiveEnabled(profile)
+				|| (!developerMode && ParticlesPanel.effectiveWip(profile)))
 			{
 				continue;
 			}
-			ParticleStyle style = renderer.getStyle(entry.getKey());
-			if (style == null)
+			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			if (styleSet == null)
 			{
 				continue;
 			}
@@ -3719,7 +3281,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				for (AABB aabb : area.aabbs)
 				{
 					activeWeatherZones.add(new ActiveWeatherZone(
-						aabb, style, profile.getWeatherParticlesPerTile(),
+						aabb, styleSet, profile.getWeatherParticlesPerTile(),
 						profile.getWeatherDensityScale(),
 						copyEffectorList(profile.getGlobalEffectors()),
 						copyEffectorList(profile.getLocalEffectorFilter()),
@@ -3729,12 +3291,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Procedural area weather: spawn throughout the fall column and fall
-	 * straight down across the inscribed circle of each active area AABB.
-	 * Spawn rate targets particles-per-tile using estimated fall duration so
-	 * the column stays filled instead of pulsing as discrete sheets.
-	 */
 	private void processWeather(float dt)
 	{
 		activeWeatherZoneCount = 0;
@@ -3774,9 +3330,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 			activeWeatherZoneCount++;
 			float desiredAlive = desiredWeatherAlive(zone) * scale * densityScale * zone.densityScale;
-			// Weather lives until ground clip, not style lifetime. Using the short
-			// definition lifetime overspawns into the budget as a falling sheet,
-			// then starves until that sheet dies — visible gaps when looking up.
+
 			float avgLife = weatherFallDurationSec(zone.style);
 			float spawnPerSec = desiredAlive / avgLife;
 			zone.spawnAccum += spawnPerSec * dt;
@@ -3859,8 +3413,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int worldView = lp.getWorldView();
 		LocalPoint heightLp = new LocalPoint((int) lx, (int) ly, worldView);
 		int ground = Perspective.getTileHeight(client, heightLp, worldPlane);
-		// Scene z is negative-up: ceilingZ < floorZ. Scatter through the column so
-		// new spawns refill gaps continuously instead of forming one sheet at the top.
+
 		float ceilingZ = ground - ParticleSystem.WEATHER_SPAWN_ABOVE_GROUND;
 		float hideFromCamera = hdPlugin.cameraPosition[1] - ParticleSystem.WEATHER_SPAWN_ABOVE_CAMERA;
 		if (ceilingZ > hideFromCamera)
@@ -3951,10 +3504,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return Math.max(12, style.getGravity() > 0 ? style.getGravity() : 26);
 	}
 
-	/**
-	 * Mean seconds a weather particle stays alive when spawned uniformly through
-	 * the fall column. Used for spawn-rate targeting instead of style lifetime.
-	 */
 	private static float weatherFallDurationSec(ParticleStyle style)
 	{
 		float meanHeight = 0.5f * (ParticleSystem.WEATHER_SPAWN_MIN_ABOVE_GROUND
@@ -3962,10 +3511,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return Math.max(1f, meanHeight / Math.max(1f, weatherFallSpeed(style)));
 	}
 
-	/** Spawn a weather particle falling straight down from a high point. */
 	private void spawnWeatherAt(ActiveWeatherZone zone, float x, float y, float z, int worldPlane)
 	{
-		ParticleStyle style = zone.style;
+		ParticleStyle style = zone.styleSet.pick(random);
 		float jitter = style.getSpawnJitter();
 		double jitterAngle = random.nextFloat() * 2 * Math.PI;
 		float jitterRadius = jitter * (float) Math.sqrt(random.nextFloat());
@@ -4003,11 +3551,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Map a vertex-based graphic emitter onto the spot anim's model, once
-	 * per rebuild. Attaches across every matching piece like the other
-	 * vertex targets.
-	 */
 	private void resolveGraphic(GraphicEmitter ge, Model model)
 	{
 		ge.resolveTried = true;
@@ -4050,7 +3593,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				&& (ge.style.getFeatherStrength() > 0 || ge.style.getInterpolation() > 0)
 				? buildChains(snapshot, piece, vertices)
 				: null;
-			ge.resolved.add(new ActiveEmitter(ge.style, vertices, faceCorners, chains));
+			ge.resolved.add(new ActiveEmitter(ge.styleSet, vertices, faceCorners, chains));
 		}
 	}
 
@@ -4061,13 +3604,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private float[] gfxAnchorZs = new float[0];
 	private boolean[] gfxAnchorVisible = new boolean[0];
 
-	/**
-	 * Append interpolated midpoints between chain-adjacent anchors, after
-	 * the emitter's real anchor block. Midpoint visibility (when tracked)
-	 * requires both endpoints visible.
-	 *
-	 * @return the write index after the appended anchors
-	 */
 	private static int appendInterpolatedAnchors(ActiveEmitter emitter,
 		float[] xs, float[] ys, float[] zs, @Nullable boolean[] visible, int writeIndex)
 	{
@@ -4095,17 +3631,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return writeIndex;
 	}
 
-	/**
-	 * Spawn a batch for a graphic emitter at its base point. Vertex-based
-	 * emitters spawn only from CURRENTLY VISIBLE vertices: swipe-style gfx
-	 * keep their whole mesh in place and animate the sweep purely with face
-	 * transparency, so hidden vertices must not emit ahead of the visible
-	 * arc. Feathered emitters trace the smoothed chain instead (a chain
-	 * across a half-revealed mesh has no clean meaning). While the whole
-	 * mesh is hidden the carry resets so the reveal doesn't burst.
-	 *
-	 * @return false when the particle budget is exhausted
-	 */
 	private boolean spawnGraphicBatch(GraphicEmitter ge, @Nullable Model model, int count,
 		float baseX, float baseY, float baseZ, int sin, int cos, int budget, double[] carries, int gi)
 	{
@@ -4121,7 +3646,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					return false;
 				}
-				spawnAt(style, ox, oy, oz, 1f);
+				spawnAt(ge.styleSet.pick(random), ox, oy, oz, 1f);
 			}
 			return true;
 		}
@@ -4131,9 +3656,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		float[] vx = model.getVerticesX();
 		float[] vy = model.getVerticesY();
 		float[] vz = model.getVerticesZ();
-		// The anchors an emitter fills are constant for the whole batch (the
-		// model doesn't move between particles this tick), so refill only
-		// when the randomly picked emitter changes, not per particle
+
 		ActiveEmitter filled = null;
 		for (int i = 0; i < count; i++)
 		{
@@ -4166,7 +3689,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					carries[gi] = 0;
 					return true;
 				}
-				spawnAt(style, gfxAnchorXs[a], gfxAnchorYs[a], gfxAnchorZs[a], 1f);
+				spawnAt(ge.styleSet.pick(random), gfxAnchorXs[a], gfxAnchorYs[a], gfxAnchorZs[a], 1f);
 			}
 			else if (emitter.faceCount() > 0
 				&& (emitter.vertices.length == 0 || random.nextInt(emitter.vertices.length + emitter.faceCount()) < emitter.faceCount()))
@@ -4183,10 +3706,8 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					carries[gi] = 0;
 					return true;
 				}
-				// Rotate the spot anim's local mesh by the actor's facing, the
-				// same transform the player anchor path uses; graphics objects
-				// pass identity (they are already world-oriented per direction)
-				spawnAt(style, ox + (vz[v] * sin + vx[v] * cos) / 65536f,
+
+				spawnAt(ge.styleSet.pick(random), ox + (vz[v] * sin + vx[v] * cos) / 65536f,
 					oy + (vz[v] * cos - vx[v] * sin) / 65536f, oz + vy[v], 1f);
 			}
 		}
@@ -4207,10 +3728,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return -1;
 	}
 
-	/**
-	 * Vertices touching at least one face under the transparency threshold,
-	 * or null when the model has no per-face alpha (everything visible).
-	 */
 	@Nullable
 	private boolean[] visibleVertexMask(Model model)
 	{
@@ -4249,7 +3766,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			int v = vertices[random.nextInt(vertices.length)];
 			return v >= 0 && v < vertexCount ? v : -1;
 		}
-		// Random start with a linear probe; emitter vertex sets are small
+
 		int start = random.nextInt(vertices.length);
 		for (int i = 0; i < vertices.length; i++)
 		{
@@ -4307,13 +3824,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * NPCs run the player pipeline - posed model anchors, orientation,
-	 * trails, feathering, animation gates - minus the equipment resolution
-	 * (the NPC ID is the whole identity). Like players they honour the
-	 * stacked-actor draw: among size-1 NPCs sharing a tile center the engine
-	 * draws only the lowest scene index, so the rest are gated out of emission.
-	 */
 	private void processNpcs(float dt, int level, int radiusUnits, LocalPoint localLp)
 	{
 		if (npcEmitters.isEmpty())
@@ -4330,7 +3840,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				|| npc.getLocalLocation().distanceTo(localLp) > radiusUnits
 				|| (isCenteredSize1(npc) && npcTileOwners.get(tileKey(npc)) != npc))
 			{
-				// Out of scope, or a stacked npc the engine does not draw
+
 				pe.anchorCount = 0;
 				pe.prevCount = 0;
 				for (ActiveEmitter emitter : pe.emitters)
@@ -4353,8 +3863,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	private void resolveNpc(PlayerEmitters pe, NPC npc, int revision)
 	{
 		pe.revision = revision;
-		// The equipment cache slot doubles as the resolve key for NPCs: a
-		// single-element array holding the (transform-aware) NPC ID
+
 		pe.equipmentIds = new int[]{npc.getId()};
 		pe.rebuilt = true;
 		pe.emitters.clear();
@@ -4366,19 +3875,18 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 		ModelSnapshot snapshot = ModelSnapshot.capture(model);
 		EmitterStore.Snapshot snap = store.snapshot();
-		Map<String, ProfileFolder> folders = snap.folders;
 		for (Map.Entry<String, EmitterProfile> entry : snap.profiles.entrySet())
 		{
 			EmitterProfile profile = entry.getValue();
 			if (!profile.isNpcTarget() || profile.getNpcId() != npc.getId()
-				|| !ParticlesPanel.effectiveEnabled(profile, folders)
+				|| !ParticlesPanel.effectiveEnabled(profile)
 				|| (profile.getVertices().isEmpty() && profile.getFaces().isEmpty())
-				|| (!developerMode && ParticlesPanel.effectiveWip(profile, folders)))
+				|| (!developerMode && ParticlesPanel.effectiveWip(profile)))
 			{
 				continue;
 			}
-			ParticleStyle style = renderer.getStyle(entry.getKey());
-			if (style == null)
+			ParticleStyleSet styleSet = renderer.getStyleSet(entry.getKey());
+			if (styleSet == null)
 			{
 				continue;
 			}
@@ -4388,7 +3896,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					continue;
 				}
-				ActiveEmitter emitter = resolveMeshEmitter(style, snapshot, piece, profile);
+				ActiveEmitter emitter = resolveMeshEmitter(styleSet, snapshot, piece, profile);
 				if (emitter != null)
 				{
 					pe.emitters.add(emitter);
@@ -4397,12 +3905,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Emission for graphic profiles matching the actor's active spot anims
-	 * (vengeance, skulls, teleports, weapon swipes). Point-based when no
-	 * vertices were picked; vertex-anchored spot anims rotate their local
-	 * mesh by the actor's facing, like the player and NPC anchor paths.
-	 */
 	private void emitActorSpotAnims(float dt, PlayerEmitters pe, Actor actor)
 	{
 		if (graphicEmitters.isEmpty())
@@ -4412,8 +3914,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int budget = config.particleMaxParticles();
 		float densityScale = config.particleDensity().getFactor();
 		LocalPoint lp = actor.getLocalLocation();
-		// Spot anim models are authored facing orientation 0 and the engine
-		// turns them with the actor; mirror that here so anchors track facing
+
 		int orientation = actor.getCurrentOrientation();
 		int sin = Perspective.SINE[orientation];
 		int cos = Perspective.COSINE[orientation];
@@ -4439,8 +3940,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			for (int gi = 0; gi < list.size(); gi++)
 			{
 				GraphicEmitter ge = list.get(gi);
-				// Frame windows gate spot anim emission like action anims;
-				// reset the carry so the window opening doesn't burst
+
 				if (!ge.style.frameMatches(spotAnim.getFrame()))
 				{
 					carries[gi] = 0;
@@ -4477,10 +3977,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	/**
-	 * Point emission at live graphics objects (spell splats, tile effects)
-	 * whose IDs carry a graphic profile.
-	 */
 	private void emitGraphicsObjects(float dt, int level, int radiusUnits, LocalPoint localLp)
 	{
 		if (graphicEmitters.isEmpty())
@@ -4529,8 +4025,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				carries[gi] += Math.min(ge.style.getParticlesPerSecond() * densityScale, sustainable) * dt;
 				int count = (int) carries[gi];
 				carries[gi] -= count;
-				// Identity rotation: graphics objects place a per-direction
-				// model already in world orientation
+
 				if (count > 0 && !spawnGraphicBatch(ge, model, count, lp.getX(), lp.getY(),
 					graphic.getZ(), 0, 65536, budget, carries, gi))
 				{
@@ -4557,10 +4052,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return name != null ? name : "npc_" + npcId;
 	}
 
-	/**
-	 * Every NPC on the loaded plane for the viewer capture list: one entry per
-	 * NPC ID with instance count and nearest distance. Client thread.
-	 */
 	private List<ModelViewerFrame.ObjectSighting> npcSightings()
 	{
 		Player player = client.getLocalPlayer();
@@ -4602,10 +4093,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return out;
 	}
 
-	/**
-	 * Recently seen spot anims / graphics with their source label, newest
-	 * first. Client thread.
-	 */
 	private List<ModelViewerFrame.GraphicSighting> recentGraphicList()
 	{
 		long nowMs = System.currentTimeMillis();
@@ -4621,8 +4108,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		out.sort((a, b) -> Integer.compare(a.secondsAgo, b.secondsAgo));
 		return out;
 	}
-
-	// ==================== ModelViewerFrame.Callbacks ====================
 
 	@Override
 	public void refreshSnapshot()
@@ -4678,12 +4163,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		refreshSnapshot();
 	}
 
-	/**
-	 * Begin sampling the viewer's target every tick for ~3 seconds. Object
-	 * and NPC sources are pinned to their nearest instance up front;
-	 * graphics are re-found per tick since their instances are transient.
-	 * Client thread.
-	 */
 	private void startRecording(int objectId, int npcId, int graphicId)
 	{
 		recordObjectId = objectId;
@@ -4777,8 +4256,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 		if (model == null && !recordXs.isEmpty())
 		{
-			// Source vanished mid-recording (a gfx ended, an NPC died); ship
-			// what was sampled instead of waiting out the window
+
 			recordTicksLeft = 0;
 		}
 		if (model != null)
@@ -4789,8 +4267,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 			if (model.getVerticesCount() != recordSnapshot.getVertexCount())
 			{
-				// Topology changed mid-recording (gear swap etc.); abort and
-				// drop the source refs so a despawned object/NPC isn't pinned
+
 				recordTicksLeft = 0;
 				recordSnapshot = null;
 				recordObject = null;
@@ -4801,8 +4278,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				recordFrames.clear();
 				return;
 			}
-			// Trim to the logical vertex count: live model arrays are backing
-			// buffers that can run longer than the vertices they hold
+
 			int count = recordSnapshot.getVertexCount();
 			recordXs.add(Arrays.copyOf(model.getVerticesX(), count));
 			recordYs.add(Arrays.copyOf(model.getVerticesY(), count));
@@ -4839,9 +4315,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		recordZs.clear();
 		recordFrames.clear();
 
-		// Recordings piggyback on the snapshot already in the viewer - no
-		// re-push, so the camera and picks are undisturbed; the viewer drops
-		// any recording whose topology no longer matches what it shows
 		SwingUtilities.invokeLater(() ->
 		{
 			if (viewerFrame != null)
@@ -4930,13 +4403,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return names;
 	}
 
-	/**
-	 * Capture the local player's composite into the viewer. Client thread.
-	 */
-	/**
-	 * Client-thread snapshot for the dev viewer when open; geometry only
-	 * otherwise so face colour arrays are not cloned every frame.
-	 */
 	private ModelSnapshot captureModelSnapshot(Model model)
 	{
 		return viewerFrame != null ? ModelSnapshot.captureForViewer(model) : ModelSnapshot.capture(model);
@@ -4982,15 +4448,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					weatherProfileEntries());
 			}
 		});
-		// Auto-record so an animation performed right after refreshing lands
-		// in the scrubber without a separate action
+
 		startRecording(-1, -1, -1);
 	}
 
-	/**
-	 * Capture the nearest instance of this object into the viewer, falling
-	 * back to the player when none is loaded. Client thread.
-	 */
 	private void captureObjectSnapshot(int objectId)
 	{
 		pendingGraphicCapture = -1;
@@ -5026,15 +4487,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		pushNonPlayerSnapshot(captureModelSnapshot(model), name);
 		if (best != null && objectAnimFrame(best) >= 0)
 		{
-			// Animated placement: auto-record its cycle for the scrubber
+
 			startRecording(objectId, -1, -1);
 		}
 	}
 
-	/**
-	 * Capture the nearest instance of this NPC into the viewer, falling back
-	 * to the player when none is in scene. Client thread.
-	 */
 	private void captureNpcSnapshot(int npcId)
 	{
 		pendingGraphicCapture = -1;
@@ -5063,8 +4520,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		String name = best == null ? null : cleanTargetName(best.getName());
 		if (model == null)
 		{
-			// No live instance in scene: build the mesh from the cache
-			// definition instead, so authoring needs nothing spawned
+
 			ModelData cached = npcCacheModel(npcId);
 			if (cached != null)
 			{
@@ -5082,14 +4538,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		pushNonPlayerSnapshot(captureModelSnapshot(model), name);
 		if (best != null)
 		{
-			// Live NPC: auto-record its current animation for the scrubber
+
 			startRecording(-1, npcId, -1);
 		}
 	}
 
-	/**
-	 * The NPC's composed cache mesh (unposed), or null. Client thread.
-	 */
 	@Nullable
 	private ModelData npcCacheModel(int npcId)
 	{
@@ -5117,9 +4570,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		int npcId = viewerNpcId;
 		if (npcId < 0)
 		{
-			// Player and object meshes cannot be rebuilt from the cache
-			// through the API (worn equipment models are not exposed), so
-			// posing only works on NPC snapshots - say so instead of no-op
+
 			if (viewerFrame != null)
 			{
 				viewerFrame.showHint("Pose needs an NPC snapshot. For players and objects: Refresh, then perform the animation - it auto-records for the scrubber.");
@@ -5133,12 +4584,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		clientThread.invokeLater(() -> poseNpcAnimation(npcId, animId));
 	}
 
-	/**
-	 * Build a synthetic scrubber recording straight from the cache: the
-	 * NPC's composed mesh posed at every exact frame of the animation via
-	 * AnimationController.animate - nothing needs to exist in the scene or
-	 * play in game. Client thread.
-	 */
 	private void poseNpcAnimation(int npcId, int animId)
 	{
 		ModelData merged = npcCacheModel(npcId);
@@ -5164,7 +4609,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		ModelSnapshot topology = null;
 		for (int f = 0; f < numFrames; f++)
 		{
-			// Fresh lit copy per frame so transforms never accumulate
+
 			Model base = merged.shallowCopy().cloneVertices().light();
 			controller.setFrame(f);
 			Model posed = controller.animate(base);
@@ -5198,17 +4643,12 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		});
 	}
 
-	/**
-	 * Capture a live instance of this spot anim into the viewer - a graphics
-	 * object or an actor playing it - falling back to the player when none
-	 * is active. Client thread.
-	 */
 	private void captureGraphicSnapshot(int graphicId)
 	{
 		Model model = findGraphicModel(graphicId);
 		if (model == null)
 		{
-			// Not playing right now; capture it the moment it next appears
+
 			pendingGraphicCapture = graphicId;
 			return;
 		}
@@ -5259,7 +4699,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				viewerFrame.notifyGraphicSnapshot();
 			}
 		});
-		// Auto-record while the graphic is still playing
+
 		startRecording(-1, -1, graphicId);
 	}
 
@@ -5276,10 +4716,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return null;
 	}
 
-	/**
-	 * A usable game name, or null: strips color tags and rejects the
-	 * cache's "null" placeholder.
-	 */
 	@Nullable
 	private static String cleanTargetName(@Nullable String name)
 	{
@@ -5291,9 +4727,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return clean.isEmpty() || clean.equals("null") ? null : clean;
 	}
 
-	/**
-	 * Push an object, NPC or graphic snapshot to the viewer. Client thread.
-	 */
 	private void pushNonPlayerSnapshot(ModelSnapshot snapshot, @Nullable String targetName)
 	{
 		pushViewerSnapshot(snapshot, targetName, true);
@@ -5340,10 +4773,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 
-		// If the selected profile's piece isn't on this model at all (stale
-		// signature or authored on other gear), clicking a vertex re-attaches
-		// the profile to the clicked piece, keeping its style and filter.
-		// Confirmed, because doing this accidentally hijacks the profile.
 		if (profileKey != null)
 		{
 			EmitterProfile selected = store.snapshotAll().get(profileKey);
@@ -5579,13 +5008,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return store.ensureProjectileProfile(projectileId, "proj " + projectileId);
 	}
 
-	// ====================================================================
-
-	/**
-	 * The profile a click should apply to: the viewer's selected profile when
-	 * it targets this piece, otherwise the piece's default profile (created
-	 * if missing).
-	 */
 	private String targetProfileKey(@Nullable String profileKey, ModelSnapshot.Piece piece)
 	{
 		String existing = existingProfileKey(profileKey, piece);
@@ -5594,8 +5016,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return existing;
 		}
 		String defaultName = piece.getVertices().length + "v " + piece.getFaces().length + "f";
-		// Prefer the game name captured with the snapshot; fall back to the
-		// old id/verts/faces naming when the cache offers none
+
 		if (viewerObjectId >= 0)
 		{
 			return store.ensureObjectPieceProfile(piece.getSignature(),
@@ -5639,11 +5060,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return null;
 	}
 
-	/**
-	 * Does this profile belong to what the viewer is showing - the loaded
-	 * object, or the player? Signatures alone could collide across the two
-	 * families. EDT only.
-	 */
 	private boolean matchesViewerContext(EmitterProfile profile)
 	{
 		if (viewerObjectId >= 0)
@@ -5661,10 +5077,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return EmitterProfile.TARGET_PLAYER.equals(profile.getTargetType());
 	}
 
-	/**
-	 * Rebuild the viewer's row list in place (a toggle may have created a
-	 * profile), selecting the given profile's row. EDT only.
-	 */
 	private void refreshViewerRows(@Nullable String selectProfileKey)
 	{
 		if (viewerFrame == null)
@@ -5692,10 +5104,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		viewerFrame.refreshStyleEditor();
 	}
 
-	/**
-	 * Global indices of stored emitters on the snapshot's pieces: the selected
-	 * profile's when one is selected, else all profiles'. EDT only.
-	 */
 	private Set<Integer> selectedGlobals(ModelSnapshot snapshot, @Nullable String profileKey)
 	{
 		Map<String, EmitterProfile> profiles = store.snapshotAll();
@@ -5704,9 +5112,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			for (Map.Entry<String, EmitterProfile> entry : profiles.entrySet())
 			{
-				// Context matters: trivial fragments (a 5v4f flame) share a
-				// signature across unrelated models, so another object's
-				// profile must not highlight on this snapshot
+
 				if (!piece.getSignature().equals(entry.getValue().getSignature())
 					|| !matchesViewerContext(entry.getValue())
 					|| (profileKey != null && !profileKey.equals(entry.getKey())))
@@ -5725,9 +5131,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return out;
 	}
 
-	/**
-	 * Global face indices of stored triangle emitters on the snapshot.
-	 */
 	private Set<Integer> selectedFaceGlobals(ModelSnapshot snapshot, @Nullable String profileKey)
 	{
 		Map<String, EmitterProfile> profiles = store.snapshotAll();
@@ -5755,10 +5158,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return out;
 	}
 
-	/**
-	 * Recently seen projectiles as [id, count, secondsAgo], newest first.
-	 * Client thread.
-	 */
 	private List<int[]> recentProjectileList()
 	{
 		long nowMs = System.currentTimeMillis();
@@ -5796,8 +5195,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		for (Map.Entry<String, EmitterProfile> entry : store.snapshotAll().entrySet())
 		{
 			EmitterProfile profile = entry.getValue();
-			// Only the family the viewer is showing; object and player
-			// profiles both carry signatures
+
 			if (profile.getSignature() == null || !matchesViewerContext(profile))
 			{
 				continue;
@@ -5872,13 +5270,9 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return out;
 	}
 
-	/**
-	 * Open the vertex picker with this profile selected, if its piece is on
-	 * the current model. EDT only.
-	 */
 	private void editProfile(String profileKey)
 	{
-		// Object and NPC profiles edit against their own model, not the player's
+
 		EmitterProfile profile = store.snapshotAll().get(profileKey);
 		if (profile != null && profile.isObjectTarget())
 		{
@@ -5926,20 +5320,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	private void renameFolder(String folderId)
-	{
-		ProfileFolder folder = store.snapshot().folders.get(folderId);
-		if (folder == null)
-		{
-			return;
-		}
-		String name = javax.swing.JOptionPane.showInputDialog(viewerFrame,
-			"Name for this folder:", folder.getName());
-		if (name != null)
-		{
-			store.renameFolder(folderId, name);
-		}
-	}
 
 	@Override
 	public void exportBundle()
@@ -5947,7 +5327,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		java.awt.Component parent = viewerFrame;
 		javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
 		chooser.setFileSelectionMode(javax.swing.JFileChooser.DIRECTORIES_ONLY);
-		chooser.setDialogTitle("Export to resources folder (writes emitters.json + definitions.json + folders.json)");
+		chooser.setDialogTitle("Export to resources folder (writes emitters.json + definitions.json)");
 		String last = configManager.getConfiguration(HdPluginConfig.CONFIG_GROUP, "exportDir");
 		if (last != null && !last.isEmpty())
 		{

@@ -16,12 +16,6 @@ import lombok.Setter;
 import rs117.hd.scene.GamevalManager;
 import rs117.hd.utils.GsonUtils;
 
-/**
- * List-based emitter manifest: each entry carries a description, particle
- * definition id(s), and typed placement arrays (objectEmitters, playerEmitters,
- * etc.). Gameval fields use {@link GamevalManager} adapters; item ids remain
- * raw integers. Defaults are omitted on write via {@link GsonUtils.ExcludeDefaults}.
- */
 final class EmitterManifest
 {
 	private static final TypeToken<List<Entry>> MANIFEST_TYPE = new TypeToken<List<Entry>>() {};
@@ -36,11 +30,9 @@ final class EmitterManifest
 	static class Entry
 	{
 		private String description;
-		private String particleId;
-		private List<String> particleIds;
+		private Map<String, Integer> particles;
 		private boolean enabled = true;
 		private boolean wip;
-		private String folder;
 		private List<ObjectEmitterPlacement> objectEmitters;
 		private List<PlayerEmitterPlacement> playerEmitters;
 		private List<NpcEmitterPlacement> npcEmitters;
@@ -436,9 +428,7 @@ final class EmitterManifest
 	}
 
 	@Nullable
-	static Map<String, EmitterProfile> parse(
-		@Nullable String json,
-		@Nullable Map<String, ProfileFolder> folders)
+	static Map<String, EmitterProfile> parse(@Nullable String json)
 	{
 		if (json == null || json.isEmpty() || !isManifestJson(json))
 		{
@@ -458,7 +448,7 @@ final class EmitterManifest
 			{
 				if (entry != null)
 				{
-					expandEntry(entry, folders, result, reserved);
+					expandEntry(entry, result, reserved);
 				}
 			}
 			return result.isEmpty() ? null : result;
@@ -469,13 +459,10 @@ final class EmitterManifest
 		}
 	}
 
-	static String serialize(
-		Gson gson,
-		Map<String, EmitterProfile> profiles,
-		Map<String, ProfileFolder> folders)
+	static String serialize(Gson gson, Map<String, EmitterProfile> profiles)
 	{
 		List<Entry> entries = new ArrayList<>();
-		profiles.forEach((key, profile) -> entries.add(toEntry(key, profile, folders)));
+		profiles.forEach((key, profile) -> entries.add(toEntry(key, profile)));
 		return manifestGson(gson).toJson(entries, MANIFEST_TYPE.getType());
 	}
 
@@ -486,20 +473,11 @@ final class EmitterManifest
 
 	private static void expandEntry(
 		Entry entry,
-		@Nullable Map<String, ProfileFolder> folders,
 		Map<String, EmitterProfile> out,
 		Set<String> reserved)
 	{
-		List<String> particleIds = new ArrayList<>();
-		if (entry.getParticleIds() != null && !entry.getParticleIds().isEmpty())
-		{
-			particleIds.addAll(entry.getParticleIds());
-		}
-		else if (entry.getParticleId() != null && !entry.getParticleId().isEmpty())
-		{
-			particleIds.add(entry.getParticleId());
-		}
-		if (particleIds.isEmpty())
+		Map<String, Integer> particles = resolveParticles(entry);
+		if (particles.isEmpty())
 		{
 			return;
 		}
@@ -510,25 +488,41 @@ final class EmitterManifest
 			return;
 		}
 
-		String folderId = resolveFolderId(entry.getFolder(), folders);
-		for (String particleId : particleIds)
+		for (EmitterProfile placement : placements)
 		{
-			for (EmitterProfile placement : placements)
+			EmitterProfile profile = placement.copy();
+			profile.setParticles(particles);
+			profile.setEnabled(entry.isEnabled());
+			profile.setWip(entry.isWip());
+			if (entry.getDescription() != null)
 			{
-				EmitterProfile profile = placement.copy();
-				profile.setDefinitionId(particleId);
-				profile.setEnabled(entry.isEnabled());
-				profile.setWip(entry.isWip());
-				profile.setFolderId(folderId);
-				if (entry.getDescription() != null)
+				profile.setName(entry.getDescription());
+			}
+			String key = ParticleIds.emitterKeyFor(profile, reserved);
+			reserved.add(key);
+			out.put(key, profile);
+		}
+	}
+
+	private static Map<String, Integer> resolveParticles(Entry entry)
+	{
+		LinkedHashMap<String, Integer> result = new LinkedHashMap<>();
+		if (entry.getParticles() != null)
+		{
+			for (Map.Entry<String, Integer> e : entry.getParticles().entrySet())
+			{
+				if (e.getKey() == null || e.getKey().isEmpty())
 				{
-					profile.setName(entry.getDescription());
+					continue;
 				}
-				String key = ParticleIds.emitterKeyFor(profile, reserved);
-				reserved.add(key);
-				out.put(key, profile);
+				int weight = e.getValue() == null ? 1 : e.getValue();
+				if (weight > 0)
+				{
+					result.put(e.getKey(), weight);
+				}
 			}
 		}
+		return result;
 	}
 
 	private static List<EmitterProfile> collectPlacements(Entry entry)
@@ -609,31 +603,11 @@ final class EmitterManifest
 		return placements;
 	}
 
-	@Nullable
-	private static String resolveFolderId(@Nullable String folderName, @Nullable Map<String, ProfileFolder> folders)
-	{
-		if (folderName == null || folderName.isEmpty() || folders == null)
-		{
-			return null;
-		}
-		for (ProfileFolder folder : folders.values())
-		{
-			if (folderName.equals(folder.getName()))
-			{
-				return folder.getId();
-			}
-		}
-		return null;
-	}
-
-	private static Entry toEntry(
-		String key,
-		EmitterProfile profile,
-		Map<String, ProfileFolder> folders)
+	private static Entry toEntry(String key, EmitterProfile profile)
 	{
 		Entry entry = new Entry();
 		entry.setDescription(ParticleIds.emitterListName(key, profile));
-		entry.setParticleId(profile.getDefinitionId());
+		entry.setParticles(profile.resolvedParticles());
 		if (!profile.isEnabled())
 		{
 			entry.setEnabled(false);
@@ -641,10 +615,6 @@ final class EmitterManifest
 		if (profile.isWip())
 		{
 			entry.setWip(true);
-		}
-		if (profile.getFolderId() != null && folders.containsKey(profile.getFolderId()))
-		{
-			entry.setFolder(folders.get(profile.getFolderId()).getName());
 		}
 
 		switch (profile.getTargetType())

@@ -5,10 +5,6 @@ import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
 
-/**
- * Slim persisted emitter record: placement, gating, and a {@link ParticleDefinition}
- * reference. Style fields live only in definitions.json.
- */
 @Getter
 @Setter
 class ParticleEmitter
@@ -21,7 +17,6 @@ class ParticleEmitter
 	private String signature;
 	private boolean enabled = true;
 	private boolean wip = false;
-	private String folderId;
 	private Set<Integer> vertices = new HashSet<>();
 	private Set<Integer> faces = new HashSet<>();
 	private Set<Integer> itemIds = new HashSet<>();
@@ -47,7 +42,6 @@ class ParticleEmitter
 		emitter.signature = profile.getSignature();
 		emitter.enabled = profile.isEnabled();
 		emitter.wip = profile.isWip();
-		emitter.folderId = profile.getFolderId();
 		emitter.vertices = new HashSet<>(profile.getVertices());
 		emitter.faces = new HashSet<>(profile.getFaces());
 		emitter.itemIds = new HashSet<>(profile.getItemIds());
@@ -74,7 +68,6 @@ class ParticleEmitter
 		profile.setSignature(signature);
 		profile.setEnabled(enabled);
 		profile.setWip(wip);
-		profile.setFolderId(folderId);
 		profile.setVertices(new HashSet<>(vertices));
 		profile.setFaces(faces == null ? new HashSet<>() : new HashSet<>(faces));
 		profile.setItemIds(new HashSet<>(itemIds));

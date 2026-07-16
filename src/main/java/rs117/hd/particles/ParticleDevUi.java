@@ -24,9 +24,6 @@ import javax.swing.SwingConstants;
 import javax.swing.border.Border;
 import net.runelite.client.ui.ColorScheme;
 
-/**
- * Shared styling for the particle dev panel.
- */
 final class ParticleDevUi
 {
 	static final int LABEL_WIDTH = 108;
@@ -126,7 +123,6 @@ final class ParticleDevUi
 		button.setMargin(new java.awt.Insets(4, 8, 4, 8));
 	}
 
-	/** Flat segmented control — visually distinct from primary {@link javax.swing.JTabbedPane} tabs. */
 	static JPanel segmentBar(JButton... buttons)
 	{
 		JPanel bar = new JPanel(new GridLayout(1, buttons.length, 0, 0));

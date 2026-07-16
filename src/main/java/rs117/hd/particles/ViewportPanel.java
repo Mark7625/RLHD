@@ -19,13 +19,6 @@ import javax.swing.JPanel;
 import rs117.hd.utils.ColorUtils;
 import rs117.hd.utils.HDUtils;
 
-/**
- * Software-rendered wireframe viewer for a {@link ModelSnapshot}.
- * Drag to orbit, scroll to zoom, hover to inspect a vertex or face. Place mode
- * click-adds emitters; Remove mode click-removes them. Shift+drag box-adds;
- * Ctrl+drag box-removes (modifiers override the active mode). Vert/Face
- * pick modes choose vertices or triangles.
- */
 class ViewportPanel extends JPanel
 {
 	enum InteractionMode
@@ -54,9 +47,6 @@ class ViewportPanel extends JPanel
 		}
 	}
 
-	/**
-	 * Bulk add/remove of mesh elements: vertices or faces depending on pick mode.
-	 */
 	@FunctionalInterface
 	interface SelectionHandler
 	{
@@ -88,7 +78,7 @@ class ViewportPanel extends JPanel
 	private static final Color COLOR_FACE_HOVER = new Color(0, 220, 255, 70);
 	private static final Color COLOR_TEXT = new Color(200, 200, 205);
 	private static final int HIT_RADIUS = 10;
-	/** Placeholder HSL for textured faces (matches SceneUploader convention). */
+
 	private static final int TEXTURED_FACE_HSL = 90;
 
 	private final SelectionHandler onBoxSelected;
@@ -98,12 +88,8 @@ class ViewportPanel extends JPanel
 
 	private String emptyMessage = "No model snapshot. Log in and press Refresh.";
 	private ModelSnapshot snapshot;
-	private int pieceFilter = -1; // -1 = all pieces
+	private int pieceFilter = -1;
 
-	/**
-	 * Scrubber pose: replacement vertex positions sharing the snapshot's
-	 * topology, or null to show the snapshot's own pose.
-	 */
 	private float[] overrideX;
 	private float[] overrideY;
 	private float[] overrideZ;
@@ -112,11 +98,9 @@ class ViewportPanel extends JPanel
 	private double pitch = 0.25;
 	private double zoom = 1.0;
 
-	// Fit computed from the visible vertex set
 	private float centerX, centerY, centerZ;
 	private float fitRadius = 1;
 
-	// Per-vertex projection cache, rebuilt each paint, used for hit testing
 	private int[] screenX;
 	private int[] screenY;
 	private float[] viewDepth;
@@ -136,7 +120,6 @@ class ViewportPanel extends JPanel
 	private int lastDragX, lastDragY;
 	private boolean dragged;
 
-	// Rubber-band box selection state (shift+drag adds, ctrl+drag removes)
 	private boolean boxSelecting;
 	private boolean boxRemove;
 	private int boxStartX, boxStartY, boxEndX, boxEndY;
@@ -387,15 +370,9 @@ class ViewportPanel extends JPanel
 		repaint();
 	}
 
-	/**
-	 * Show a different pose of the same topology (the animation scrubber);
-	 * null restores the snapshot's own pose. Length-mismatched arrays are
-	 * ignored rather than risking out-of-bounds projection.
-	 */
 	void setPositionOverride(float[] xs, float[] ys, float[] zs)
 	{
-		// Live model arrays are backing buffers that may run longer than the
-		// vertex count; only reject arrays too SHORT to project safely
+
 		if (snapshot != null && xs != null && xs.length < snapshot.getVertexCount())
 		{
 			return;
@@ -406,9 +383,6 @@ class ViewportPanel extends JPanel
 		repaint();
 	}
 
-	/**
-	 * Recompute the view center and fit radius from the visible vertices.
-	 */
 	private void fit()
 	{
 		if (snapshot == null)
@@ -562,9 +536,6 @@ class ViewportPanel extends JPanel
 		return best;
 	}
 
-	/**
-	 * Front-most projected triangle under the cursor (highest viewDepth wins).
-	 */
 	private int findFaceAt(int x, int y)
 	{
 		if (snapshot == null)
@@ -681,7 +652,6 @@ class ViewportPanel extends JPanel
 			drawMarkedVertex(g2, hoverVertex, COLOR_HOVER, true);
 		}
 
-		// Rubber-band box
 		if (boxSelecting)
 		{
 			int x0 = Math.min(boxStartX, boxEndX);
@@ -695,7 +665,6 @@ class ViewportPanel extends JPanel
 			g2.drawRect(x0, y0, w, h);
 		}
 
-		// Status line
 		g2.setColor(COLOR_TEXT);
 		g2.setFont(g2.getFont().deriveFont(Font.PLAIN, 12f));
 		int emitterCount = selectedVertices.size() + selectedFaces.size();
@@ -801,10 +770,6 @@ class ViewportPanel extends JPanel
 		}
 	}
 
-	/**
-	 * Resolves ARGB for the three corners of a face. Prefers unlit recolour
-	 * when available; otherwise uses per-corner lit HSL (flat when color3 is -1).
-	 */
 	private boolean resolveFaceCornerColors(int face, int[] outArgb)
 	{
 		int alpha = faceAlpha(face);
@@ -859,7 +824,7 @@ class ViewportPanel extends JPanel
 			return 255;
 		}
 		int alpha = 255 - (transparencies[face] & 0xFF);
-		// Preview uses opaque fills; only fully invisible faces are skipped
+
 		return alpha <= 0 ? 0 : 255;
 	}
 
@@ -885,7 +850,7 @@ class ViewportPanel extends JPanel
 		{
 			return;
 		}
-		// OSRS meshes mix triangle winding; flip so rasterization covers both
+
 		if (area < 0)
 		{
 			int sx = x1; x1 = x2; x2 = sx;

@@ -16,24 +16,18 @@ import rs117.hd.particles.effector.ActiveEffectorState;
 import rs117.hd.particles.effector.EffectorApplier;
 import rs117.hd.particles.effector.EffectorDefinitionManager;
 
-/**
- * Holds and integrates live particles. Dead particles are recycled through a
- * pool, and removal is swap-with-last, so steady-state updates allocate
- * nothing. Particle order is not meaningful. All access is on the client
- * thread.
- */
 public class ParticleSystem
 {
-	// Backstop only; the real budget is the maxParticles config, enforced at emission
+
 	private static final int MAX_PARTICLES = 8192;
-	/** Default spawn height above the local tile (scene units). */
+
 	static final float WEATHER_SPAWN_ABOVE_GROUND = 1600f;
-	/** Minimum height above the camera when hiding spawn from view. */
+
 	static final float WEATHER_SPAWN_ABOVE_CAMERA = 900f;
-	/** Hard limits on spawn altitude above the tile. */
+
 	static final float WEATHER_SPAWN_MIN_ABOVE_GROUND = 960f;
 	static final float WEATHER_SPAWN_MAX_ABOVE_GROUND = 2200f;
-	/** Fade begins this far above the tile; fully gone at {@link #WEATHER_GROUND_FADE_END}. */
+
 	static final float WEATHER_GROUND_FADE_HEIGHT = 448f;
 	static final float WEATHER_GROUND_FADE_END = 64f;
 
@@ -82,9 +76,6 @@ public class ParticleSystem
 		return p;
 	}
 
-	/**
-	 * Remove weather particles that have reached the local tile surface.
-	 */
 	void clipGround(int worldView, Client client, Consumer<Particle> onDeath)
 	{
 		WorldView wv = client.getWorldView(worldView);
@@ -112,7 +103,7 @@ public class ParticleSystem
 			float above = ground - p.getZ();
 			float fade = weatherGroundFade(above);
 			p.setGroundProximityFade(fade);
-			// Despawn once fully faded, well before the tile surface.
+
 			if (fade <= 0f)
 			{
 				onDeath.accept(p);
@@ -124,7 +115,6 @@ public class ParticleSystem
 		}
 	}
 
-	/** 1 = fully visible; eases to 0 over the last stretch above the tile. */
 	private static float weatherGroundFade(float aboveGround)
 	{
 		if (aboveGround >= WEATHER_GROUND_FADE_HEIGHT)

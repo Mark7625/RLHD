@@ -3,10 +3,6 @@ package rs117.hd.particles;
 import lombok.Getter;
 import lombok.Setter;
 
-/**
- * Reusable particle look-and-motion settings. Emitters reference a definition
- * by id; placement and gating stay on {@link EmitterProfile}.
- */
 @Getter
 @Setter
 class ParticleDefinition
@@ -37,18 +33,15 @@ class ParticleDefinition
 	private int flipbookColumns = 0;
 	private int flipbookRows = 0;
 	private String flipbookMode = null;
-	/** Billboard spin in radians per second (0 = none). */
+
 	private float rotationSpeed = 0f;
-	/** Tint by scene ambient colour instead of self-lit glow. */
+
 	private boolean useEnvironmentLight = false;
-	/**
-	 * When true, colour shifts uniformly over life (Color over life). When false,
-	 * each particle picks a random colour between Color and End color at spawn.
-	 */
+
 	private boolean uniformColorVariation = true;
-	/** Size at spawn as % of base ({@link #size}). */
+
 	private int scaleStartPercent = 100;
-	/** Size at death as % of base. */
+
 	private int scaleEndPercent = 100;
 
 	ParticleDefinition()
