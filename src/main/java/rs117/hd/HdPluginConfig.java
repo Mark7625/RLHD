@@ -1113,24 +1113,32 @@ public interface HdPluginConfig extends Config
 	)
 	String particleSettings = "particleSettings";
 
-	enum ParticleDensity
+	enum ParticleAmount
 	{
-		NORMAL("Normal", 1f),
-		LOW("Low", 0.66f),
-		VERY_LOW("Very low", 0.33f);
+		LOW("Low", 0.4f, 2048),
+		MID("Mid", 0.7f, 3072),
+		HIGH("High", 1f, 4096),
+		ULTRA("Ultra", 1.35f, 6144);
 
 		private final String label;
-		private final float factor;
+		private final float densityScale;
+		private final int maxParticles;
 
-		ParticleDensity(String label, float factor)
+		ParticleAmount(String label, float densityScale, int maxParticles)
 		{
 			this.label = label;
-			this.factor = factor;
+			this.densityScale = densityScale;
+			this.maxParticles = maxParticles;
 		}
 
-		public float getFactor()
+		public float getDensityScale()
 		{
-			return factor;
+			return densityScale;
+		}
+
+		public int getMaxParticles()
+		{
+			return maxParticles;
 		}
 
 		@Override
@@ -1142,9 +1150,9 @@ public interface HdPluginConfig extends Config
 
 	enum ParticleApplyTo
 	{
-		EVERYONE("Everyone"),
-		FRIENDS("Friends"),
-		ME("Me");
+		ALL("All"),
+		ONLY_ME("Only me"),
+		NONE("None");
 
 		private final String label;
 
@@ -1161,77 +1169,79 @@ public interface HdPluginConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "particleHideSidePanel",
-		name = "Hide side panel",
-		description = "Hides the particles sidebar icon.",
-		position = 0,
-		section = particleSettings
-	)
-	default boolean particleHideSidePanel()
-	{
-		return false;
-	}
-
-	@ConfigItem(
 		keyName = "particleApplyTo",
-		name = "Apply to",
-		description = "Which players get particles: everyone, you and your friends, or only you.",
-		position = 1,
+		name = "Players",
+		description = "Which players get particles: all players, only you, or none.",
+		position = 0,
 		section = particleSettings
 	)
 	default ParticleApplyTo particleApplyTo()
 	{
-		return ParticleApplyTo.EVERYONE;
+		return ParticleApplyTo.ALL;
 	}
 
 	@ConfigItem(
-		keyName = "particleDensity",
-		name = "Particle density",
-		description = "Scales every preset's emission rate; lower for calmer effects or more FPS.",
+		keyName = "particleObjectsEnabled",
+		name = "Objects",
+		description = "Enable particle effects on scenery and objects.",
+		position = 1,
+		section = particleSettings
+	)
+	default boolean particleObjectsEnabled()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "particleNpcsEnabled",
+		name = "NPCs",
+		description = "Enable particle effects on NPCs.",
 		position = 2,
 		section = particleSettings
 	)
-	default ParticleDensity particleDensity()
+	default boolean particleNpcsEnabled()
 	{
-		return ParticleDensity.NORMAL;
+		return true;
 	}
 
 	@ConfigItem(
-		keyName = "particleFullSelfDensity",
-		name = "Full density for me",
-		description = "Keep your own character at full density even when particle density is lowered.",
+		keyName = "particleGraphicsEnabled",
+		name = "Graphics",
+		description = "Enable particle effects on graphics and spot anims.",
 		position = 3,
 		section = particleSettings
 	)
-	default boolean particleFullSelfDensity()
+	default boolean particleGraphicsEnabled()
 	{
-		return false;
+		return true;
 	}
 
-	@Range(min = 2, max = 64)
 	@ConfigItem(
-		keyName = "particleEffectRadius",
-		name = "Effect radius",
-		description = "Only players within this many tiles of you emit particles.",
+		keyName = "particleWeatherEnabled",
+		name = "Weather",
+		description = "Enable weather particle effects.",
 		position = 4,
 		section = particleSettings
 	)
-	default int particleEffectRadius()
+	default boolean particleWeatherEnabled()
 	{
-		return 32;
+		return true;
 	}
 
-	@Range(min = 128, max = 8192)
 	@ConfigItem(
-		keyName = "particleMaxParticles",
-		name = "Max live particles",
-		description = "Total particle budget across all emitters; higher values cost FPS.",
+		keyName = "particleAmount",
+		name = "Particle amount",
+		description = "How many particles are allowed at once.<br>" +
+			"Low: 2,048<br>" +
+			"Mid: 3,072<br>" +
+			"High: 4,096<br>" +
+			"Ultra: 6,144",
 		position = 5,
 		section = particleSettings
 	)
-	default int particleMaxParticles()
+	default ParticleAmount particleAmount()
 	{
-		return 4096;
+		return ParticleAmount.HIGH;
 	}
 
 

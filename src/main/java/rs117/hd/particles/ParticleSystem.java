@@ -76,6 +76,50 @@ public class ParticleSystem
 		return p;
 	}
 
+	/**
+	 * Ensures room under {@code budget} for a spawn near ({@code spawnX}, {@code spawnY}).
+	 * When full, evicts the farthest particle from the reference point if the spawn is closer.
+	 */
+	boolean ensureCapacity(int budget, float spawnX, float spawnY, float refX, float refY,
+		Consumer<Particle> onDeath)
+	{
+		if (particles.size() < budget)
+		{
+			return true;
+		}
+		int farthestIdx = -1;
+		float farthestDistSq = -1f;
+		for (int i = 0; i < particles.size(); i++)
+		{
+			Particle p = particles.get(i);
+			float dx = p.getX() - refX;
+			float dy = p.getY() - refY;
+			float distSq = dx * dx + dy * dy;
+			if (distSq > farthestDistSq)
+			{
+				farthestDistSq = distSq;
+				farthestIdx = i;
+			}
+		}
+		if (farthestIdx < 0)
+		{
+			return false;
+		}
+		float sdx = spawnX - refX;
+		float sdy = spawnY - refY;
+		if (sdx * sdx + sdy * sdy >= farthestDistSq)
+		{
+			return false;
+		}
+		Particle removed = particles.get(farthestIdx);
+		onDeath.accept(removed);
+		int last = particles.size() - 1;
+		particles.set(farthestIdx, particles.get(last));
+		particles.remove(last);
+		pool.addFirst(removed);
+		return true;
+	}
+
 	void clipGround(int worldView, Client client, Consumer<Particle> onDeath)
 	{
 		WorldView wv = client.getWorldView(worldView);
@@ -171,5 +215,22 @@ public class ParticleSystem
 			pool.addFirst(p);
 		}
 		particles.clear();
+	}
+
+	void removeByTargetType(String targetType, Consumer<Particle> onDeath)
+	{
+		for (int i = particles.size() - 1; i >= 0; i--)
+		{
+			Particle p = particles.get(i);
+			if (!targetType.equals(p.getStyle().getTargetType()))
+			{
+				continue;
+			}
+			onDeath.accept(p);
+			int last = particles.size() - 1;
+			particles.set(i, particles.get(last));
+			particles.remove(last);
+			pool.addFirst(p);
+		}
 	}
 }

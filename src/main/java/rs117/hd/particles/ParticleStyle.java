@@ -76,6 +76,7 @@ public class ParticleStyle
 	private final boolean uniformColorVariation;
 	private final float scaleStartMul;
 	private final float scaleEndMul;
+	private final String targetType;
 
 	ParticleStyle(ModelData[][] templates, int[][] litColors1, int[][] litColors2, int[][] litColors3,
 		ParticleDefinition definition, EmitterProfile emitter)
@@ -125,6 +126,8 @@ public class ParticleStyle
 		this.uniformColorVariation = definition.isUniformColorVariation();
 		this.scaleStartMul = Math.max(0, definition.getScaleStartPercent()) / 100f;
 		this.scaleEndMul = Math.max(0, definition.getScaleEndPercent()) / 100f;
+		String type = emitter.getTargetType();
+		this.targetType = type == null || type.isEmpty() ? EmitterProfile.TARGET_PLAYER : type;
 	}
 
 	boolean hasFlipbook()

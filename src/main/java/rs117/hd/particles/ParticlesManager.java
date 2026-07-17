@@ -101,6 +101,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 {
 
 	static final int MAX_DRAWN_PARTICLES = 2048;
+	private static final int EFFECT_RADIUS_TILES = 32;
 
 	private static class ActiveEmitter
 	{
@@ -460,6 +461,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	{
 	};
 
+	private int particleBudget = HdPluginConfig.ParticleAmount.HIGH.getMaxParticles();
+	private float densityScale = HdPluginConfig.ParticleAmount.HIGH.getDensityScale();
+	private float budgetRefX;
+	private float budgetRefY;
+
 	private long lastNanos;
 	private int lastLevel = -1;
 
@@ -507,13 +513,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		statsWindowStart = lastNanos;
 		stylesRevision = -1;
 		playerEmitters.clear();
-
-		if ("true".equals(configManager.getConfiguration(HdPluginConfig.CONFIG_GROUP, "justMe"))
-			&& configManager.getConfiguration(HdPluginConfig.CONFIG_GROUP, "particleApplyTo") == null)
-		{
-			configManager.setConfiguration(HdPluginConfig.CONFIG_GROUP, "particleApplyTo", HdPluginConfig.ParticleApplyTo.ME);
-		}
-		configManager.unsetConfiguration(HdPluginConfig.CONFIG_GROUP, "justMe");
 
 		renderer = new ParticleRenderer(client);
 		store = new EmitterStore(configManager, gson, developerMode, gamevalManager);
@@ -594,7 +593,40 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
+		if (!HdPluginConfig.CONFIG_GROUP.equals(event.getGroup()))
+		{
+			return;
+		}
+		String targetType = clearTargetForConfig(event.getKey(), event.getNewValue());
+		if (targetType != null)
+		{
+			clientThread.invoke(() -> particleSystem.removeByTargetType(targetType, deathStats));
+		}
+	}
 
+	@Nullable
+	private static String clearTargetForConfig(String key, String newValue)
+	{
+		if (key == null || newValue == null)
+		{
+			return null;
+		}
+		switch (key)
+		{
+			case "particleObjectsEnabled":
+				return "false".equals(newValue) ? EmitterProfile.TARGET_OBJECT : null;
+			case "particleNpcsEnabled":
+				return "false".equals(newValue) ? EmitterProfile.TARGET_NPC : null;
+			case "particleGraphicsEnabled":
+				return "false".equals(newValue) ? EmitterProfile.TARGET_GRAPHIC : null;
+			case "particleWeatherEnabled":
+				return "false".equals(newValue) ? EmitterProfile.TARGET_WEATHER : null;
+			case "particleApplyTo":
+				return "NONE".equals(newValue) || "ONLY_ME".equals(newValue)
+					? EmitterProfile.TARGET_PLAYER : null;
+			default:
+				return null;
+		}
 	}
 
 	@Subscribe
@@ -917,8 +949,14 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			? tileKey(localClaimTarget) : Long.MIN_VALUE;
 
 		HdPluginConfig.ParticleApplyTo applyTo = config.particleApplyTo();
-		int radiusUnits = config.particleEffectRadius() * 128;
+		boolean graphicsEnabled = config.particleGraphicsEnabled();
+		HdPluginConfig.ParticleAmount amount = config.particleAmount();
+		particleBudget = amount.getMaxParticles();
+		densityScale = amount.getDensityScale();
+		int radiusUnits = EFFECT_RADIUS_TILES * 128;
 		LocalPoint localLp = localPlayer.getLocalLocation();
+		budgetRefX = localLp.getX();
+		budgetRefY = localLp.getY();
 
 		for (Player player : client.getTopLevelWorldView().players())
 		{
@@ -932,12 +970,11 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				continue;
 			}
 			boolean drawn;
-			if (player != localPlayer
-				&& (applyTo == HdPluginConfig.ParticleApplyTo.ME
-					|| (applyTo == HdPluginConfig.ParticleApplyTo.FRIENDS && !player.isFriend())
-					|| player.getLocalLocation().distanceTo(localLp) > radiusUnits))
+			if (applyTo == HdPluginConfig.ParticleApplyTo.NONE
+				|| (player != localPlayer
+					&& (applyTo == HdPluginConfig.ParticleApplyTo.ONLY_ME
+						|| player.getLocalLocation().distanceTo(localLp) > radiusUnits)))
 			{
-
 				drawn = false;
 			}
 			else if (player.getWorldLocation().getPlane() != level)
@@ -978,13 +1015,22 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				{
 					emitter.carry = 0;
 				}
+				if (graphicsEnabled
+					&& player.getWorldLocation().getPlane() == level
+					&& (player == localPlayer || player.getLocalLocation().distanceTo(localLp) <= radiusUnits))
+				{
+					emitActorSpotAnims(dt, pe, player);
+				}
 				continue;
 			}
 
 			resolvePlayer(pe, player);
 			updateAnchors(pe, player, markers);
 			emit(dt, pe, player);
-			emitActorSpotAnims(dt, pe, player);
+			if (graphicsEnabled)
+			{
+				emitActorSpotAnims(dt, pe, player);
+			}
 		}
 		Iterator<PlayerEmitters> peIt = playerEmitters.values().iterator();
 		while (peIt.hasNext())
@@ -1013,11 +1059,23 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			pollGraphicSightings();
 		}
 
-		processObjects(dt, level, radiusUnits, localLp);
-		processNpcs(dt, level, radiusUnits, localLp);
-		emitGraphicsObjects(dt, level, radiusUnits, localLp);
+		if (config.particleObjectsEnabled())
+		{
+			processObjects(dt, level, radiusUnits, localLp);
+		}
+		if (config.particleNpcsEnabled() || graphicsEnabled)
+		{
+			processNpcs(dt, level, radiusUnits, localLp, config.particleNpcsEnabled(), graphicsEnabled);
+		}
+		if (graphicsEnabled)
+		{
+			emitGraphicsObjects(dt, level, radiusUnits, localLp);
+		}
 		emitProjectiles(dt);
-		processWeather(dt);
+		if (config.particleWeatherEnabled())
+		{
+			processWeather(dt);
+		}
 		frameTimer.begin(Timer.UPDATE_PARTICLES);
 		long cpuStart = System.nanoTime();
 		try
@@ -1045,7 +1103,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 
 		statAlive = particleSystem.getParticles().size();
-		statMax = config.particleMaxParticles();
+		statMax = particleBudget;
 		statVisibleEmitters = countVisibleEmitters();
 		updateStats(now);
 	}
@@ -1216,19 +1274,18 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 
 		String scoped = "";
-		if (winner != localPlayer)
+		HdPluginConfig.ParticleApplyTo applyTo = config.particleApplyTo();
+		if (applyTo == HdPluginConfig.ParticleApplyTo.NONE
+			|| (winner != localPlayer && applyTo == HdPluginConfig.ParticleApplyTo.ONLY_ME))
 		{
-			HdPluginConfig.ParticleApplyTo applyTo = config.particleApplyTo();
-			if (applyTo == HdPluginConfig.ParticleApplyTo.ME
-				|| (applyTo == HdPluginConfig.ParticleApplyTo.FRIENDS && !winner.isFriend()))
-			{
-				scoped = " SCOPED-OUT(" + applyTo + ")";
-			}
-			else if (localPlayer != null && winner.getLocalLocation()
-				.distanceTo(localPlayer.getLocalLocation()) > config.particleEffectRadius() * 128)
-			{
-				scoped = " SCOPED-OUT(radius " + config.particleEffectRadius() + ")";
-			}
+			scoped = " SCOPED-OUT(" + applyTo + ")";
+		}
+		else if (winner != localPlayer
+			&& localPlayer != null
+			&& winner.getLocalLocation()
+				.distanceTo(localPlayer.getLocalLocation()) > EFFECT_RADIUS_TILES * 128)
+		{
+			scoped = " SCOPED-OUT(radius " + EFFECT_RADIUS_TILES + ")";
 		}
 
 		PlayerEmitters winnerPe = playerEmitters.get(winner);
@@ -2016,12 +2073,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 		boolean moving = poseAnimation == player.getRunAnimation() || poseAnimation == player.getWalkAnimation();
 
-		int budget = config.particleMaxParticles();
-		float densityScale = config.particleDensity().getFactor();
-		if (isLocal && densityScale < 1f && config.particleFullSelfDensity())
-		{
-			densityScale = 1f;
-		}
+		int budget = particleBudget;
 		for (ActiveEmitter emitter : pe.emitters)
 		{
 			if (!emitter.hasEmitSites())
@@ -2052,10 +2104,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				&& emitter.featherReady;
 			for (int i = 0; i < count; i++)
 			{
-				if (particleSystem.getParticles().size() >= budget)
-				{
-					return;
-				}
 				if (feathered)
 				{
 					spawnFeathered(pe, emitter, lifeScale);
@@ -2088,11 +2136,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				pe.trailCarry[a] = owed - n;
 				for (int i = 0; i < n; i++)
 				{
-					if (particleSystem.getParticles().size() >= budget)
-					{
-						return;
-					}
-
 					spawnParticle(pe, emitter, a, (i + random.nextFloat()) / n, lifeScale);
 				}
 			}
@@ -2274,8 +2317,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	{
 		projectileStamp++;
 		long nowMs = System.currentTimeMillis();
-		int budget = config.particleMaxParticles();
-		float densityScale = config.particleDensity().getFactor();
+		int budget = particleBudget;
 
 		for (Projectile projectile : client.getProjectiles())
 		{
@@ -2322,10 +2364,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				carries[0] -= count;
 				for (int i = 0; i < count; i++)
 				{
-					if (particleSystem.getParticles().size() >= budget)
-					{
-						return;
-					}
 					float t = segment ? random.nextFloat() : 1f;
 					spawnAt(profile.styleSet.pick(random), px + (x - px) * t, py + (y - py) * t, pz + (z - pz) * t, 1f);
 				}
@@ -2337,10 +2375,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 					carries[1] = owed - n;
 					for (int i = 0; i < n; i++)
 					{
-						if (particleSystem.getParticles().size() >= budget)
-						{
-							return;
-						}
 						float t = (i + random.nextFloat()) / n;
 						spawnAt(profile.styleSet.pick(random), px + (x - px) * t, py + (y - py) * t, pz + (z - pz) * t, 1f);
 					}
@@ -2472,9 +2506,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			sizeScale = jitteredBase / (float) base;
 		}
 
-		Particle p = particleSystem.spawn(x, y, z, velX, velY, velZ,
-			style.getLifetimeSec() * lifeScale, style, sizeVariant, sizeScale, wobblePhase, wobbleFreq, spread,
-			flipbookFrameFor(style));
+		Particle p = null;
+		if (particleSystem.ensureCapacity(particleBudget, x, y, budgetRefX, budgetRefY, deathStats))
+		{
+			p = particleSystem.spawn(x, y, z, velX, velY, velZ,
+				style.getLifetimeSec() * lifeScale, style, sizeVariant, sizeScale, wobblePhase, wobbleFreq, spread,
+				flipbookFrameFor(style));
+		}
 		if (p != null)
 		{
 			finalizeSpawn(p, style);
@@ -2938,8 +2976,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			}
 			return;
 		}
-		int budget = config.particleMaxParticles();
-		float densityScale = config.particleDensity().getFactor();
+		int budget = particleBudget;
 		for (ActiveEmitter emitter : oe.emitters)
 		{
 			if (!emitter.hasEmitSites())
@@ -2961,10 +2998,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				&& emitter.featherReady;
 			for (int i = 0; i < count; i++)
 			{
-				if (particleSystem.getParticles().size() >= budget)
-				{
-					return;
-				}
 				if (feathered)
 				{
 					spawnFeatheredStatic(oe.anchorXs, oe.anchorYs, oe.anchorZs, emitter, true);
@@ -3306,8 +3339,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		SceneContext ctx = hdPlugin.getSceneContext();
 		WorldPoint playerLoc = localPlayer.getWorldLocation();
 
-		int budget = config.particleMaxParticles();
-		float densityScale = config.particleDensity().getFactor();
+		int budget = particleBudget;
 		float weatherBudget = budget * 0.75f;
 
 		float sumDesired = 0f;
@@ -3350,10 +3382,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 
 			for (int i = 0; i < toSpawn; i++)
 			{
-				if (particleSystem.getParticles().size() >= budget)
-				{
-					return;
-				}
 				int wx = cx;
 				int wy = cy;
 				boolean found = false;
@@ -3378,7 +3406,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				int worldPlane = zone.aabb.hasZ()
 					? Math.max(0, Math.min(2, zone.aabb.minZ))
 					: plane;
-				spawnWeatherAtWorld(zone, wx, wy, worldPlane, budget);
+				spawnWeatherAtWorld(zone, wx, wy, worldPlane);
 			}
 		}
 	}
@@ -3392,7 +3420,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		return ctx != null && ctx.intersects(zone.aabb);
 	}
 
-	private void spawnWeatherAtWorld(ActiveWeatherZone zone, int wx, int wy, int worldPlane, int budget)
+	private void spawnWeatherAtWorld(ActiveWeatherZone zone, int wx, int wy, int worldPlane)
 	{
 		LocalPoint lp = LocalPoint.fromWorld(client.getTopLevelWorldView(), wx, wy);
 		if (lp == null)
@@ -3400,10 +3428,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			lp = LocalPoint.fromWorld(client, new WorldPoint(wx, wy, worldPlane));
 		}
 		if (lp == null)
-		{
-			return;
-		}
-		if (particleSystem.getParticles().size() >= budget)
 		{
 			return;
 		}
@@ -3540,9 +3564,13 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			sizeScale = jitteredBase / (float) base;
 		}
 
-		Particle p = particleSystem.spawn(x, y, z, velX, velY, velZ,
-			style.getLifetimeSec(), style, sizeVariant, sizeScale, wobblePhase, wobbleFreq, spread,
-			flipbookFrameFor(style), true, worldPlane);
+		Particle p = null;
+		if (particleSystem.ensureCapacity(particleBudget, x, y, budgetRefX, budgetRefY, deathStats))
+		{
+			p = particleSystem.spawn(x, y, z, velX, velY, velZ,
+				style.getLifetimeSec(), style, sizeVariant, sizeScale, wobblePhase, wobbleFreq, spread,
+				flipbookFrameFor(style), true, worldPlane);
+		}
 		if (p != null)
 		{
 			p.setEffectorLists(zone.globalEffectors, zone.localEffectorFilter, zone.embeddedEffectors);
@@ -3632,7 +3660,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 	}
 
 	private boolean spawnGraphicBatch(GraphicEmitter ge, @Nullable Model model, int count,
-		float baseX, float baseY, float baseZ, int sin, int cos, int budget, double[] carries, int gi)
+		float baseX, float baseY, float baseZ, int sin, int cos, double[] carries, int gi)
 	{
 		ParticleStyle style = ge.style;
 		float ox = baseX + style.getOffsetX();
@@ -3642,10 +3670,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			for (int i = 0; i < count; i++)
 			{
-				if (particleSystem.getParticles().size() >= budget)
-				{
-					return false;
-				}
 				spawnAt(ge.styleSet.pick(random), ox, oy, oz, 1f);
 			}
 			return true;
@@ -3660,10 +3684,6 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		ActiveEmitter filled = null;
 		for (int i = 0; i < count; i++)
 		{
-			if (particleSystem.getParticles().size() >= budget)
-			{
-				return false;
-			}
 			ActiveEmitter emitter = ge.resolved.size() == 1
 				? ge.resolved.get(0)
 				: ge.resolved.get(random.nextInt(ge.resolved.size()));
@@ -3824,7 +3844,8 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		}
 	}
 
-	private void processNpcs(float dt, int level, int radiusUnits, LocalPoint localLp)
+	private void processNpcs(float dt, int level, int radiusUnits, LocalPoint localLp,
+		boolean npcParticlesEnabled, boolean graphicsEnabled)
 	{
 		if (npcEmitters.isEmpty())
 		{
@@ -3849,14 +3870,29 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				}
 				continue;
 			}
-			if (pe.revision != revision || pe.equipmentIds == null
-				|| pe.equipmentIds[0] != npc.getId())
+			if (npcParticlesEnabled)
 			{
-				resolveNpc(pe, npc, revision);
+				if (pe.revision != revision || pe.equipmentIds == null
+					|| pe.equipmentIds[0] != npc.getId())
+				{
+					resolveNpc(pe, npc, revision);
+				}
+				updateAnchors(pe, npc, markers);
+				emit(dt, pe, npc);
 			}
-			updateAnchors(pe, npc, markers);
-			emit(dt, pe, npc);
-			emitActorSpotAnims(dt, pe, npc);
+			else
+			{
+				pe.anchorCount = 0;
+				pe.prevCount = 0;
+				for (ActiveEmitter emitter : pe.emitters)
+				{
+					emitter.carry = 0;
+				}
+			}
+			if (graphicsEnabled)
+			{
+				emitActorSpotAnims(dt, pe, npc);
+			}
 		}
 	}
 
@@ -3911,8 +3947,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 		{
 			return;
 		}
-		int budget = config.particleMaxParticles();
-		float densityScale = config.particleDensity().getFactor();
+		int budget = particleBudget;
 		LocalPoint lp = actor.getLocalLocation();
 
 		int orientation = actor.getCurrentOrientation();
@@ -3968,10 +4003,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 						- actor.getAnimationHeightOffset();
 				}
 				float z = actorBase - spotAnim.getHeight();
-				if (!spawnGraphicBatch(ge, model, count, lp.getX(), lp.getY(), z, sin, cos,
-					budget, carries, gi))
+				if (count > 0)
 				{
-					return;
+					spawnGraphicBatch(ge, model, count, lp.getX(), lp.getY(), z, sin, cos,
+						carries, gi);
 				}
 			}
 		}
@@ -3988,8 +4023,7 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 			return;
 		}
 		liveGraphics.clear();
-		int budget = config.particleMaxParticles();
-		float densityScale = config.particleDensity().getFactor();
+		int budget = particleBudget;
 		for (GraphicsObject graphic : client.getTopLevelWorldView().getGraphicsObjects())
 		{
 			if (graphic.finished())
@@ -4026,10 +4060,10 @@ public class ParticlesManager implements ModelViewerFrame.Callbacks
 				int count = (int) carries[gi];
 				carries[gi] -= count;
 
-				if (count > 0 && !spawnGraphicBatch(ge, model, count, lp.getX(), lp.getY(),
-					graphic.getZ(), 0, 65536, budget, carries, gi))
+				if (count > 0)
 				{
-					return;
+					spawnGraphicBatch(ge, model, count, lp.getX(), lp.getY(),
+						graphic.getZ(), 0, 65536, carries, gi);
 				}
 			}
 		}

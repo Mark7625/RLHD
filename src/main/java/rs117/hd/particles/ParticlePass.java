@@ -265,11 +265,28 @@ public class ParticlePass implements ScenePass {
 			if (!HDUtils.isSphereIntersectingFrustum(px, py, pz, radius, frustum, frustum.length))
 				continue;
 
-			visibleParticles[count] = p;
-			particleDistSq[count] = distSq;
-			count++;
-			if (count >= MAX_DRAWN)
-				break;
+			if (count < MAX_DRAWN)
+			{
+				visibleParticles[count] = p;
+				particleDistSq[count] = distSq;
+				count++;
+			}
+			else
+			{
+				int farthest = 0;
+				for (int i = 1; i < MAX_DRAWN; i++)
+				{
+					if (particleDistSq[i] > particleDistSq[farthest])
+					{
+						farthest = i;
+					}
+				}
+				if (distSq < particleDistSq[farthest])
+				{
+					visibleParticles[farthest] = p;
+					particleDistSq[farthest] = distSq;
+				}
+			}
 		}
 
 		if (count == 0)
