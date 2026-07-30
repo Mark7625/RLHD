@@ -554,6 +554,9 @@ public class LightManager {
 						}
 					}
 
+					if (light.modelProfileKey != null && !light.modelAnchorValid)
+						hiddenTemporarily = true;
+
 					int tileExX = ((int) light.origin[0] >> LOCAL_COORD_BITS) + sceneContext.sceneOffset;
 					int tileExY = ((int) light.origin[2] >> LOCAL_COORD_BITS) + sceneContext.sceneOffset;
 
@@ -563,7 +566,8 @@ public class LightManager {
 						tileExX < EXTENDED_SCENE_SIZE && tileExY < EXTENDED_SCENE_SIZE &&
 						(tile = tiles[plane][tileExX][tileExY]) != null
 					) {
-						hiddenTemporarily = !isActorLightVisible(light.actor);
+						if (!hiddenTemporarily)
+							hiddenTemporarily = !isActorLightVisible(light.actor);
 
 						if (!light.def.ignoreActorHiding &&
 							!(light.actor instanceof NPC && ((NPC) light.actor).getComposition().getSize() > 1)
@@ -603,6 +607,21 @@ public class LightManager {
 							);
 							float tileHeight = mix(heightSouth, heightNorth, lerpY);
 							light.origin[1] = (int) tileHeight - 1 - light.def.height;
+						}
+					}
+
+					if (light.modelProfileKey != null) {
+						if (light.modelEquipmentItemId >= 0 && light.actor instanceof Player) {
+							Player player = (Player) light.actor;
+							float target = modelLightManager.getModelEquipmentVisibilityTarget(
+								light,
+								player,
+								hiddenTemporarily
+							);
+							modelLightManager.updateModelAnimationVisibility(light, target, plugin.deltaClientTime);
+							hiddenTemporarily = false;
+						} else {
+							applyInstantModelLightVisibility(light, hiddenTemporarily);
 						}
 					}
 				}
@@ -693,6 +712,9 @@ public class LightManager {
 						if (light.dynamicLifetime)
 							light.lifetime = -1;
 					}
+				} else if (light.instantTemporaryVisibility) {
+					light.visible = false;
+					light.changedVisibilityAt = -1;
 				} else if (light.def.despawnWithParent) {
 					light.lifetime = 0;
 				} else if (light.lifetime == -1) {
@@ -702,16 +724,22 @@ public class LightManager {
 				}
 			}
 
-			if (hiddenTemporarily != light.hiddenTemporarily)
-				light.toggleTemporaryVisibility(changedPlanes);
+			if (light.modelProfileKey == null || !light.instantTemporaryVisibility) {
+				if (hiddenTemporarily != light.hiddenTemporarily)
+					light.setHiddenTemporarily(hiddenTemporarily, changedPlanes);
+			}
 
 			light.elapsedTime += plugin.deltaClientTime;
 
 			light.visible = light.spawnDelay <= light.elapsedTime && (light.lifetime == -1 || light.elapsedTime < light.lifetime);
 
 			// If the light is temporarily hidden, keep it visible only while fading out
-			if (light.visible && light.hiddenTemporarily)
-				light.visible = light.changedVisibilityAt != -1 && light.elapsedTime - light.changedVisibilityAt < Light.VISIBILITY_FADE;
+			if (light.visible && light.hiddenTemporarily) {
+				if (light.instantTemporaryVisibility && light.modelEquipmentItemId < 0)
+					light.visible = false;
+				else if (!light.instantTemporaryVisibility)
+					light.visible = light.changedVisibilityAt != -1 && light.elapsedTime - light.changedVisibilityAt < Light.VISIBILITY_FADE;
+			}
 
 			// dayNightOnly lights require the cycle setting; outside overworld they behave as static lights
 			if (light.visible && light.def.dayNightOnly && !plugin.configEnableDayNightCycle)
@@ -762,6 +790,9 @@ public class LightManager {
 					}
 				}
 			}
+
+			if (light.modelEquipmentItemId >= 0 && light.modelAnimationVisibility <= 0f)
+				light.visible = false;
 		}
 
 		// Order visible lights first, then by distance. Leave hidden lights unordered at the end.
@@ -818,16 +849,21 @@ public class LightManager {
 			applyTimeOfDayColor(sceneContext, light);
 
 			// Spawn & despawn fade-in and fade-out
-			if (light.fadeInDuration > 0)
-				light.strength *= saturate((light.elapsedTime - light.spawnDelay) / light.fadeInDuration);
-			if (light.fadeOutDuration > 0 && light.lifetime != -1)
-				light.strength *= saturate((light.lifetime - light.elapsedTime) / light.fadeOutDuration);
+			if (!light.instantTemporaryVisibility) {
+				if (light.fadeInDuration > 0)
+					light.strength *= saturate((light.elapsedTime - light.spawnDelay) / light.fadeInDuration);
+				if (light.fadeOutDuration > 0 && light.lifetime != -1)
+					light.strength *= saturate((light.lifetime - light.elapsedTime) / light.fadeOutDuration);
+			}
 
 			if (overworldDayNightActive) {
 				float phaseFactor = getEffectiveNightFactor(light, nightLightFactor, nightFactorRising);
 				light.strength *= getNightStrengthScale(light.def, phaseFactor, nightLightFactor);
 				light.radius *= getNightRadiusScale(light.def, phaseFactor, nightLightFactor);
 			}
+
+			if (light.modelEquipmentItemId >= 0)
+				light.radius *= light.modelAnimationVisibility;
 
 			light.applyTemporaryVisibilityFade();
 		}
@@ -1188,10 +1224,30 @@ public class LightManager {
 		removeLightIf(sceneContext, predicate);
 	}
 
+	private void applyInstantModelLightVisibility(Light light, boolean hidden) {
+		if (light.modelProfileKey == null || !light.instantTemporaryVisibility)
+			return;
+
+		light.hiddenTemporarily = hidden;
+		light.changedVisibilityAt = -1;
+		if (hidden) {
+			light.visible = false;
+		} else {
+			light.visible = light.spawnDelay <= light.elapsedTime
+				&& (light.lifetime == -1 || light.elapsedTime < light.lifetime);
+		}
+	}
+
 	private void removeLightIf(@Nonnull SceneContext sceneContext, Predicate<Light> predicate) {
-		for (var light : sceneContext.lights)
-			if (predicate.test(light))
-				light.markedForRemoval = true;
+		for (var light : sceneContext.lights) {
+			if (!predicate.test(light))
+				continue;
+			light.markedForRemoval = true;
+			light.hiddenTemporarily = true;
+			light.changedVisibilityAt = -1;
+			light.visible = false;
+			light.lifetime = light.elapsedTime;
+		}
 	}
 
 	private void addSpotanimLights(Actor actor) {

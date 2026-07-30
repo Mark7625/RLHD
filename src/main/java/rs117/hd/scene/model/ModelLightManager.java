@@ -34,6 +34,7 @@ import net.runelite.api.Tile;
 import net.runelite.api.TileObject;
 import net.runelite.api.WallObject;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.kit.KitType;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
 import net.runelite.api.events.GameObjectDespawned;
@@ -85,6 +86,9 @@ public class ModelLightManager {
 
 	@Inject
 	private ClientThread clientThread;
+
+	@Inject
+	private AnimationHandItemCache animationHandItemCache;
 
 	private final List<PlayerState> playerStates = new ArrayList<>();
 	private final Map<TileObject, ObjectLightState> objectLightStates = new HashMap<>();
@@ -151,6 +155,7 @@ public class ModelLightManager {
 		eventBus.unregister(this);
 		store.stopWatching();
 		store.setChangeListener(null);
+		animationHandItemCache.clear();
 		clearStaticObjectSnapshotCache();
 		playerStates.clear();
 		objectLightStates.clear();
@@ -292,6 +297,41 @@ public class ModelLightManager {
 		return ids;
 	}
 
+	public static final float MODEL_ANIM_VISIBILITY_FADE = 0.1f;
+
+	public boolean isPlayerEquipmentLightVisible(Player player, Light light) {
+		if (light.modelEquipmentItemId < 0)
+			return true;
+		return isHandItemVisibleInPlayerAnimation(player, light.modelEquipmentItemId);
+	}
+
+	public float getModelEquipmentVisibilityTarget(Light light, Player player, boolean hiddenTemporarily) {
+		if (!light.modelAnchorValid)
+			return 0f;
+		if (!isPlayerEquipmentLightVisible(player, light))
+			return 0f;
+		if (hiddenTemporarily)
+			return 0f;
+		return 1f;
+	}
+
+	public void updateModelAnimationVisibility(Light light, float target, float deltaTime) {
+		float prev = light.modelAnimationVisibility;
+		float speed = 1f / MODEL_ANIM_VISIBILITY_FADE;
+		float step = deltaTime * speed;
+		if (prev < target)
+			light.modelAnimationVisibility = Math.min(target, prev + step);
+		else if (prev > target)
+			light.modelAnimationVisibility = Math.max(target, prev - step);
+	}
+
+	private void initModelAnimationVisibility(Light light, @Nullable Actor actor) {
+		if (light.modelEquipmentItemId >= 0 && actor instanceof Player) {
+			Player player = (Player) actor;
+			light.modelAnimationVisibility = isPlayerEquipmentLightVisible(player, light) ? 1f : 0f;
+		}
+	}
+
 	private void invalidateAllActors() {
 		rebuildProfiledIds();
 		for (PlayerState state : playerStates)
@@ -408,7 +448,8 @@ public class ModelLightManager {
 						|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
 						continue;
 
-					spawnPieceLights(sceneContext, player, null, profile, entry.getKey(), snapshot, piece, state.lights);
+					int handItemId = handItemIdForProfile(composition, profile.getItemIds());
+					spawnPieceLights(sceneContext, player, null, profile, entry.getKey(), snapshot, piece, state.lights, handItemId);
 				}
 			}
 		} finally {
@@ -470,7 +511,7 @@ public class ModelLightManager {
 						|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
 						continue;
 
-					spawnPieceLights(sceneContext, null, object, profile, entry.getKey(), snapshot, piece, state.lights);
+					spawnPieceLights(sceneContext, null, object, profile, entry.getKey(), snapshot, piece, state.lights, -1);
 				}
 			}
 		} finally {
@@ -514,7 +555,7 @@ public class ModelLightManager {
 						|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
 						continue;
 
-					spawnPieceLights(sceneContext, npc, null, profile, entry.getKey(), snapshot, piece, state.lights);
+					spawnPieceLights(sceneContext, npc, null, profile, entry.getKey(), snapshot, piece, state.lights, -1);
 				}
 			}
 		} finally {
@@ -693,13 +734,28 @@ public class ModelLightManager {
 		return null;
 	}
 
+	private static void invalidateModelAnchors(List<Light> lights) {
+		for (Light light : lights) {
+			if (!light.markedForRemoval && light.modelProfileKey != null)
+				light.modelAnchorValid = false;
+		}
+	}
+
+	private static boolean isModelAnchorValid(Light light, int vertexCount) {
+		if (light.modelFaceV0 >= 0)
+			return light.modelFaceV1 < vertexCount && light.modelFaceV2 < vertexCount;
+		return light.modelVertex >= 0 && light.modelVertex < vertexCount;
+	}
+
 	private void updateTileObjectLightPositions(TileObject object, ObjectLightState state, List<Light> lights) {
 		if (isDynamicTileObject(object))
 			state.meshKey = null;
 
 		Model model = objectModel(object);
-		if (model == null)
+		if (model == null) {
+			invalidateModelAnchors(lights);
 			return;
+		}
 
 		updateTileObjectLightPositions(
 			object,
@@ -725,6 +781,13 @@ public class ModelLightManager {
 		for (Light light : lights) {
 			if (light.markedForRemoval || light.modelProfileKey == null)
 				continue;
+
+			if (!isModelAnchorValid(light, vertexCount)) {
+				light.modelAnchorValid = false;
+				continue;
+			}
+
+			light.modelAnchorValid = true;
 
 			float vx, vy, vz;
 			if (light.modelFaceV0 >= 0
@@ -781,7 +844,8 @@ public class ModelLightManager {
 		String profileKey,
 		ModelSnapshot snapshot,
 		ModelSnapshot.Piece piece,
-		List<Light> lights
+		List<Light> lights,
+		int modelEquipmentItemId
 	) {
 		for (var entry : profile.getTriangles().entrySet()) {
 			int localFace = entry.getKey();
@@ -809,6 +873,8 @@ public class ModelLightManager {
 			light.tileObjectId = tileObject != null ? tileObject.getId() : 0;
 			light.modelVertex = -1;
 			light.modelProfileKey = profileKey;
+			light.modelEquipmentItemId = modelEquipmentItemId;
+			light.instantTemporaryVisibility = true;
 			light.modelFaceV0 = v0;
 			light.modelFaceV1 = v1;
 			light.modelFaceV2 = v2;
@@ -819,6 +885,7 @@ public class ModelLightManager {
 			light.modelOffsetY = profile.getOffsetY();
 			light.modelOffsetZ = profile.getOffsetZ();
 			anchorOffsetToTriangle(light, snapshot, v0, v1, v2, anchor);
+			initModelAnimationVisibility(light, actor);
 			sceneContext.lights.add(light);
 			lights.add(light);
 		}
@@ -843,11 +910,14 @@ public class ModelLightManager {
 			light.tileObjectId = tileObject != null ? tileObject.getId() : 0;
 			light.modelVertex = globalVertex;
 			light.modelProfileKey = profileKey;
+			light.modelEquipmentItemId = modelEquipmentItemId;
+			light.instantTemporaryVisibility = true;
 			light.modelOffsetX = profile.getOffsetX();
 			light.modelOffsetY = profile.getOffsetY();
 			light.modelOffsetZ = profile.getOffsetZ();
 			anchorOffsetToFace(light, snapshot, piece, globalVertex);
 			anchorFaceForConeDirection(light, snapshot, piece, globalVertex);
+			initModelAnimationVisibility(light, actor);
 			sceneContext.lights.add(light);
 			lights.add(light);
 		}
@@ -965,8 +1035,10 @@ public class ModelLightManager {
 
 	private void updateVertexPositions(Actor actor, List<Light> lights) {
 		Model model = actor.getModel();
-		if (model == null)
+		if (model == null) {
+			invalidateModelAnchors(lights);
 			return;
+		}
 
 		int vertexCount = model.getVerticesCount();
 		int orientation = actor.getCurrentOrientation();
@@ -984,6 +1056,13 @@ public class ModelLightManager {
 		for (Light light : lights) {
 			if (light.markedForRemoval || light.modelProfileKey == null)
 				continue;
+
+			if (!isModelAnchorValid(light, vertexCount)) {
+				light.modelAnchorValid = false;
+				continue;
+			}
+
+			light.modelAnchorValid = true;
 
 			float vx, vy, vz;
 			float nx = 0, ny = 0, nz = 0;
@@ -1207,13 +1286,70 @@ public class ModelLightManager {
 		return true;
 	}
 
+	private static int handItemIdForProfile(PlayerComposition composition, Set<Integer> itemIds) {
+		int weaponId = composition.getEquipmentId(KitType.WEAPON);
+		int shieldId = composition.getEquipmentId(KitType.SHIELD);
+
+		if (!itemIds.isEmpty()) {
+			for (int itemId : itemIds) {
+				if (itemId == weaponId || itemId == shieldId)
+					return itemId;
+			}
+			return -1;
+		}
+
+		if (weaponId != -1)
+			return weaponId;
+		if (shieldId != -1)
+			return shieldId;
+		return -1;
+	}
+
+	@Nullable
+	private AnimationHandItemCache.Entry getPlayerActiveAnimationHands(Player player) {
+		int animId = player.getAnimation();
+		if (animId == -1)
+			animId = player.getPoseAnimation();
+		return animationHandItemCache.get(animId);
+	}
+
+	private boolean isHandItemVisibleInPlayerAnimation(Player player, int itemId) {
+		PlayerComposition composition = player.getPlayerComposition();
+		if (composition == null)
+			return true;
+
+		int weaponId = composition.getEquipmentId(KitType.WEAPON);
+		int shieldId = composition.getEquipmentId(KitType.SHIELD);
+
+		int animId = player.getAnimation();
+		if (animId == -1) {
+			// Idle / pose — hand items are shown unless pose explicitly hides them
+			animId = player.getPoseAnimation();
+		}
+
+		AnimationHandItemCache.Entry hands = animationHandItemCache.get(animId);
+		if (hands == null)
+			return true;
+
+		if (itemId == weaponId && !AnimationHandItemCache.showsEquippedItem(hands.rightHandItem, weaponId))
+			return false;
+		if (itemId == shieldId && !AnimationHandItemCache.showsEquippedItem(hands.leftHandItem, shieldId))
+			return false;
+		return true;
+	}
+
 	private void removeModelLights(SceneContext sceneContext, PlayerState state) {
 		removeModelLights(sceneContext, state.lights);
 	}
 
 	private void removeModelLights(SceneContext sceneContext, List<Light> lights) {
-		for (Light light : lights)
+		for (Light light : lights) {
 			light.markedForRemoval = true;
+			light.hiddenTemporarily = true;
+			light.changedVisibilityAt = -1;
+			light.visible = false;
+			light.lifetime = light.elapsedTime;
+		}
 		lights.clear();
 	}
 
@@ -1258,6 +1394,8 @@ public class ModelLightManager {
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event) {
+		if (event.getGameState() != GameState.LOGGED_IN)
+			animationHandItemCache.clear();
 		if (event.getGameState() == GameState.LOGGED_IN)
 			invalidateAllActors();
 	}

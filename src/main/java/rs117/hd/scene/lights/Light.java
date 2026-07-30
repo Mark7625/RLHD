@@ -29,6 +29,8 @@ public class Light
 	public boolean parentExists;
 	public boolean withinViewingDistance = true;
 	public boolean hiddenTemporarily;
+	public boolean instantTemporaryVisibility;
+	public boolean modelAnchorValid = true;
 	public boolean markedForRemoval;
 	public boolean persistent;
 	public boolean replayable;
@@ -66,6 +68,8 @@ public class Light
 
 	public int modelVertex = -1;
 	public String modelProfileKey;
+	public int modelEquipmentItemId = -1;
+	public float modelAnimationVisibility = 1f;
 	public float modelOffsetX;
 	public float modelOffsetY;
 	public float modelOffsetZ;
@@ -119,11 +123,19 @@ public class Light
 		}
 	}
 
-	public void toggleTemporaryVisibility(boolean changedPlanes) {
-		hiddenTemporarily = !hiddenTemporarily;
-		// If visibility changes due to something other than changing planes, and the light didn't spawn this frame, fade in or out
-		if (!changedPlanes && elapsedTime > 0) {
-			// Begin fading in or out, while accounting for time already spent fading out or in respectively
+	public void setHiddenTemporarily(boolean hidden, boolean changedPlanes) {
+		hiddenTemporarily = hidden;
+		if (instantTemporaryVisibility) {
+			changedVisibilityAt = -1;
+			if (hidden)
+				visible = false;
+			return;
+		}
+		if (changedPlanes) {
+			changedVisibilityAt = -1;
+			return;
+		}
+		if (elapsedTime > 0) {
 			float beginFadeAt = elapsedTime;
 			if (changedVisibilityAt != -1)
 				beginFadeAt -= max(0, VISIBILITY_FADE - (elapsedTime - changedVisibilityAt));
@@ -131,12 +143,19 @@ public class Light
 		}
 	}
 
+	public void toggleTemporaryVisibility(boolean changedPlanes) {
+		setHiddenTemporarily(!hiddenTemporarily, changedPlanes);
+	}
+
 	public float getTemporaryVisibilityFade() {
+		if (instantTemporaryVisibility && hiddenTemporarily)
+			return 0f;
+
 		float fade = 1;
 		if (changedVisibilityAt != -1)
 			fade = saturate((elapsedTime - changedVisibilityAt) / Light.VISIBILITY_FADE);
 		if (hiddenTemporarily)
-			fade = 1 - fade; // Fade out instead
+			fade = 1 - fade;
 		return fade;
 	}
 
