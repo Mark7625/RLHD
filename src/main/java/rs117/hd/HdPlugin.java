@@ -80,6 +80,7 @@ import org.lwjgl.system.Configuration;
 import rs117.hd.config.ColorFilter;
 import rs117.hd.config.DefaultSkyColor;
 import rs117.hd.config.DynamicLights;
+import rs117.hd.config.EquipmentLights;
 import rs117.hd.config.GroundBlending;
 import rs117.hd.config.SeasonalHemisphere;
 import rs117.hd.config.SeasonalTheme;
@@ -427,6 +428,8 @@ public class HdPlugin extends Plugin {
 	public boolean configLegacyTzHaarReskin;
 	public boolean configProjectileLights;
 	public boolean configNpcLights;
+	public EquipmentLights configEquipmentLights;
+	public boolean configObjectLights;
 	public boolean configHideFakeShadows;
 	public boolean configLegacyGreyColors;
 	public boolean configModelBatching;
@@ -1770,6 +1773,8 @@ public class HdPlugin extends Plugin {
 		configLegacyTzHaarReskin = config.legacyTzHaarReskin();
 		configProjectileLights = config.projectileLights();
 		configNpcLights = config.npcLights();
+		configEquipmentLights = config.equipmentLights();
+		configObjectLights = config.objectLights();
 		configVanillaShadowMode = config.vanillaShadowMode();
 		configHideFakeShadows = configVanillaShadowMode != VanillaShadowMode.SHOW;
 		configLegacyGreyColors = config.legacyGreyColors();
@@ -2004,6 +2009,15 @@ public class HdPlugin extends Plugin {
 							case KEY_UNLOCK_FPS:
 							case KEY_VSYNC_MODE:
 								setupSyncMode();
+								break;
+							case KEY_EQUIPMENT_LIGHTS:
+								lightManager.onEquipmentLightsConfigChanged();
+								break;
+							case KEY_OBJECT_LIGHTS:
+								lightManager.onObjectLightsConfigChanged();
+								break;
+							case KEY_NPC_LIGHTS:
+								lightManager.onNpcLightsConfigChanged();
 								break;
 						}
 					}

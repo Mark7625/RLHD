@@ -223,6 +223,36 @@ public class LightManager {
 		return LIGHTS_BY_DESCRIPTION.get(description);
 	}
 
+	public void onEquipmentLightsConfigChanged() {
+		modelLightManager.onEquipmentLightsConfigChanged();
+	}
+
+	public void onObjectLightsConfigChanged() {
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext != null) {
+			sceneContext.lights.removeIf(light ->
+				light.tileObject != null ||
+				light.graphicsObject != null ||
+				light.spotanimId != -1
+			);
+			if (plugin.configObjectLights)
+				reloadObjectLights(sceneContext);
+		}
+		modelLightManager.onObjectLightsConfigChanged();
+	}
+
+	public void onNpcLightsConfigChanged() {
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext != null) {
+			sceneContext.lights.removeIf(light ->
+				light.actor instanceof NPC && light.spotanimId == -1
+			);
+			if (plugin.configNpcLights)
+				client.getNpcs().forEach(this::addNpcLights);
+		}
+		modelLightManager.onNpcLightsConfigChanged();
+	}
+
 	public synchronized LightDefinition copyDefinitionForEditor(@Nullable String description) {
 		LightDefinition source = description == null ? null : LIGHTS_BY_DESCRIPTION.get(description);
 		if (source == null)
@@ -1165,6 +1195,9 @@ public class LightManager {
 	}
 
 	private void addSpotanimLights(Actor actor) {
+		if (!plugin.configObjectLights)
+			return;
+
 		var sceneContext = plugin.getSceneContext();
 		if (sceneContext == null)
 			return;
@@ -1204,6 +1237,9 @@ public class LightManager {
 
 	private void addNpcLights(NPC npc)
 	{
+		if (!plugin.configNpcLights)
+			return;
+
 		var sceneContext = plugin.getSceneContext();
 		if (sceneContext == null)
 			return;
@@ -1275,6 +1311,9 @@ public class LightManager {
 		@Nonnull SceneContext sceneContext,
 		@Nonnull TileObject tileObject
 	) {
+		if (!plugin.configObjectLights)
+			return;
+
 		// prevent objects at plane -1 and below from having lights
 		if (tileObject.getPlane() < 0)
 			return;
@@ -1557,6 +1596,9 @@ public class LightManager {
 
 	@Subscribe
 	public void onGraphicsObjectCreated(GraphicsObjectCreated graphicsObjectCreated) {
+		if (!plugin.configObjectLights)
+			return;
+
 		SceneContext sceneContext = plugin.getSceneContext();
 		if (sceneContext == null)
 			return;

@@ -53,6 +53,7 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import rs117.hd.HdPlugin;
+import rs117.hd.config.EquipmentLights;
 import rs117.hd.scene.LightManager;
 import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.lights.Light;
@@ -164,6 +165,50 @@ public class ModelLightManager {
 			lightDefinitionsListener.run();
 	}
 
+	public void onEquipmentLightsConfigChanged() {
+		purgeUntrackedPlayers();
+		invalidateAllActors();
+	}
+
+	public void onObjectLightsConfigChanged() {
+		purgeObjectLightStates();
+		if (!shouldShowObjectLights())
+			return;
+
+		clientThread.invokeLater(() -> {
+			var sceneContext = plugin.getSceneContext();
+			if (sceneContext == null)
+				return;
+
+			scanProfiledObjects();
+			for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
+				resolveObjectLights(entry.getValue(), entry.getKey(), sceneContext);
+				updateTileObjectLightPositions(entry.getKey(), entry.getValue(), entry.getValue().lights);
+			}
+		});
+	}
+
+	public void onNpcLightsConfigChanged() {
+		purgeNpcLightStates();
+		if (!shouldShowNpcLights())
+			return;
+
+		clientThread.invokeLater(() -> {
+			var sceneContext = plugin.getSceneContext();
+			if (sceneContext == null)
+				return;
+
+			for (NPC npc : client.getNpcs()) {
+				if (profiledNpcIds.contains(npc.getId()))
+					trackNpc(npc);
+			}
+			for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
+				resolveNpcLights(entry.getValue(), entry.getKey(), sceneContext);
+				updateVertexPositions(entry.getKey(), entry.getValue().lights);
+			}
+		});
+	}
+
 	public List<String> getAvailableLightDescriptions() {
 		return lightManager.getLightDescriptions();
 	}
@@ -177,6 +222,8 @@ public class ModelLightManager {
 		if (client.getGameState() != GameState.LOGGED_IN)
 			return;
 
+		purgeUntrackedPlayers();
+
 		for (PlayerState state : playerStates) {
 			if (state.player == null)
 				continue;
@@ -186,20 +233,28 @@ public class ModelLightManager {
 			updateVertexPositions(state.player, state.lights);
 		}
 
-		for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
-			TileObject object = entry.getKey();
-			ObjectLightState state = entry.getValue();
-			if (state.revision != store.getRevision())
-				resolveObjectLights(state, object, sceneContext);
-			updateTileObjectLightPositions(object, state, state.lights);
+		if (shouldShowObjectLights()) {
+			for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
+				TileObject object = entry.getKey();
+				ObjectLightState state = entry.getValue();
+				if (state.revision != store.getRevision())
+					resolveObjectLights(state, object, sceneContext);
+				updateTileObjectLightPositions(object, state, state.lights);
+			}
+		} else {
+			purgeObjectLightStates();
 		}
 
-		for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
-			NPC npc = entry.getKey();
-			NpcLightState state = entry.getValue();
-			if (state.revision != store.getRevision() || state.npcId != npc.getId())
-				resolveNpcLights(state, npc, sceneContext);
-			updateVertexPositions(npc, state.lights);
+		if (shouldShowNpcLights()) {
+			for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
+				NPC npc = entry.getKey();
+				NpcLightState state = entry.getValue();
+				if (state.revision != store.getRevision() || state.npcId != npc.getId())
+					resolveNpcLights(state, npc, sceneContext);
+				updateVertexPositions(npc, state.lights);
+			}
+		} else {
+			purgeNpcLightStates();
 		}
 	}
 
@@ -252,6 +307,8 @@ public class ModelLightManager {
 				return;
 
 			for (Player player : client.getPlayers()) {
+				if (!shouldShowEquipmentLightsFor(player))
+					continue;
 				trackPlayer(player);
 				for (PlayerState state : playerStates) {
 					if (state.player == player) {
@@ -261,19 +318,23 @@ public class ModelLightManager {
 				}
 			}
 
-			scanProfiledObjects();
-			for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
-				resolveObjectLights(entry.getValue(), entry.getKey(), sceneContext);
-				updateTileObjectLightPositions(entry.getKey(), entry.getValue(), entry.getValue().lights);
+			if (shouldShowObjectLights()) {
+				scanProfiledObjects();
+				for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
+					resolveObjectLights(entry.getValue(), entry.getKey(), sceneContext);
+					updateTileObjectLightPositions(entry.getKey(), entry.getValue(), entry.getValue().lights);
+				}
 			}
 
-			for (NPC npc : client.getNpcs()) {
-				if (profiledNpcIds.contains(npc.getId()))
-					trackNpc(npc);
-			}
-			for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
-				resolveNpcLights(entry.getValue(), entry.getKey(), sceneContext);
-				updateVertexPositions(entry.getKey(), entry.getValue().lights);
+			if (shouldShowNpcLights()) {
+				for (NPC npc : client.getNpcs()) {
+					if (profiledNpcIds.contains(npc.getId()))
+						trackNpc(npc);
+				}
+				for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
+					resolveNpcLights(entry.getValue(), entry.getKey(), sceneContext);
+					updateVertexPositions(entry.getKey(), entry.getValue().lights);
+				}
 			}
 		});
 	}
@@ -290,6 +351,8 @@ public class ModelLightManager {
 	}
 
 	private void trackPlayer(Player player) {
+		if (!shouldShowEquipmentLightsFor(player))
+			return;
 		for (PlayerState state : playerStates) {
 			if (state.player == player)
 				return;
@@ -299,6 +362,12 @@ public class ModelLightManager {
 
 	private void resolvePlayer(PlayerState state, SceneContext sceneContext) {
 		Player player = state.player;
+		if (!shouldShowEquipmentLightsFor(player)) {
+			removeModelLights(sceneContext, state);
+			state.equipmentIds = null;
+			return;
+		}
+
 		PlayerComposition composition = player.getPlayerComposition();
 		if (composition == null) {
 			removeModelLights(sceneContext, state);
@@ -348,6 +417,12 @@ public class ModelLightManager {
 	}
 
 	private void resolveObjectLights(ObjectLightState state, TileObject object, SceneContext sceneContext) {
+		if (!shouldShowObjectLights()) {
+			removeModelLights(sceneContext, state.lights);
+			state.meshKey = null;
+			return;
+		}
+
 		int revision = store.getRevision();
 		if (revision == state.revision)
 			return;
@@ -405,6 +480,11 @@ public class ModelLightManager {
 	}
 
 	private void resolveNpcLights(NpcLightState state, NPC npc, SceneContext sceneContext) {
+		if (!shouldShowNpcLights()) {
+			removeModelLights(sceneContext, state.lights);
+			return;
+		}
+
 		int revision = store.getRevision();
 		if (revision == state.revision && state.npcId == npc.getId())
 			return;
@@ -480,19 +560,19 @@ public class ModelLightManager {
 	}
 
 	private void trackObject(TileObject object) {
-		if (!isProfiledObject(object))
+		if (!shouldShowObjectLights() || !isProfiledObject(object))
 			return;
 		objectLightStates.putIfAbsent(object, new ObjectLightState());
 	}
 
 	private void trackNpc(NPC npc) {
-		if (!profiledNpcIds.contains(npc.getId()))
+		if (!shouldShowNpcLights() || !profiledNpcIds.contains(npc.getId()))
 			return;
 		npcLightStates.putIfAbsent(npc, new NpcLightState());
 	}
 
 	private void scanProfiledObjects() {
-		if (profiledObjectIds.isEmpty())
+		if (!shouldShowObjectLights() || profiledObjectIds.isEmpty())
 			return;
 
 		Scene scene = client.getTopLevelWorldView().getScene();
@@ -1076,6 +1156,57 @@ public class ModelLightManager {
 		updateVertexPositions(state.player, state.lights);
 	}
 
+	private void purgeUntrackedPlayers() {
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext == null)
+			return;
+
+		playerStates.removeIf(state -> {
+			if (shouldShowEquipmentLightsFor(state.player))
+				return false;
+			removeModelLights(sceneContext, state);
+			return true;
+		});
+	}
+
+	private void purgeObjectLightStates() {
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext != null) {
+			for (ObjectLightState state : objectLightStates.values())
+				removeModelLights(sceneContext, state.lights);
+		}
+		objectLightStates.clear();
+	}
+
+	private void purgeNpcLightStates() {
+		var sceneContext = plugin.getSceneContext();
+		if (sceneContext != null) {
+			for (NpcLightState state : npcLightStates.values())
+				removeModelLights(sceneContext, state.lights);
+		}
+		npcLightStates.clear();
+	}
+
+	private boolean shouldShowObjectLights() {
+		return plugin.configObjectLights;
+	}
+
+	private boolean shouldShowNpcLights() {
+		return plugin.configNpcLights;
+	}
+
+	private boolean shouldShowEquipmentLightsFor(@Nullable Player player) {
+		if (player == null)
+			return false;
+
+		EquipmentLights mode = plugin.configEquipmentLights;
+		if (mode == EquipmentLights.NONE)
+			return false;
+		if (mode == EquipmentLights.LOCAL_PLAYER)
+			return player == client.getLocalPlayer();
+		return true;
+	}
+
 	private void removeModelLights(SceneContext sceneContext, PlayerState state) {
 		removeModelLights(sceneContext, state.lights);
 	}
@@ -1203,14 +1334,22 @@ public class ModelLightManager {
 			state.invalidate();
 		for (NpcLightState state : npcLightStates.values())
 			state.invalidate();
-		scanProfiledObjects();
-		for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
-			resolveObjectLights(entry.getValue(), entry.getKey(), sceneContext);
-			updateTileObjectLightPositions(entry.getKey(), entry.getValue(), entry.getValue().lights);
+		if (shouldShowObjectLights()) {
+			scanProfiledObjects();
+			for (Map.Entry<TileObject, ObjectLightState> entry : objectLightStates.entrySet()) {
+				resolveObjectLights(entry.getValue(), entry.getKey(), sceneContext);
+				updateTileObjectLightPositions(entry.getKey(), entry.getValue(), entry.getValue().lights);
+			}
 		}
-		for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
-			resolveNpcLights(entry.getValue(), entry.getKey(), sceneContext);
-			updateVertexPositions(entry.getKey(), entry.getValue().lights);
+		if (shouldShowNpcLights()) {
+			for (NPC npc : client.getNpcs()) {
+				if (profiledNpcIds.contains(npc.getId()))
+					trackNpc(npc);
+			}
+			for (Map.Entry<NPC, NpcLightState> entry : npcLightStates.entrySet()) {
+				resolveNpcLights(entry.getValue(), entry.getKey(), sceneContext);
+				updateVertexPositions(entry.getKey(), entry.getValue().lights);
+			}
 		}
 	}
 

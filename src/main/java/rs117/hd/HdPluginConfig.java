@@ -41,6 +41,7 @@ import rs117.hd.config.DaylightCycle;
 import rs117.hd.config.DefaultBoolean;
 import rs117.hd.config.DefaultSkyColor;
 import rs117.hd.config.DynamicLights;
+import rs117.hd.config.EquipmentLights;
 import rs117.hd.config.FogDepthMode;
 import rs117.hd.config.GroundBlending;
 import rs117.hd.config.InfernalCape;
@@ -550,12 +551,36 @@ public interface HdPluginConfig extends Config
 		return true;
 	}
 
+	String KEY_EQUIPMENT_LIGHTS = "equipmentLights";
+	@ConfigItem(
+		keyName = KEY_EQUIPMENT_LIGHTS,
+		name = "Equipment lights",
+		description = "Adds dynamic lights to some player equipment.",
+		position = 4,
+		section = lightingSettings
+	)
+	default EquipmentLights equipmentLights() {
+		return EquipmentLights.EVERYONE;
+	}
+
+	String KEY_OBJECT_LIGHTS = "objectLights";
+	@ConfigItem(
+		keyName = KEY_OBJECT_LIGHTS,
+		name = "Object lights",
+		description = "Adds dynamic lights to some scene objects.",
+		position = 5,
+		section = lightingSettings
+	)
+	default boolean objectLights() {
+		return true;
+	}
+
 	String KEY_ATMOSPHERIC_LIGHTING = "environmentalLighting";
 	@ConfigItem(
 		keyName = KEY_ATMOSPHERIC_LIGHTING,
 		name = "Atmospheric lighting",
 		description = "Change environmental lighting based on the current area.",
-		position = 4,
+		position = 6,
 		section = lightingSettings
 	)
 	default boolean atmosphericLighting() {
