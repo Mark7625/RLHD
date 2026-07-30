@@ -44,6 +44,7 @@ layout(std140) uniform UBOGlobal {
 
     int pointLightsCount;
 
+    ivec4 viewportSize;
     vec3 cameraPos;
     mat4 viewMatrix;
     mat4 projectionMatrix;
@@ -52,4 +53,5 @@ layout(std140) uniform UBOGlobal {
 
     float lightningBrightness;
     float elapsedTime;
+    int orthographicProjection;
 };
