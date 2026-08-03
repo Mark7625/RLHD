@@ -41,6 +41,13 @@ public class GroundMaterial {
 	/**
 	 * Get a random material based on the given coordinates.
 	 */
+	public boolean hasShaderLava() {
+		for (var material : materials)
+			if (material != null && material.hasShaderLava())
+				return true;
+		return false;
+	}
+
 	public Material getRandomMaterial(int x, int y, int z) {
 		long hash = x;
 		hash = hash * 31 + y;

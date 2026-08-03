@@ -36,6 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
+import rs117.hd.config.LavaMode;
 import rs117.hd.scene.AreaManager;
 import rs117.hd.scene.MaterialManager;
 import rs117.hd.scene.ModelOverrideManager;
@@ -732,6 +733,22 @@ public class LegacySceneUploader {
 			if (sceneContext.isVertexOverlay(swVertexKey) && sceneContext.isVertexUnderlay(swVertexKey))
 				swVertexIsOverlay = true;
 
+			if (plugin.configLavaMode == LavaMode.MODERN) {
+				int[] colorHolder = { 0 };
+				colorHolder[0] = swColor;
+				HDUtils.applyLavaShorelineColor(sceneContext, swMaterial, swVertexKey, colorHolder);
+				swColor = colorHolder[0];
+				colorHolder[0] = seColor;
+				HDUtils.applyLavaShorelineColor(sceneContext, seMaterial, seVertexKey, colorHolder);
+				seColor = colorHolder[0];
+				colorHolder[0] = nwColor;
+				HDUtils.applyLavaShorelineColor(sceneContext, nwMaterial, nwVertexKey, colorHolder);
+				nwColor = colorHolder[0];
+				colorHolder[0] = neColor;
+				HDUtils.applyLavaShorelineColor(sceneContext, neMaterial, neVertexKey, colorHolder);
+				neColor = colorHolder[0];
+			}
+
 			swHeight -= override.heightOffset;
 			seHeight -= override.heightOffset;
 			neHeight -= override.heightOffset;
@@ -1093,6 +1110,19 @@ public class LegacySceneUploader {
 					vertexBIsOverlay = true;
 				if (sceneContext.isVertexOverlay(vertexKeyC) && sceneContext.isVertexUnderlay(vertexKeyC))
 					vertexCIsOverlay = true;
+
+				if (plugin.configLavaMode == LavaMode.MODERN) {
+					int[] colorHolder = { 0 };
+					colorHolder[0] = colorA;
+					HDUtils.applyLavaShorelineColor(sceneContext, materialA, vertexKeyA, colorHolder);
+					colorA = colorHolder[0];
+					colorHolder[0] = colorB;
+					HDUtils.applyLavaShorelineColor(sceneContext, materialB, vertexKeyB, colorHolder);
+					colorB = colorHolder[0];
+					colorHolder[0] = colorC;
+					HDUtils.applyLavaShorelineColor(sceneContext, materialC, vertexKeyC, colorHolder);
+					colorC = colorHolder[0];
+				}
 
 				for (int i = 0; i < 3; i++)
 					localVertices[i][1] -= override.heightOffset;

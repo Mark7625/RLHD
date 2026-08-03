@@ -41,6 +41,8 @@ import net.runelite.client.util.OSType;
 import rs117.hd.data.ObjectType;
 import rs117.hd.scene.areas.AABB;
 import rs117.hd.scene.areas.Area;
+import rs117.hd.scene.SceneContext;
+import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.water_types.WaterType;
 
 import static net.runelite.api.Constants.*;
@@ -476,6 +478,29 @@ public final class HDUtils {
 		int terrainData = (waterDepth & 0xFFF) << 11 | waterType.index << 3 | plane << 1 | (isTerrain ? 1 : 0);
 		assert (terrainData & ~0xFFFFFF) == 0 : "Only the lower 24 bits are usable, since we pass this into shaders as a float";
 		return terrainData;
+	}
+
+	public static final int SHORELINE_INTERIOR_HSL = 127;
+
+	public static int shorelineMaskVertexColor(SceneContext ctx, int vertexKey, int fluidFlag) {
+		boolean isFluid = fluidFlag == SceneContext.VERTEX_IS_LAVA
+			? ctx.isVertexLava(vertexKey)
+			: ctx.isVertexWater(vertexKey);
+		if (isFluid && ctx.isVertexLand(vertexKey))
+			return 0;
+		return SHORELINE_INTERIOR_HSL;
+	}
+
+	public static void applyLavaShorelineColor(
+		SceneContext ctx,
+		Material material,
+		int vertexKey,
+		int[] colorHolder
+	) {
+		if (!material.hasShaderLava())
+			return;
+		ctx.setVertexIsLava(vertexKey);
+		colorHolder[0] = shorelineMaskVertexColor(ctx, vertexKey, SceneContext.VERTEX_IS_LAVA);
 	}
 
 	private static final ThreadLocal<StringBuilder> threadLocalStringBuilder = ThreadLocal.withInitial(StringBuilder::new);

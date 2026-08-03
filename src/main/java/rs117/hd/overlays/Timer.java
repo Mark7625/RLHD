@@ -42,6 +42,8 @@ public enum Timer {
 	GARBAGE_COLLECTION,
 	REPLACE_FISHING_SPOTS,
 	CHARACTER_DISPLACEMENT,
+	GENERATE_LAVA_TERRAIN("Generate lava terrain"),
+	LOAD_LAVA_LIGHTS("Load lava lights"),
 
 	// Legacy
 	GET_MODEL,
@@ -70,6 +72,7 @@ public enum Timer {
 	CLEAR_SCENE(GPU_TIMER),
 	RENDER_SHADOWS(GPU_TIMER),
 	RENDER_SCENE(GPU_TIMER),
+	RENDER_LAVA(GPU_TIMER, "Render lava scene"),
 	RENDER_UI(GPU_TIMER, "Render UI"),
 	;
 

@@ -36,6 +36,7 @@
 #include <uniforms/world_views.glsl>
 #include <uniforms/materials.glsl>
 #include <uniforms/water_types.glsl>
+#include <uniforms/lava_types.glsl>
 
 #include MATERIAL_CONSTANTS
 
@@ -77,6 +78,7 @@ vec2 worldUvs(float scale) {
 #include <utils/displacement.glsl>
 #include <utils/shadows.glsl>
 #include <utils/water.glsl>
+#include <utils/lava.glsl>
 #include <utils/color_filters.glsl>
 #include <utils/fog.glsl>
 #include <utils/wireframe.glsl>
@@ -114,10 +116,88 @@ void main() {
     bool isUnderwater = waterDepth != 0;
     bool isWater = waterTypeIndex > 0 && !isUnderwater;
 
+    int lavaType1 = material1.lavaType;
+    int lavaType2 = material2.lavaType;
+    int lavaType3 = material3.lavaType;
+    bool isLava = !isWater && LAVA_MODE == LAVA_MODE_MODERN && (lavaType1 > 0 || lavaType2 > 0 || lavaType3 > 0);
+
     vec4 outputColor = vec4(1);
 
     if (isWater) {
         outputColor = sampleWater(waterTypeIndex, viewDir);
+    #if LAVA_MODE == LAVA_MODE_MODERN
+    } else if (isLava) {
+        float lavaWeight1 = (lavaType1 > 0) ? IN.texBlend.x : 0.0;
+        float lavaWeight2 = (lavaType2 > 0) ? IN.texBlend.y : 0.0;
+        float lavaWeight3 = (lavaType3 > 0) ? IN.texBlend.z : 0.0;
+        int mergedLavaType1 = lavaType1;
+        int mergedLavaType2 = lavaType2;
+        int mergedLavaType3 = lavaType3;
+
+        if (mergedLavaType1 > 0 && mergedLavaType1 == mergedLavaType2) {
+            lavaWeight1 += lavaWeight2;
+            lavaWeight2 = 0.0;
+            mergedLavaType2 = 0;
+        }
+        if (mergedLavaType1 > 0 && mergedLavaType1 == mergedLavaType3) {
+            lavaWeight1 += lavaWeight3;
+            lavaWeight3 = 0.0;
+            mergedLavaType3 = 0;
+        }
+        if (mergedLavaType2 > 0 && mergedLavaType2 == mergedLavaType3) {
+            lavaWeight2 += lavaWeight3;
+            lavaWeight3 = 0.0;
+            mergedLavaType3 = 0;
+        }
+
+        const float LAVA_BLEND_MIN_WEIGHT = 0.08;
+        if (mergedLavaType1 > 0 && lavaWeight1 < LAVA_BLEND_MIN_WEIGHT) {
+            lavaWeight1 = 0.0;
+            mergedLavaType1 = 0;
+        }
+        if (mergedLavaType2 > 0 && lavaWeight2 < LAVA_BLEND_MIN_WEIGHT) {
+            lavaWeight2 = 0.0;
+            mergedLavaType2 = 0;
+        }
+        if (mergedLavaType3 > 0 && lavaWeight3 < LAVA_BLEND_MIN_WEIGHT) {
+            lavaWeight3 = 0.0;
+            mergedLavaType3 = 0;
+        }
+
+        int lavaSampleCount = 0;
+        int singleLavaType = 0;
+        if (mergedLavaType1 > 0) {
+            lavaSampleCount++;
+            singleLavaType = mergedLavaType1;
+        }
+        if (mergedLavaType2 > 0) {
+            lavaSampleCount++;
+            singleLavaType = mergedLavaType2;
+        }
+        if (mergedLavaType3 > 0) {
+            lavaSampleCount++;
+            singleLavaType = mergedLavaType3;
+        }
+
+        vec4 lavaColor;
+        if (lavaSampleCount == 1) {
+            lavaColor = sampleLava(singleLavaType, viewDir);
+        } else {
+            lavaColor = vec4(0.0);
+            if (mergedLavaType1 > 0)
+                lavaColor += sampleLava(mergedLavaType1, viewDir) * lavaWeight1;
+            if (mergedLavaType2 > 0)
+                lavaColor += sampleLava(mergedLavaType2, viewDir) * lavaWeight2;
+            if (mergedLavaType3 > 0)
+                lavaColor += sampleLava(mergedLavaType3, viewDir) * lavaWeight3;
+
+            float totalLavaWeight = lavaWeight1 + lavaWeight2 + lavaWeight3;
+            if (totalLavaWeight > 0.001)
+                lavaColor.rgb /= totalLavaWeight;
+        }
+
+        outputColor = lavaColor;
+    #endif
     } else {
         vec2 blendedUv = IN.uv;
 
@@ -441,6 +521,11 @@ void main() {
         // apply lighting
         vec3 compositeLight = ambientLightOut + lightOut + lightSpecularOut + skyLightOut + lightningOut +
         underglowOut + pointLightsOut + pointLightsSpecularOut + surfaceColorOut;
+
+        #if LAVA_MODE == LAVA_MODE_MODERN
+        if (lavaIrradianceEnabled > 0.0)
+            compositeLight += sampleLavaEmissiveLighting(IN.position, normals);
+        #endif
 
         #if DISPLAY_LIGHTING
             FragColor = vec4(compositeLight, 1.0);

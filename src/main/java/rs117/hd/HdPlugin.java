@@ -80,6 +80,7 @@ import org.lwjgl.system.Configuration;
 import rs117.hd.config.ColorFilter;
 import rs117.hd.config.DynamicLights;
 import rs117.hd.config.GroundBlending;
+import rs117.hd.config.LavaMode;
 import rs117.hd.config.SeasonalHemisphere;
 import rs117.hd.config.SeasonalTheme;
 import rs117.hd.config.ShadingMode;
@@ -115,6 +116,7 @@ import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.TextureManager;
 import rs117.hd.scene.TileOverrideManager;
 import rs117.hd.scene.WaterTypeManager;
+import rs117.hd.scene.lava.LavaTypeManager;
 import rs117.hd.utils.ColorUtils;
 import rs117.hd.utils.DestructibleHandler;
 import rs117.hd.utils.DeveloperTools;
@@ -180,6 +182,7 @@ public class HdPlugin extends Plugin {
 	public static final int UNIFORM_BLOCK_GLOBAL = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_MATERIALS = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_WATER_TYPES = UNIFORM_BLOCK_COUNT++;
+	public static final int UNIFORM_BLOCK_LAVA_TYPES = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_LIGHTS = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_LIGHTS_CULLING = UNIFORM_BLOCK_COUNT++;
 	public static final int UNIFORM_BLOCK_UI = UNIFORM_BLOCK_COUNT++;
@@ -230,6 +233,7 @@ public class HdPlugin extends Plugin {
 		TextureManager.class,
 		TileOverrideManager.class,
 		WaterTypeManager.class,
+		LavaTypeManager.class,
 		SceneManager.class
 	);
 
@@ -274,6 +278,9 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private WaterTypeManager waterTypeManager;
+
+	@Inject
+	private LavaTypeManager lavaTypeManager;
 
 	@Inject
 	private GroundMaterialManager groundMaterialManager;
@@ -418,6 +425,7 @@ public class HdPlugin extends Plugin {
 	public boolean configWindDisplacement;
 	public boolean configCharacterDisplacement;
 	public boolean configHideVanillaWaterEffects;
+	public LavaMode configLavaMode;
 	public boolean configTiledLighting;
 	public boolean configTiledLightingImageLoadStore;
 	public int configDetailDrawDistance;
@@ -685,6 +693,7 @@ public class HdPlugin extends Plugin {
 
 				// Materials need to be initialized before compiling shader programs
 				textureManager.startUp();
+				lavaTypeManager.startUp();
 				materialManager.startUp();
 				waterTypeManager.startUp();
 				gamevalManager.startUp();
@@ -793,6 +802,7 @@ public class HdPlugin extends Plugin {
 			gamevalManager.shutDown();
 			gammaCalibrationOverlay.destroy();
 			npcDisplacementCache.destroy();
+			lavaTypeManager.shutDown();
 			waterTypeManager.shutDown();
 			materialManager.shutDown();
 			textureManager.shutDown();
@@ -859,6 +869,13 @@ public class HdPlugin extends Plugin {
 		return renderer == null ? null : renderer.getSceneContext();
 	}
 
+	public void updateLavaIrradianceUniform(@Nullable SceneContext sceneContext) {
+		boolean enabled = configLavaMode == LavaMode.MODERN
+			&& sceneContext != null
+			&& sceneContext.hasShaderLava;
+		uboGlobal.lavaIrradianceEnabled.set(enabled ? 1f : 0f);
+	}
+
 	public void toggleFreezeFrame() {
 		clientThread.invoke(() -> {
 			enableFreezeFrame = !enableFreezeFrame;
@@ -912,6 +929,8 @@ public class HdPlugin extends Plugin {
 			.define("APPLY_COLOR_FILTER", configColorFilter != ColorFilter.NONE)
 			.define("MATERIAL_COUNT", MaterialManager.MATERIALS.length)
 			.define("WATER_TYPE_COUNT", waterTypeManager.uboWaterTypes.getCount())
+			.define("LAVA_TYPE_COUNT", lavaTypeManager.uboLavaTypes.getCount())
+			.define("LAVA_MODE", configLavaMode)
 			.define("DYNAMIC_LIGHTS", configDynamicLights != DynamicLights.NONE)
 			.define("TILED_LIGHTING", configTiledLighting)
 			.define("TILED_LIGHTING_LAYER_COUNT", configDynamicLights.getTiledLightingLayers())
@@ -954,12 +973,14 @@ public class HdPlugin extends Plugin {
 			)
 			.addInclude("MATERIAL_GETTER", () -> generateGetter("Material", MaterialManager.MATERIALS.length))
 			.addInclude("WATER_TYPE_GETTER", () -> generateGetter("WaterType", waterTypeManager.uboWaterTypes.getCount()))
+			.addInclude("LAVA_TYPE_GETTER", () -> generateGetter("LavaType", lavaTypeManager.uboLavaTypes.getCount()))
 			.addUniformBuffer(uboGlobal)
 			.addUniformBuffer(uboLights)
 			.addUniformBuffer(uboLightsCulling)
 			.addUniformBuffer(uboUI)
 			.addUniformBuffer(materialManager.uboMaterials)
-			.addUniformBuffer(waterTypeManager.uboWaterTypes);
+			.addUniformBuffer(waterTypeManager.uboWaterTypes)
+			.addUniformBuffer(lavaTypeManager.uboLavaTypes);
 		renderer.addShaderIncludes(includes);
 		return includes;
 	}
@@ -1676,6 +1697,7 @@ public class HdPlugin extends Plugin {
 		configWindDisplacement = config.windDisplacement();
 		configCharacterDisplacement = config.characterDisplacement();
 		configHideVanillaWaterEffects = config.hideVanillaWaterEffects();
+		configLavaMode = config.lavaMode();
 		configSeasonalTheme = config.seasonalTheme();
 		configSeasonalHemisphere = config.seasonalHemisphere();
 		configSeasonalFoliage = config.seasonalFoliage();
@@ -1836,6 +1858,11 @@ public class HdPlugin extends Plugin {
 							case KEY_SHADOW_TRANSPARENCY:
 								recompilePrograms = true;
 								recreateShadowMapFbo = true;
+								break;
+							case KEY_LAVA_MODE:
+								recompilePrograms = true;
+								reloadTexturesAndMaterials = true;
+								reloadScene = true;
 								break;
 							case KEY_ATMOSPHERIC_LIGHTING:
 							case KEY_POH_THEME_ENVIRONMENTS:

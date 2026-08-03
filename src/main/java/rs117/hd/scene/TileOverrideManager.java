@@ -37,6 +37,11 @@ public class TileOverrideManager {
 
 	private static final ThreadLocal<int[]> OVERLAY_UNDERLAY_IDS = ThreadLocal.withInitial(() -> new int[2]);
 
+	private static final int LAVA_OVERLAY_ID = 19;
+	private static final String TZHAAR_AREA_NAME = "TZHAAR";
+	private static final String TZHAAR_LAVA_OVERRIDE_NAME = "LAVA";
+	private static final String GLOBAL_LAVA_OVERRIDE_NAME = "TZHAAR_LAVA";
+
 	public static TileOverride[] OVERRIDES;
 
 	@Inject
@@ -55,6 +60,9 @@ public class TileOverrideManager {
 	private boolean trackReplacements;
 	private List<TileOverride> anyMatchOverrides;
 	private Int2ObjectHashMap<List<TileOverride>> idMatchOverrides;
+	private TileOverride tzhaarLavaTileOverride;
+	private TileOverride globalLavaTileOverride;
+	private Area tzhaarArea = Area.NONE;
 
 	public void startUp() {
 		fileWatcher = TILE_OVERRIDES_PATH.watch((path, first) -> clientThread.invoke(() -> reload(first)));
@@ -128,6 +136,23 @@ public class TileOverrideManager {
 			anyMatchOverrides = anyMatch;
 			idMatchOverrides = idMatch;
 			OVERRIDES = allOverrides;
+
+			tzhaarLavaTileOverride = null;
+			globalLavaTileOverride = null;
+			tzhaarArea = Area.NONE;
+			for (var override : allOverrides) {
+				if (TZHAAR_LAVA_OVERRIDE_NAME.equals(override.name))
+					tzhaarLavaTileOverride = override.replacement;
+				else if (GLOBAL_LAVA_OVERRIDE_NAME.equals(override.name))
+					globalLavaTileOverride = override.replacement;
+			}
+			for (var area : AreaManager.AREAS) {
+				if (TZHAAR_AREA_NAME.equals(area.name)) {
+					area.normalize();
+					tzhaarArea = area;
+					break;
+				}
+			}
 
 			log.debug("Loaded {} tile overrides", allOverrides.length);
 		} catch (IOException ex) {
@@ -255,6 +280,7 @@ public class TileOverrideManager {
 	public TileOverride getOverrideBeforeReplacements(@Nonnull int[] worldPos, int... ids) {
 		var match = TileOverride.NONE;
 		int index = match.index;
+		int matchedId = 0;
 
 		outer:
 		for (int i = 0; i < ids.length; i++) {
@@ -266,6 +292,7 @@ public class TileOverrideManager {
 				final var entry = entries.get(j);
 				if (entry.area.containsPoint(worldPos)) {
 					index = entry.index;
+					matchedId = id;
 					match = entry.replacement;
 					match.queriedAsOverlay = (id & OVERLAY_FLAG) != 0;
 					break outer;
@@ -283,6 +310,24 @@ public class TileOverrideManager {
 			}
 		}
 
+		return resolveTzhaarLavaTileOverride(worldPos, matchedId, match);
+	}
+
+	@Nonnull
+	private TileOverride resolveTzhaarLavaTileOverride(int[] worldPos, int matchedId, TileOverride match) {
+		if (match == TileOverride.NONE)
+			return match;
+		if ((matchedId & OVERLAY_FLAG) == 0)
+			return match;
+		if ((matchedId & ~OVERLAY_FLAG) != LAVA_OVERLAY_ID)
+			return match;
+		if (tzhaarArea == Area.NONE || !tzhaarArea.containsPoint(worldPos))
+			return match;
+
+		if (plugin.configLegacyTzHaarReskin && tzhaarLavaTileOverride != null)
+			return tzhaarLavaTileOverride;
+		if (!plugin.configLegacyTzHaarReskin && globalLavaTileOverride != null)
+			return globalLavaTileOverride;
 		return match;
 	}
 }

@@ -52,10 +52,13 @@ import rs117.hd.HdPlugin;
 import rs117.hd.config.DynamicLights;
 import rs117.hd.data.ObjectType;
 import rs117.hd.opengl.uniforms.UBOLights;
+import rs117.hd.overlays.FrameTimer;
+import rs117.hd.overlays.Timer;
 import rs117.hd.scene.lights.Alignment;
 import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.lights.LightDefinition;
 import rs117.hd.scene.lights.LightType;
+import rs117.hd.scene.lava.LavaLightManager;
 import rs117.hd.utils.HDUtils;
 import rs117.hd.utils.ModelHash;
 import rs117.hd.utils.Props;
@@ -97,6 +100,12 @@ public class LightManager {
 
 	@Inject
 	private ModelOverrideManager modelOverrideManager;
+
+	@Inject
+	private LavaLightManager lavaLightManager;
+
+	@Inject
+	private FrameTimer frameTimer;
 
 	@Inject
 	private EntityHiderPlugin entityHiderPlugin;
@@ -664,6 +673,10 @@ public class LightManager {
 				}
 			}
 		}
+
+		long lavaLightsStart = System.nanoTime();
+		lavaLightManager.loadLavaLights(sceneContext);
+		frameTimer.add(Timer.LOAD_LAVA_LIGHTS, System.nanoTime() - lavaLightsStart);
 	}
 
 	public void swapSceneLights(SceneContext sceneContext, @Nullable SceneContext oldSceneContext) {

@@ -22,6 +22,7 @@ public class HDVariables implements VariableSupplier {
 	public static final String VAR_GROUND_BLENDING_TEXTURES_ONLY = "blendingTexturesOnly";
 	public static final String VAR_HD_INFERNAL_TEXTURE = "hdInfernalCape";
 	public static final String VAR_LEGACY_INFERNAL_TEXTURE = "legacyInfernalCape";
+	public static final String VAR_LAVA_MODE = "lavaMode";
 
 	@Inject
 	private HdPlugin plugin;
@@ -60,6 +61,8 @@ public class HDVariables implements VariableSupplier {
 				return config.infernalCape() == InfernalCape.HD;
 			case VAR_LEGACY_INFERNAL_TEXTURE:
 				return config.infernalCape() == InfernalCape.LEGACY;
+			case VAR_LAVA_MODE:
+				return plugin.configLavaMode.ordinal();
 		}
 
 		int i = name.indexOf('.');

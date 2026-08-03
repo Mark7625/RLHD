@@ -26,6 +26,7 @@ import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.config.ColorFilter;
 import rs117.hd.config.DynamicLights;
+import rs117.hd.config.LavaMode;
 import rs117.hd.model.ModelHasher;
 import rs117.hd.model.ModelOffsets;
 import rs117.hd.opengl.compute.ComputeMode;
@@ -1063,6 +1064,7 @@ public class LegacyRenderer implements Renderer {
 			plugin.uboGlobal.underwaterCausticsColor.set(environmentManager.currentUnderwaterCausticsColor);
 			plugin.uboGlobal.underwaterCausticsStrength.set(environmentManager.currentUnderwaterCausticsStrength);
 			plugin.uboGlobal.elapsedTime.set((float) (plugin.elapsedTime % MAX_FLOAT_WITH_128TH_PRECISION));
+			plugin.updateLavaIrradianceUniform(sceneContext);
 
 			float[] lightViewMatrix = Mat4.rotateX(environmentManager.currentSunAngles[0]);
 			Mat4.mul(lightViewMatrix, Mat4.rotateY(PI - environmentManager.currentSunAngles[1]));
@@ -1156,7 +1158,10 @@ public class LegacyRenderer implements Renderer {
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			frameTimer.end(Timer.CLEAR_SCENE);
 
-			frameTimer.begin(Timer.RENDER_SCENE);
+			Timer sceneRenderTimer = sceneContext.hasShaderLava && plugin.configLavaMode == LavaMode.MODERN
+				? Timer.RENDER_LAVA
+				: Timer.RENDER_SCENE;
+			frameTimer.begin(sceneRenderTimer);
 
 			// We just allow the GL to do face culling. Note this requires the priority renderer
 			// to have logic to disregard culled faces in the priority depth testing.
@@ -1207,7 +1212,7 @@ public class LegacyRenderer implements Renderer {
 				glDrawArrays(GL_TRIANGLES, 0, renderBufferOffset);
 			}
 
-			frameTimer.end(Timer.RENDER_SCENE);
+			frameTimer.end(sceneRenderTimer);
 
 			glDisable(GL_BLEND);
 			glDisable(GL_CULL_FACE);

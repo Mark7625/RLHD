@@ -49,6 +49,7 @@ import rs117.hd.HdPluginConfig;
 import rs117.hd.opengl.uniforms.UBOMaterials;
 import rs117.hd.renderer.zone.SceneManager;
 import rs117.hd.scene.materials.Material;
+import rs117.hd.scene.lava.LavaTypeManager;
 import rs117.hd.utils.ExpressionParser;
 import rs117.hd.utils.FileWatcher;
 import rs117.hd.utils.HDVariables;
@@ -86,6 +87,9 @@ public class MaterialManager {
 
 	@Inject
 	private WaterTypeManager waterTypeManager;
+
+	@Inject
+	private LavaTypeManager lavaTypeManager;
 
 	@Inject
 	private GroundMaterialManager groundMaterialManager;
@@ -443,13 +447,14 @@ public class MaterialManager {
 				uboMaterials.destroy();
 			uboMaterials = new UBOMaterials(MATERIALS.length);
 //		}
-		uboMaterials.update(MATERIALS, vanillaTextures);
+		uboMaterials.update(MATERIALS, vanillaTextures, plugin.configLavaMode);
 
 		if (isFirstLoad)
 			return;
 
 		// Reload anything which depends on Material instances
 		waterTypeManager.restart();
+		lavaTypeManager.restart();
 		groundMaterialManager.restart();
 		tileOverrideManager.reload(true);
 		modelOverrideManager.reload();

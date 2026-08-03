@@ -37,6 +37,7 @@ public class SceneContext {
 	public static final int VERTEX_IS_OVERLAY = 1 << 2;
 	public static final int VERTEX_IS_UNDERLAY = 1 << 3;
 	public static final int VERTEX_IS_HIGH_PRIORITY_COLOR = 1 << 4;
+	public static final int VERTEX_IS_LAVA = 1 << 21;
 	public static final int VERTEX_UNDER_WATER_DEPTH_SHIFT = 5;
 	// This only needs 10 bits, since depth slope 1380 * .55 = 9.6 bits, but reserve 16 to be safe
 	public static final int VERTEX_UNDER_WATER_DEPTH_MASK = 0xFFFF;
@@ -61,6 +62,7 @@ public class SceneContext {
 	public boolean fillGaps;
 	public boolean isInChambersOfXeric;
 	public boolean isInHouse;
+	public boolean hasShaderLava;
 
 	@Nullable
 	public Area currentArea;
@@ -96,6 +98,10 @@ public class SceneContext {
 		vertexTerrainData.or(hash, VERTEX_IS_WATER, 0);
 	}
 
+	public void setVertexIsLava(int hash) {
+		vertexTerrainData.or(hash, VERTEX_IS_LAVA, 0);
+	}
+
 	public void setVertexHighPriorityColor(int hash) {
 		vertexTerrainData.or(hash, VERTEX_IS_HIGH_PRIORITY_COLOR, 0);
 	}
@@ -120,6 +126,10 @@ public class SceneContext {
 
 	public boolean isVertexWater(int hash) {
 		return vertexTerrainData.test(hash, VERTEX_IS_WATER);
+	}
+
+	public boolean isVertexLava(int hash) {
+		return vertexTerrainData.test(hash, VERTEX_IS_LAVA);
 	}
 
 	public boolean isVertexOverlay(int hash) {

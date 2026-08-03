@@ -42,6 +42,7 @@ import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.config.ColorFilter;
 import rs117.hd.config.DynamicLights;
+import rs117.hd.config.LavaMode;
 import rs117.hd.config.ShadowMode;
 import rs117.hd.opengl.shader.SceneShaderProgram;
 import rs117.hd.opengl.shader.ShaderException;
@@ -636,6 +637,7 @@ public class ZoneRenderer implements Renderer {
 		plugin.uboGlobal.underwaterCausticsColor.set(environmentManager.currentUnderwaterCausticsColor);
 		plugin.uboGlobal.underwaterCausticsStrength.set(environmentManager.currentUnderwaterCausticsStrength);
 		plugin.uboGlobal.elapsedTime.set((float) (plugin.elapsedTime % MAX_FLOAT_WITH_128TH_PRECISION));
+		plugin.updateLavaIrradianceUniform(ctx.sceneContext);
 
 		if (plugin.configColorFilter != ColorFilter.NONE) {
 			plugin.uboGlobal.colorFilter.set(plugin.configColorFilter.ordinal());
@@ -807,7 +809,8 @@ public class ZoneRenderer implements Renderer {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		frameTimer.end(Timer.CLEAR_SCENE);
 
-		frameTimer.begin(Timer.RENDER_SCENE);
+		Timer sceneRenderTimer = getSceneRenderTimer();
+		frameTimer.begin(sceneRenderTimer);
 
 		renderState.enable.set(GL_BLEND);
 		renderState.enable.set(GL_CULL_FACE);
@@ -823,7 +826,7 @@ public class ZoneRenderer implements Renderer {
 
 		sceneCmd.execute(renderState);
 
-		frameTimer.end(Timer.RENDER_SCENE);
+		frameTimer.end(sceneRenderTimer);
 
 		glBindVertexArray(0);
 
@@ -834,6 +837,13 @@ public class ZoneRenderer implements Renderer {
 		renderState.apply();
 
 		frameTimer.end(Timer.DRAW_SCENE);
+	}
+
+	private Timer getSceneRenderTimer() {
+		SceneContext sceneContext = getSceneContext();
+		if (sceneContext != null && sceneContext.hasShaderLava && plugin.configLavaMode == LavaMode.MODERN)
+			return Timer.RENDER_LAVA;
+		return Timer.RENDER_SCENE;
 	}
 
 	@Override

@@ -42,6 +42,7 @@ import rs117.hd.config.DynamicLights;
 import rs117.hd.config.FogDepthMode;
 import rs117.hd.config.GroundBlending;
 import rs117.hd.config.InfernalCape;
+import rs117.hd.config.LavaMode;
 import rs117.hd.config.Saturation;
 import rs117.hd.config.SceneScalingMode;
 import rs117.hd.config.SeasonalHemisphere;
@@ -804,6 +805,21 @@ public interface HdPluginConfig extends Config
 		section = environmentSettings
 	)
 	default boolean hideVanillaWaterEffects() { return true; }
+
+	String KEY_LAVA_MODE = "lavaMode";
+	@ConfigItem(
+		keyName = KEY_LAVA_MODE,
+		name = "Lava Style",
+		description =
+			"Choose a lava rendering style.<br>" +
+			"Classic - Original 117 HD lava visuals.<br>" +
+			"Modern - Procedural shader lava with improved animation and detail.",
+		position = 16,
+		section = environmentSettings
+	)
+	default LavaMode lavaMode() {
+		return LavaMode.MODERN;
+	}
 
 	String KEY_POH_THEME_ENVIRONMENTS = "pohThemeEnvironments";
 	@ConfigItem(

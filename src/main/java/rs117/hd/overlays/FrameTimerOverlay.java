@@ -178,6 +178,10 @@ public class FrameTimerOverlay extends OverlayPanel implements FrameTimer.Listen
 					.left("Lights:")
 					.right(format("%d/%d", sceneContext.numVisibleLights, sceneContext.lights.size()))
 					.build());
+				children.add(LineComponent.builder()
+					.left("Shader lava:")
+					.right(sceneContext.hasShaderLava ? "yes" : "no")
+					.build());
 			}
 
 			if (plugin.renderer instanceof ZoneRenderer) {

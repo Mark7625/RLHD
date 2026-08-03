@@ -29,12 +29,16 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
+import rs117.hd.HdPlugin;
+import rs117.hd.config.LavaMode;
 import rs117.hd.renderer.legacy.LegacySceneContext;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.model_overrides.ModelOverride;
 import rs117.hd.scene.model_overrides.TzHaarRecolorType;
 import rs117.hd.scene.tile_overrides.TileOverride;
 import rs117.hd.scene.water_types.WaterType;
+import rs117.hd.overlays.FrameTimer;
+import rs117.hd.overlays.Timer;
 import rs117.hd.utils.ColorUtils;
 import rs117.hd.utils.collections.ConcurrentPool;
 import rs117.hd.utils.collections.Int2IntHashMap;
@@ -78,11 +82,19 @@ public class ProceduralGenerator {
 			/* 11 */ { true, true, false, false, false, false },
 		};
 
+	private static final int VANILLA_LAVA_TEXTURE_ID = 31;
+
+	@Inject
+	private HdPlugin plugin;
+
 	@Inject
 	private TileOverrideManager tileOverrideManager;
 
 	@Inject
 	private WaterTypeManager waterTypeManager;
+
+	@Inject
+	private FrameTimer frameTimer;
 
 	private final ConcurrentPool<GeneratorContext> GENERATOR_POOL = new ConcurrentPool<>(GeneratorContext::new);
 
@@ -800,7 +812,12 @@ public class ProceduralGenerator {
 		 * Scene, increasing the depth of each tile based on its distance from the shore.
 		 * Then stores the resulting data in a HashMap.
 		 */
+		private long lavaTerrainNanos = 0;
+		private long lavaTerrainStart = 0;
+
 		private void generate(SceneContext sceneContext, SceneContext prevSceneCtx) {
+			lavaTerrainNanos = 0;
+			sceneContext.hasShaderLava = false;
 			final Tile[][][] tiles = sceneContext.scene.getExtendedTiles();
 			final int sizeX = sceneContext.sizeX;
 			final int sizeY = sceneContext.sizeZ;
@@ -856,7 +873,21 @@ public class ProceduralGenerator {
 							tileVertexKeys(sceneContext, tile, vertices, hashes);
 
 							var override = sceneContext.getTileOverride(tileZ, x, y, TILE_OVERRIDE_MAIN);
-							if (seasonalWaterType(override, tilePaint.getTexture()) == WaterType.NONE) {
+							boolean lavaTile = isLavaOverride(override);
+							beginLavaTerrainTimer();
+							if (tilePaint.getTexture() == VANILLA_LAVA_TEXTURE_ID)
+								sceneContext.hasShaderLava = true;
+							if (lavaTile) {
+								sceneContext.hasShaderLava = true;
+								for (int i = 0; i < hashes.length; i++)
+									sceneContext.setVertexIsLava(hashes[i]);
+								zUnderwaterDepthLevels[x][y] = 0;
+								zUnderwaterDepthLevels[x + 1][y] = 0;
+								zUnderwaterDepthLevels[x][y + 1] = 0;
+								zUnderwaterDepthLevels[x + 1][y + 1] = 0;
+							}
+							endLavaTerrainTimer();
+							if (!lavaTile && seasonalWaterType(override, tilePaint.getTexture()) == WaterType.NONE) {
 								for (int i = 0; i < hashes.length; i++)
 									if (tilePaint.getNeColor() != HIDDEN_HSL || override.forced)
 										sceneContext.setVertexIsLand(hashes[i]);
@@ -950,6 +981,14 @@ public class ProceduralGenerator {
 								var override = ProceduralGenerator.isOverlayFace(tile, face) ? overlayOverride : underlayOverride;
 								int textureId = tileModel.getTriangleTextureId() == null ? -1 :
 									tileModel.getTriangleTextureId()[face];
+								if (isLavaOverride(override) && ProceduralGenerator.isOverlayFace(tile, face)) {
+									beginLavaTerrainTimer();
+									sceneContext.hasShaderLava = true;
+									for (int vertex = 0; vertex < VERTICES_PER_FACE; vertex++)
+										sceneContext.setVertexIsLava(hashes[vertex]);
+									endLavaTerrainTimer();
+									continue;
+								}
 								if (seasonalWaterType(override, textureId) == WaterType.NONE) {
 									for (int vertex = 0; vertex < VERTICES_PER_FACE; vertex++) {
 										if (tileModel.getTriangleColorA()[face] != HIDDEN_HSL || override.forced)
@@ -1099,6 +1138,18 @@ public class ProceduralGenerator {
 					for (int x = 0; x < sizeX; ++x)
 						System.arraycopy(this.underwaterDepthLevels[z][x], 0, sceneUnderwaterDepthLevels[z][x], 0, sizeY);
 			}
+
+			frameTimer.add(Timer.GENERATE_LAVA_TERRAIN, lavaTerrainNanos);
+		}
+
+		private void beginLavaTerrainTimer() {
+			if (plugin.configLavaMode == LavaMode.MODERN)
+				lavaTerrainStart = System.nanoTime();
+		}
+
+		private void endLavaTerrainTimer() {
+			if (plugin.configLavaMode == LavaMode.MODERN)
+				lavaTerrainNanos += System.nanoTime() - lavaTerrainStart;
 		}
 
 		private int getHeightOffset(int z, int x, int y) {
@@ -1161,5 +1212,12 @@ public class ProceduralGenerator {
 		out[2] = ColorUtils.packRawHsl(hsl3);
 
 		return out;
+	}
+
+	private boolean isLavaOverride(TileOverride override) {
+		if (override == null || override == TileOverride.NONE || plugin.configLavaMode != LavaMode.MODERN)
+			return false;
+
+		return override.groundMaterial != null && override.groundMaterial.hasShaderLava();
 	}
 }
