@@ -262,7 +262,8 @@ public class MinimapManager {
 			Material[] materials = new Material[3];
 			Arrays.fill(materials, Material.NONE);
 
-			int[][] localVertices = ProceduralGenerator.faceLocalVertices(tile, face);
+			int[][] localVertices = new int[3][3];
+			ProceduralGenerator.faceLocalVertices(tile, face,localVertices);
 
 			int[] vertexKeys = ProceduralGenerator.faceVertexKeys(tile, face);
 			int vertexKeyA = vertexKeys[0];
