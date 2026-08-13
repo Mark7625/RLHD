@@ -24,7 +24,6 @@
  */
 package rs117.hd.renderer.zone;
 
-import java.util.Arrays;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -258,7 +257,7 @@ public class SceneUploader implements AutoCloseable {
 				uploadZoneWater(ctx, zone, mzx, mzz, vb, fb);
 			zone.levelOffsets[Zone.LEVEL_WATER_SURFACE] = vb.position();
 
-			if (ctx.fillGaps && zone.hasGapFiller)
+			if (zone.hasGapFiller)
 				uploadZoneGapFillers(ctx, mzx, mzz, vb, fb);
 			zone.levelOffsets[Zone.LEVEL_GAP_FILLER] = vb.position();
 		}
@@ -402,10 +401,10 @@ public class SceneUploader implements AutoCloseable {
 				z.sizeF += 2;
 			} else {
 				z.onlyWater = false;
-
-				if (tileZ != 0 || override.doubleSidedFaces)
-					z.sizeO += 2;
 			}
+
+			if (tileZ != 0 || override.doubleSidedFaces)
+				z.sizeO += 2;
 		}
 
 		SceneTileModel model = t.getSceneTileModel();
@@ -437,10 +436,10 @@ public class SceneUploader implements AutoCloseable {
 				z.sizeF += len;
 			} else {
 				z.onlyWater = false;
-
-				if (tileZ != 0 || overlayOverride.doubleSidedFaces || underlayOverride.doubleSidedFaces)
-					z.sizeO += len;
 			}
+
+			if (tileZ != 0 || overlayOverride.doubleSidedFaces || underlayOverride.doubleSidedFaces)
+				z.sizeO += len;
 		}
 
 		WallObject wallObject = t.getWallObject();
@@ -714,8 +713,10 @@ public class SceneUploader implements AutoCloseable {
 		} else if (r instanceof DynamicObject) {
 			var dynamic = (DynamicObject) r;
 			m = dynamic.getModelZbuf();
-			if (dynamic.getRecordedObjectComposition() != null)
+			if (dynamic.getRecordedObjectComposition() != null) {
 				mightHaveTransparency = true;
+				mightBeDoubleSided = true;
+			}
 		}
 		if (m == null)
 			return;
@@ -1094,7 +1095,8 @@ public class SceneUploader implements AutoCloseable {
 			texturedFaceIdx, false
 		);
 
-		if (tileZ != 0 || override.doubleSidedFaces) {
+		boolean isDoubleSided = !onlyWaterSurface && (tileZ != 0 || override.doubleSidedFaces);
+		if (isDoubleSided) {
 			vb.putStaticVertex(
 				lx1, seHeight, lz1,
 				uvx + uvsin, uvy - uvcos, 0,
@@ -1144,7 +1146,7 @@ public class SceneUploader implements AutoCloseable {
 			texturedFaceIdx, false
 		);
 
-		if (tileZ != 0 || override.doubleSidedFaces) {
+		if (isDoubleSided) {
 			vb.putStaticVertex(
 				lx3, nwHeight, lz3,
 				uvx - uvcos, uvy - uvsin, 0,
@@ -1166,7 +1168,6 @@ public class SceneUploader implements AutoCloseable {
 				texturedFaceIdx, true
 			);
 		}
-
 
 		writeCache.release();
 	}
@@ -1463,7 +1464,8 @@ public class SceneUploader implements AutoCloseable {
 				texturedFaceIdx, false
 			);
 
-			if (tileZ != 0 || override.doubleSidedFaces) {
+			boolean isDoubleSided = !onlyWaterSurface && (tileZ != 0 || override.doubleSidedFaces);
+			if (isDoubleSided) {
 				vb.putStaticVertex(
 					lx2, ly2, lz2,
 					uvCx, uvCy, 0,
@@ -1674,7 +1676,6 @@ public class SceneUploader implements AutoCloseable {
 					continue;
 
 				if (faceOverride.inheritTileColorType != InheritTileColorType.NONE) {
-					final Scene scene = ctx.scene;
 					SceneTileModel tileModel = tile.getSceneTileModel();
 					SceneTilePaint tilePaint = tile.getSceneTilePaint();
 
@@ -1899,11 +1900,8 @@ public class SceneUploader implements AutoCloseable {
 		final float[] verticesY = model.getVerticesY();
 		final float[] verticesZ = model.getVerticesZ();
 
-		final boolean[] visibility = PooledArrayType.BOOL.borrow(vertexCount);
+		final boolean[] visibility = isModelPartiallyVisible ? PooledArrayType.BOOL.borrow(vertexCount) : null;
 		final float[] modelProjected = PooledArrayType.FLOAT.borrow(vertexCount * 3);
-
-		if (isModelPartiallyVisible)
-			Arrays.fill(visibility, 0, vertexCount, true);
 
 		// Identity orient, will result in no rotation
 		float orientSinf = 0;
@@ -1996,6 +1994,12 @@ public class SceneUploader implements AutoCloseable {
 		final int radius = model.getRadius();
 		final byte modelTransparency = model.getTransparency();
 
+		int cachedVanillaTexturedId = -1;
+		ModelOverride cachedVanillaTextureOverride = null;
+
+		int cachedAhsl = -1;
+		ModelOverride cachedAhslOverride = null;
+
 		faceOverrides.ensureCapacity(triangleCount);
 		faceMaterials.ensureCapacity(triangleCount);
 		faceUVTypes.ensureCapacity(triangleCount);
@@ -2025,7 +2029,12 @@ public class SceneUploader implements AutoCloseable {
 				} else {
 					material = materialManager.fromVanillaTexture(textureId);
 					if (modelOverride.materialOverrides != null) {
-						var override = modelOverride.materialOverrides.get(material);
+						final var override = cachedVanillaTexturedId == textureId ?
+							cachedVanillaTextureOverride :
+							modelOverride.materialOverrides.get(material);
+						cachedVanillaTexturedId = textureId;
+						cachedVanillaTextureOverride = override;
+
 						if (override != null) {
 							faceOverride = override;
 							material = faceOverride.textureMaterial;
@@ -2034,7 +2043,12 @@ public class SceneUploader implements AutoCloseable {
 				}
 			} else if (modelOverride.colorOverrides != null) {
 				final int ahsl = (0xFF - transparency) << 16 | model.getFaceColors1()[f];
-				final var override = modelOverride.testColorOverrides(ahsl);
+				final var override = cachedAhsl == ahsl ?
+					cachedAhslOverride :
+					modelOverride.testColorOverrides(ahsl);
+				cachedAhsl = ahsl;
+				cachedAhslOverride = override;
+
 				if (override != null) {
 					faceOverride = override;
 					material = faceOverride.baseMaterial;
@@ -2066,7 +2080,7 @@ public class SceneUploader implements AutoCloseable {
 			int offsetB = indices2[f];
 			int offsetC = indices3[f];
 
-			if (!allVertsVisible && !visibility[offsetA] && !visibility[offsetB] && !visibility[offsetC]) {
+			if (isModelPartiallyVisible && !allVertsVisible && !visibility[offsetA] && !visibility[offsetB] && !visibility[offsetC]) {
 				// TODO: If a triangle is large enough to encompass the entire screen, this will need an additional plane test
 				culledFaces.put(f);
 				continue;
@@ -2718,7 +2732,7 @@ public class SceneUploader implements AutoCloseable {
 		}
 	}
 
-	private static int readFaceTransparency(byte modelTransparency, byte[] transparencies, int f) {
+	public static int readFaceTransparency(byte modelTransparency, byte[] transparencies, int f) {
 		// Based on https://github.com/runelite/runelite/commit/a88ac64d5a154020cdc21612fc0f1eb32aa8d0f8#diff-2495d11499767f573d041baf080ee6b50dddd325e37b34a402f4c23efc3c2324R464-R478
 		if (modelTransparency == -1)
 			return 255;
