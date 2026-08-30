@@ -1,6 +1,5 @@
 package rs117.hd.resourcepacks.impl;
 
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -8,13 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import javax.annotation.Nonnull;
 import lombok.extern.slf4j.Slf4j;
 import rs117.hd.resourcepacks.AbstractResourcePack;
 import rs117.hd.utils.ResourcePath;
-import rs117.hd.utils.ZipResourcePath;
 
 @Slf4j
-public class ZipResourcePack extends AbstractResourcePack {
+public final class ZipResourcePack extends AbstractResourcePack {
 	private ZipFile zipFile;
 	private final String rootPrefix;
 
@@ -23,37 +22,9 @@ public class ZipResourcePack extends AbstractResourcePack {
 		try {
 			this.zipFile = new ZipFile(resourcePackFileIn);
 			this.rootPrefix = detectRootPrefix();
-			setHasTextures(checkHasTextures());
-			setHasEnvironments(!listJsonFiles("environments").isEmpty());
 		} catch (IOException e) {
 			throw new RuntimeException("Failed to open zip file: " + resourcePackFileIn, e);
 		}
-	}
-
-	private boolean checkHasTextures() {
-		if (zipFile == null) {
-			return false;
-		}
-
-		String materialsPath = normalizeZipPath("materials");
-		if (!materialsPath.endsWith("/")) {
-			materialsPath += "/";
-		}
-
-		// Check if there are any image files in the materials directory
-		var entries = zipFile.entries();
-		while (entries.hasMoreElements()) {
-			ZipEntry entry = entries.nextElement();
-			String name = entry.getName();
-			if (name.startsWith(materialsPath) && !entry.isDirectory()) {
-				String lower = name.toLowerCase();
-				if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
-					return true;
-				}
-			}
-		}
-
-		return false;
 	}
 
 	/**
@@ -72,42 +43,27 @@ public class ZipResourcePack extends AbstractResourcePack {
 	}
 
 	private String detectRootPrefix() {
-		// GitHub zip archives have a root folder, find it by looking for pack.properties
+		// GitHub zip archives have a root folder, find it by looking for pack.properties.
 		var entries = zipFile.entries();
 		while (entries.hasMoreElements()) {
 			ZipEntry entry = entries.nextElement();
 			String name = entry.getName();
-			if (name.endsWith("pack.properties") && !entry.isDirectory()) {
-				int index = name.indexOf("pack.properties");
-				if (index > 0) {
-					String prefix = name.substring(0, index);
-					return prefix.endsWith("/") ? prefix : prefix + "/";
-				}
-				return "";
+			if (!entry.isDirectory() && (name.equals("pack.properties") || name.endsWith("/pack.properties"))) {
+				int separator = name.lastIndexOf('/');
+				return separator < 0 ? "" : name.substring(0, separator + 1);
 			}
 		}
 		return "";
 	}
 
 	private String normalizeZipPath(String... parts) {
-		StringBuilder sb = new StringBuilder();
-		if (rootPrefix != null && !rootPrefix.isEmpty()) {
-			sb.append(rootPrefix);
-		}
-		for (String part : parts) {
-			String normalizedPart = part.replace('\\', '/');
-			if (normalizedPart.startsWith("/")) {
-				normalizedPart = normalizedPart.substring(1);
-			}
-			if (sb.length() > 0 && !sb.toString().endsWith("/")) {
-				sb.append('/');
-			}
-			sb.append(normalizedPart);
-		}
-		return sb.toString();
+		return rootPrefix + ResourcePath.path(parts).toPosixPath();
 	}
 
 	private InputStream getZipEntryInputStream(String... parts) throws IOException {
+		if (zipFile == null)
+			throw new IOException("Resource pack is closed: " + path);
+
 		String zipPath = normalizeZipPath(parts);
 		ZipEntry entry = zipFile.getEntry(zipPath);
 		if (entry == null) {
@@ -117,8 +73,8 @@ public class ZipResourcePack extends AbstractResourcePack {
 	}
 
 	@Override
-	protected InputStream getInputStreamByName(String name) throws IOException {
-		return getZipEntryInputStream(name);
+	public ResourcePath getResource(String... parts) {
+		return new ZipEntryPath(this, parts);
 	}
 
 	@Override
@@ -127,34 +83,19 @@ public class ZipResourcePack extends AbstractResourcePack {
 	}
 
 	@Override
-	public ResourcePath getResource(String... parts) {
-		return new ZipResourcePath(this, parts);
-	}
-
-	@Override
 	public boolean hasResource(String... parts) {
+		if (zipFile == null)
+			return false;
 		String zipPath = normalizeZipPath(parts);
 		ZipEntry entry = zipFile.getEntry(zipPath);
 		return entry != null && !entry.isDirectory();
 	}
 
 	@Override
-	public BufferedImage getPackImage() {
-		try {
-			return getResource("icon.png").loadImage();
-		} catch (IOException e) {
-			log.warn("Pack: {} has no defined icon", getPackName());
-			return null;
-		}
-	}
-
-	@Override
-	public boolean hasPackImage() {
-		return hasResource("icon.png");
-	}
-
-	@Override
 	public List<ResourcePath> listJsonFiles(String directory) {
+		if (zipFile == null)
+			return List.of();
+
 		List<ResourcePath> jsonFiles = new ArrayList<>();
 		String dirPath = normalizeZipPath(directory);
 		if (!dirPath.endsWith("/")) {
@@ -168,10 +109,54 @@ public class ZipResourcePack extends AbstractResourcePack {
 			if (name.startsWith(dirPath) && name.endsWith(".json") && !entry.isDirectory()) {
 				// Extract the filename relative to the directory
 				String filename = name.substring(dirPath.length());
-				jsonFiles.add(new ZipResourcePath(this, directory, filename));
+				jsonFiles.add(new ZipEntryPath(this, directory, filename));
 			}
 		}
 
 		return jsonFiles;
+	}
+
+	/**
+	 * A path inside this archive. Keeping this implementation here makes the
+	 * archive lifetime and its non-filesystem semantics impossible to use without
+	 * the owning pack.
+	 */
+	private static final class ZipEntryPath extends ResourcePath {
+		private final ZipResourcePack pack;
+		private final String[] parts;
+
+		private ZipEntryPath(@Nonnull ZipResourcePack pack, String... parts) {
+			super(pack.path, parts);
+			this.pack = pack;
+			this.parts = parts;
+		}
+
+		@Override
+		public ResourcePath resolve(String... additionalParts) {
+			String[] combined = new String[parts.length + additionalParts.length];
+			System.arraycopy(parts, 0, combined, 0, parts.length);
+			System.arraycopy(additionalParts, 0, combined, parts.length, additionalParts.length);
+			return new ZipEntryPath(pack, combined);
+		}
+
+		@Override
+		public String toPosixPath() {
+			return pack.path.toPosixPath() + "!/" + path;
+		}
+
+		@Override
+		public boolean exists() {
+			return pack.hasResource(parts);
+		}
+
+		@Override
+		public InputStream toInputStream() throws IOException {
+			return pack.getInputStream(parts);
+		}
+
+		@Override
+		public boolean isFileSystemResource() {
+			return false;
+		}
 	}
 }

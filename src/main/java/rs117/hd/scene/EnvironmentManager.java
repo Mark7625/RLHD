@@ -30,9 +30,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
@@ -181,16 +179,15 @@ public class EnvironmentManager {
 
 	public void load(boolean first) {
 		try {
-			// Try loading from default pack first, fallback to ENVIRONMENTS_PATH
 			Environment[] defaultEnvironments = ENVIRONMENTS_PATH.loadJson(plugin.getGson(), Environment[].class);
+			if (defaultEnvironments == null)
+				throw new IOException("Empty or invalid: " + ENVIRONMENTS_PATH);
 
-			List<Environment> allEnvironments = new ArrayList<>(Arrays.asList(ENVIRONMENTS_PATH.loadJson(plugin.getGson(), Environment[].class)));
+			List<Environment> allEnvironments = new ArrayList<>(Arrays.asList(defaultEnvironments));
 			mergeEnvironmentsFromResourcePacks(allEnvironments);
 
-				if (!config.pohThemeEnvironments())
-					environments = Arrays.stream(environments)
-						.filter(env -> !env.isPohTheme)
-						.toArray(Environment[]::new);
+			if (!config.pohThemeEnvironments())
+				allEnvironments.removeIf(env -> env.isPohTheme);
 
 			environments = allEnvironments.toArray(new Environment[0]);
 			log.debug("Loaded {} environments ({} from default, {} from resource packs)",
@@ -563,7 +560,7 @@ public class EnvironmentManager {
 
 		for (int i = 0; i < environments.size(); i++) {
 			Environment existing = environments.get(i);
-			if (existing.area != null && existing.area.name != null && 
+			if (existing.area != null && existing.area.name != null &&
 				existing.area.name.equals(newEnv.area.name)) {
 				environments.set(i, newEnv);
 				return;

@@ -28,7 +28,6 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
-import java.io.InputStream;
 import java.nio.IntBuffer;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -36,7 +35,6 @@ import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.client.callback.ClientThread;
@@ -46,15 +44,12 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.*;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
-import rs117.hd.resourcepacks.AbstractResourcePack;
-import rs117.hd.resourcepacks.PackEventType;
 import rs117.hd.resourcepacks.ResourcePackManager;
 import rs117.hd.resourcepacks.ResourcePackUpdate;
 import rs117.hd.utils.Props;
 import rs117.hd.utils.ResourcePath;
 
 import static org.lwjgl.opengl.GL33C.*;
-import static rs117.hd.HdPluginConfig.*;
 import static rs117.hd.utils.MathUtils.*;
 import static rs117.hd.utils.ResourcePath.path;
 
@@ -63,7 +58,7 @@ import static rs117.hd.utils.ResourcePath.path;
 public class TextureManager {
 	private static final String[] SUPPORTED_IMAGE_EXTENSIONS = { "png", "jpg" };
 	private static final ResourcePath TEXTURE_PATH = Props
-		.getFolder("rlhd.texture-path", () -> path(HdPlugin.class,"resource-pack", "environments" , "environments.json"));
+		.getFolder("rlhd.texture-path", () -> path(HdPlugin.class, "resource-pack", "materials"));
 
 	@Inject
 	private Client client;
@@ -73,13 +68,6 @@ public class TextureManager {
 
 	@Inject
 	private ResourcePackManager resourcePackManager;
-
-	/**
-	 * Checks if a pack has textures by checking if it has any image files in the materials directory.
-	 */
-	private boolean packHasTextures(@Nullable AbstractResourcePack pack) {
-		return pack != null && pack.hasTextures();
-	}
 
 	@Inject
 	private ScheduledExecutorService executor;
@@ -205,7 +193,7 @@ public class TextureManager {
 			ResourcePath path = resourcePackManager.locateFile("materials", filename + "." + ext);
 			if (path == null)
 				continue;
-			
+
 			try {
 				return path.loadImage();
 			} catch (Exception ex) {

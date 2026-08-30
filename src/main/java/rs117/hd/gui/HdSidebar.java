@@ -40,6 +40,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.ui.components.materialtabs.MaterialTab;
 import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
 import net.runelite.client.util.ImageUtil;
@@ -57,9 +58,10 @@ public class HdSidebar extends PluginPanel {
 	private final JPanel tabPanel;
 
 	private final ResourcePackPanel resourcePackPanel;
+	private final EventBus eventBus;
 
 	@Inject
-	public HdSidebar(ClientToolbar clientToolbar, ResourcePackPanel resourcePackPanel) {
+	public HdSidebar(ClientToolbar clientToolbar, ResourcePackPanel resourcePackPanel, EventBus eventBus) {
 		super(false);
 		setLayout(new BorderLayout());
 
@@ -91,19 +93,18 @@ public class HdSidebar extends PluginPanel {
 		clientToolbar.addNavigation(navigationButton);
 
 		this.resourcePackPanel = resourcePackPanel;
+		this.eventBus = eventBus;
+		eventBus.register(resourcePackPanel);
 		MaterialTab resourcePackTab = addTab(resourcePackPanel, "pack_icon.png", "Resource Packs");
 		addTab(new JPanel(), "toolbox_icon.png", "Development Tools");
 		resourcePackTab.select();
 	}
 
 	public void destroy() {
+		eventBus.unregister(resourcePackPanel);
 		clientToolbar.removeNavigation(navigationButton);
 		tabGroup.removeAll();
 		tabPanel.removeAll();
-	}
-
-	public void refresh() {
-		resourcePackPanel.refreshPanel();
 	}
 
 	private MaterialTab addTab(JPanel tabContent, String image, String tooltip) {

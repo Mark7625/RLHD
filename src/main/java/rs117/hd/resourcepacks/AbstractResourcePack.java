@@ -6,7 +6,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import lombok.Getter;
@@ -16,7 +15,7 @@ import rs117.hd.resourcepacks.data.Manifest;
 import rs117.hd.utils.ResourcePath;
 
 @Slf4j
-public abstract class AbstractResourcePack implements IResourcePack {
+public abstract class AbstractResourcePack {
 	private Manifest manifest;
 	public final ResourcePath path;
 
@@ -24,14 +23,17 @@ public abstract class AbstractResourcePack implements IResourcePack {
 	@Setter
 	private boolean developmentPack = false;
 
-	private boolean cachedHasTextures = false;
-	private boolean cachedHasEnvironments = false;
-
 	public AbstractResourcePack(ResourcePath resourcePackFileIn) {
 		this.path = resourcePackFileIn;
 	}
 
-	protected abstract InputStream getInputStreamByName(String name) throws IOException;
+	public InputStream getInputStream(String... parts) throws IOException {
+		return getResource(parts).toInputStream();
+	}
+
+	public ResourcePath getResource(String... parts) {
+		return path.resolve(parts);
+	}
 
 	/**
 	 * Check if a resource exists in this pack.
@@ -39,8 +41,7 @@ public abstract class AbstractResourcePack implements IResourcePack {
 	 * @return true if the resource exists, false otherwise
 	 */
 	public boolean hasResource(String... parts) {
-		var path = this.path.resolve(parts);
-		return path.exists();
+		return getResource(parts).exists();
 	}
 
 	/**
@@ -50,42 +51,10 @@ public abstract class AbstractResourcePack implements IResourcePack {
 	 */
 	public abstract List<ResourcePath> listJsonFiles(String directory);
 
-	/**
-	 * Checks if this pack has any textures (image files in the materials directory).
-	 * This value is cached during pack initialization.
-	 * @return true if the pack contains textures, false otherwise
-	 */
-	public boolean hasTextures() {
-		return cachedHasTextures;
-	}
-
-	/**
-	 * Sets whether this pack has textures. Called during pack initialization.
-	 */
-	protected void setHasTextures(boolean hasTextures) {
-		this.cachedHasTextures = hasTextures;
-	}
-
-	/**
-	 * Checks if this pack has any environments (JSON files in the environments directory).
-	 * This value is cached during pack initialization.
-	 * @return true if the pack contains environments, false otherwise
-	 */
-	public boolean hasEnvironments() {
-		return cachedHasEnvironments;
-	}
-
-	/**
-	 * Sets whether this pack has environments. Called during pack initialization.
-	 */
-	protected void setHasEnvironments(boolean hasEnvironments) {
-		this.cachedHasEnvironments = hasEnvironments;
-	}
-
 	public Manifest getManifest() {
 		try {
 			if (manifest == null) {
-				manifest = readMetadata(this.getInputStreamByName("pack.properties"));
+				manifest = readMetadata(getInputStream("pack.properties"));
 			}
 			return manifest;
 		} catch (IOException e) {
@@ -94,25 +63,20 @@ public abstract class AbstractResourcePack implements IResourcePack {
 		}
 	}
 
-	public static Manifest readMetadata(InputStream inputStream) {
-		BufferedReader bufferedreader = new BufferedReader(new InputStreamReader(inputStream, Charsets.UTF_8));
-		Manifest metadata = null;
-		try {
-			bufferedreader = new BufferedReader(new InputStreamReader(inputStream, Charsets.UTF_8));
+	private static Manifest readMetadata(InputStream inputStream) {
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, Charsets.UTF_8))) {
 			Properties props = new Properties();
-			props.load(bufferedreader);
-			metadata = new Manifest(props.getProperty("displayName"), props.getProperty("description"), props.getProperty("author"));
-
-		} catch (Exception exception) {
-			exception.printStackTrace();
-		} finally {
-			try {
-				bufferedreader.close();
-			} catch (IOException e) {
-				e.printStackTrace();
+			props.load(reader);
+			String displayName = props.getProperty("displayName");
+			if (displayName == null || displayName.trim().isEmpty()) {
+				log.warn("Resource pack metadata is missing displayName");
+				return null;
 			}
+			return new Manifest(displayName, props.getProperty("description"), props.getProperty("author"));
+		} catch (IOException ex) {
+			log.warn("Failed to read resource pack metadata", ex);
+			return null;
 		}
-		return metadata;
 	}
 
 	public String getPackName() {
@@ -123,7 +87,19 @@ public abstract class AbstractResourcePack implements IResourcePack {
 		return getManifest() != null;
 	}
 
-	@Override
+	public BufferedImage getPackImage() {
+		try {
+			return getResource("icon.png").loadImage();
+		} catch (IOException ex) {
+			log.warn("Pack: {} has no defined icon", getPackName());
+			return null;
+		}
+	}
+
+	public boolean hasPackImage() {
+		return hasResource("icon.png");
+	}
+
 	public BufferedImage getPackImage(boolean compactView) {
 		if (compactView && hasResource("compact-icon.png")) {
 			try {
@@ -135,7 +111,6 @@ public abstract class AbstractResourcePack implements IResourcePack {
 		return getPackImage();
 	}
 
-	@Override
 	public boolean hasPackImage(boolean compactView) {
 		if (compactView) {
 			return hasResource("compact-icon.png") || hasPackImage();

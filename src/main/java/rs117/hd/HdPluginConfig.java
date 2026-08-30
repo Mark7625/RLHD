@@ -1076,7 +1076,7 @@ public interface HdPluginConfig extends Config
 	@ConfigItem(
 		keyName = KEY_ENABLE_RESOURCE_PACKS,
 		name = "Enable resource packs",
-		description = 
+		description =
 			"Enable custom resource packs. When disabled, only the default internal pack will be loaded.<br>" +
 			"The resource pack sidebar will also be hidden when disabled.",
 		position = 1,
@@ -1146,7 +1146,7 @@ public interface HdPluginConfig extends Config
 	default boolean legacyTobEnvironment() {
 		return false;
 	}
-	
+
 	/*====== Experimental settings ======*/
 
 	@ConfigSection(

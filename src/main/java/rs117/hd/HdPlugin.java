@@ -241,7 +241,7 @@ public class HdPlugin extends Plugin {
 	private Gson gson;
 
 	@Getter
-	public HdSidebar sidebar;
+	private HdSidebar sidebar;
 
 	@Inject
 	private Client client;
@@ -260,6 +260,21 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private ResourcePackManager resourcePackManager;
+
+	private void createSidebar() {
+		if (!config.enableResourcePacks())
+			return;
+
+		SwingUtilities.invokeLater(() -> sidebar = injector.getInstance(HdSidebar.class));
+	}
+
+	private void destroySidebar() {
+		SwingUtilities.invokeLater(() -> {
+			if (sidebar != null)
+				sidebar.destroy();
+			sidebar = null;
+		});
+	}
 
 	@Inject
 	private HdPluginConfig config;
@@ -694,6 +709,8 @@ public class HdPlugin extends Plugin {
 				initializeUbos();
 
 				resourcePackManager.startUp();
+				configLegacyTzHaarReskin = resourcePackManager.isEnabled("tzhaar_reskin");
+				createSidebar();
 
 				// Materials need to be initialized before compiling shader programs
 				textureManager.startUp();
@@ -808,6 +825,7 @@ public class HdPlugin extends Plugin {
 			waterTypeManager.shutDown();
 			materialManager.shutDown();
 			textureManager.shutDown();
+			destroySidebar();
 			resourcePackManager.shutDown();
 
 			ConcurrentPool.destroyAll();
@@ -1866,15 +1884,14 @@ public class HdPlugin extends Plugin {
 								reloadEnvironments = true;
 								break;
 							case KEY_ENABLE_RESOURCE_PACKS:
+								destroySidebar();
 								resourcePackManager.shutDown();
 								resourcePackManager.startUp();
-								eventBus.post(new ResourcePackUpdate(PackEventType.ADDED));
+								configLegacyTzHaarReskin = resourcePackManager.isEnabled("tzhaar_reskin");
+								createSidebar();
 								break;
 							case KEY_COMPACT_VIEW:
-								// Refresh the panel to update view
-								if (sidebar != null) {
-									sidebar.refresh();
-								}
+								eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
 								break;
 							case KEY_SEASONAL_THEME:
 							case KEY_SEASONAL_HEMISPHERE:

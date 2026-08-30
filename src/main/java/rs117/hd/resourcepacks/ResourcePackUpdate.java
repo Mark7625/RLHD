@@ -5,19 +5,17 @@ import lombok.Getter;
 import rs117.hd.resourcepacks.data.Manifest;
 
 @Getter
-public class ResourcePackUpdate {
+public final class ResourcePackUpdate {
 
 	private final PackEventType type;
 	@Nullable
 	private final AbstractResourcePack pack;
 	@Nullable
 	private final Manifest manifest;
-	private String internalName = "";
+	private final String internalName;
 	// For MOVED events, track the old and new indices
-	@Getter
-	private int fromIndex = -1;
-	@Getter
-	private int toIndex = -1;
+	private final int fromIndex;
+	private final int toIndex;
 
 	public ResourcePackUpdate(PackEventType type) {
 		this(type, null, null);
@@ -28,16 +26,20 @@ public class ResourcePackUpdate {
 	}
 
 	public ResourcePackUpdate(PackEventType type, AbstractResourcePack pack, Manifest manifest) {
+		this(type, pack, manifest, -1, -1);
+	}
+
+	private ResourcePackUpdate(PackEventType type, AbstractResourcePack pack, Manifest manifest, int fromIndex, int toIndex) {
 		this.type = type;
 		this.pack = pack;
 		this.manifest = manifest;
 		this.internalName = manifest == null ? "" : manifest.getInternalName();
+		this.fromIndex = fromIndex;
+		this.toIndex = toIndex;
 	}
 
 	public ResourcePackUpdate(PackEventType type, AbstractResourcePack pack, int fromIndex, int toIndex) {
-		this(type, pack, pack != null ? pack.getManifest() : null);
-		this.fromIndex = fromIndex;
-		this.toIndex = toIndex;
+		this(type, pack, pack != null ? pack.getManifest() : null, fromIndex, toIndex);
 	}
 
 	/**
@@ -54,4 +56,3 @@ public class ResourcePackUpdate {
 		return false;
 	}
 }
-

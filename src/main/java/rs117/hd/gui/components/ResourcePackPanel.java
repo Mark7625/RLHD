@@ -39,11 +39,12 @@ import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -62,7 +63,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.client.eventbus.EventBus;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.DynamicGridLayout;
 import net.runelite.client.ui.FontManager;
@@ -72,19 +73,19 @@ import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.SwingUtil;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.gui.HdSidebar;
 import rs117.hd.resourcepacks.AbstractResourcePack;
-import rs117.hd.resourcepacks.PackEventType;
 import rs117.hd.resourcepacks.ResourcePackManager;
+import rs117.hd.resourcepacks.ResourcePackStatus;
 import rs117.hd.resourcepacks.ResourcePackUpdate;
 import rs117.hd.resourcepacks.data.Manifest;
 import rs117.hd.resourcepacks.impl.DefaultResourcePack;
 
-import static rs117.hd.resourcepacks.ResourcePackManager.RAW_GITHUB_URL;
 
 @Slf4j
 public class ResourcePackPanel extends JPanel {
@@ -93,6 +94,7 @@ public class ResourcePackPanel extends JPanel {
 	private static final ImageIcon ARROW_UP;
 	private static final ImageIcon ARROW_DOWN;
 	private static final ImageIcon FOLDER;
+	private static final HttpUrl RAW_GITHUB_URL = HttpUrl.get("https://raw.githubusercontent.com/");
 
 	static {
 		FADE = new ImageIcon(ImageUtil.loadImageResource(HdSidebar.class, "fade.png"));
@@ -114,9 +116,6 @@ public class ResourcePackPanel extends JPanel {
 	private ResourcePackManager resourcePackManager;
 
 	@Inject
-	private EventBus eventBus;
-
-	@Inject
 	private HdPluginConfig config;
 
 	@Inject
@@ -124,8 +123,7 @@ public class ResourcePackPanel extends JPanel {
 
 	// Map to track download progress bars for each pack
 	private final Map<String, JProgressBar> downloadProgressBars = new HashMap<>();
-	private final Map<String, JButton> downloadButtons = new HashMap<>();
-	private final Map<String, JPanel> packPanels = new HashMap<>();
+	private final Map<String, ImageIcon> packIcons = new ConcurrentHashMap<>();
 
 	// Debounce for pack move events and UI refresh
 	private ScheduledFuture<?> moveDebounce;
@@ -247,15 +245,15 @@ public class ResourcePackPanel extends JPanel {
 		filterPanel.setLayout(new BorderLayout());
 		filterPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
 		filterPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		
+
 		JPanel filterControls = new JPanel();
 		filterControls.setLayout(new BorderLayout());
 		filterControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		
+
 		// Make search bar bigger - take most of the space
 		searchBar.setPreferredSize(new Dimension(0, 30));
 		filterControls.add(searchBar, BorderLayout.CENTER);
-		
+
 		// Make dropdown smaller and put it on the right with small gap
 		packTypeFilter.setPreferredSize(new Dimension(70, 30));
 		packTypeFilter.setMaximumSize(new Dimension(70, 30));
@@ -264,7 +262,7 @@ public class ResourcePackPanel extends JPanel {
 		dropdownContainer.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		dropdownContainer.add(packTypeFilter, BorderLayout.CENTER);
 		filterControls.add(dropdownContainer, BorderLayout.EAST);
-		
+
 		filterPanel.add(filterControls, BorderLayout.CENTER);
 		filterPanel.setVisible(false);
 		add(filterPanel, 0); // Add at the top
@@ -272,14 +270,19 @@ public class ResourcePackPanel extends JPanel {
 		setState(PanelState.SELECTION);
 	}
 
-	public void setState(PanelState state) {
+	private void setState(PanelState state) {
 		if (currentState == state)
 			return;
 		currentState = state;
 		refreshPanel();
 	}
 
-	public void refreshPanel() {
+	@Subscribe
+	public void onResourcePackUpdate(ResourcePackUpdate event) {
+		refreshPanel();
+	}
+
+	private void refreshPanel() {
 		SwingUtilities.invokeLater(() -> {
 			list.removeAll();
 
@@ -302,39 +305,39 @@ public class ResourcePackPanel extends JPanel {
 
 					resourcePackManager.checkForUpdates();
 
-					var message = resourcePackManager.getStatusMessage();
-					if (message != null) {
-						list.add(message);
+					ResourcePackStatus status = resourcePackManager.getStatus();
+					if (status != null) {
+						list.add(new MessagePanel(status.getTitle(), status.getDescription()));
 					} else {
 						PackTypeFilter selectedFilter = (PackTypeFilter) packTypeFilter.getSelectedItem();
-						String searchQuery = searchBar.getText().toLowerCase().trim();
-						var allPacks = resourcePackManager.getDownloadablePacks().values();
-						
+						String searchQuery = searchBar.getText().toLowerCase(Locale.ROOT).trim();
+						var allPacks = resourcePackManager.getDownloadablePacks();
+
 						// Update search suggestions with tags from all packs
 						updateSearchSuggestions(allPacks);
-						
+
 						for (var pack : allPacks) {
 							// Filter by pack type
 							boolean matchesType = selectedFilter == PackTypeFilter.ALL ||
 								(selectedFilter == PackTypeFilter.RESOURCE && pack.isResourcePack()) ||
 								(selectedFilter == PackTypeFilter.ADDON && pack.isAddonPack());
-							
+
 							if (!matchesType) {
 								continue;
 							}
-							
+
 							// Filter by search query (display name and tags)
 							if (!searchQuery.isEmpty()) {
 								boolean matchesSearch = false;
 
-								String displayName = pack.getDisplayName().toLowerCase();
+							String displayName = pack.getDisplayName().toLowerCase(Locale.ROOT);
 								if (displayName.contains(searchQuery)) {
 									matchesSearch = true;
 								}
 
 								if (!matchesSearch && pack.getTags() != null) {
 									for (String tag : pack.getTags()) {
-										if (tag.toLowerCase().contains(searchQuery)) {
+									if (tag.toLowerCase(Locale.ROOT).contains(searchQuery)) {
 											matchesSearch = true;
 											break;
 										}
@@ -345,7 +348,7 @@ public class ResourcePackPanel extends JPanel {
 									continue;
 								}
 							}
-							
+
 							list.add(createDownloadablePackComponent(pack));
 						}
 					}
@@ -358,42 +361,33 @@ public class ResourcePackPanel extends JPanel {
 		});
 	}
 
-	public void movePack(int fromIndex, int toIndex) {
+	private void movePack(int fromIndex, int toIndex) {
 		var packs = resourcePackManager.getInstalledPacks();
-		var pack = packs.get(fromIndex);
-		
-		// Prevent moving the default pack (it must always be at the bottom)
-		if (pack instanceof DefaultResourcePack) {
+		if (fromIndex < 0 || fromIndex >= packs.size())
 			return;
-		}
-		
-		// The default pack is always at the last index, so prevent moving past it
-		int lastIndex = packs.size() - 1;
-		if (toIndex >= lastIndex) {
-			toIndex = lastIndex - 1;
-		}
-		
-		Collections.swap(packs, fromIndex, toIndex);
-		
+		var pack = packs.get(fromIndex);
+		int finalToIndex = resourcePackManager.movePack(fromIndex, toIndex);
+		if (finalToIndex < 0)
+			return;
+
 		refreshPanel();
-		
+
 		justClicked = true;
-		
+
 		if (moveDebounce == null || moveDebounce.isDone() || pendingMovePack != pack) {
 			originalFromIndex = fromIndex;
 			pendingMovePack = pack;
 		}
-		
-		currentToIndex = toIndex;
-		
+
+		currentToIndex = finalToIndex;
+
 		if (moveDebounce != null && !moveDebounce.isDone()) {
 			moveDebounce.cancel(false);
 		}
 
 		moveDebounce = executor.schedule(() -> {
 			if (justClicked) {
-				eventBus.post(new ResourcePackUpdate(PackEventType.MOVED, pendingMovePack, originalFromIndex, currentToIndex));
-				resourcePackManager.savePackOrder();
+				resourcePackManager.commitPackMove(pendingMovePack, originalFromIndex, currentToIndex);
 				justClicked = false;
 				moveDebounce = null;
 				pendingMovePack = null;
@@ -401,7 +395,7 @@ public class ResourcePackPanel extends JPanel {
 		}, 800, TimeUnit.MILLISECONDS);
 	}
 
-	public JPanel createInstalledPackComponent(AbstractResourcePack pack, int index) {
+	private JPanel createInstalledPackComponent(AbstractResourcePack pack, int index) {
 		boolean compactView = config.compactView();
 
 		int panelHeight = compactView ? 45 : 124;
@@ -458,7 +452,7 @@ public class ResourcePackPanel extends JPanel {
 		}
 
 		Manifest manifest = pack.getManifest();
-		
+
 		// Author is always shown, but positioned differently in compact view
 		JLabel author = new JLabel(manifest.getAuthor());
 		author.setFont(FontManager.getRunescapeSmallFont());
@@ -472,9 +466,9 @@ public class ResourcePackPanel extends JPanel {
 		if (tooltipText != null) {
 			panel.setToolTipText(tooltipText);
 		}
-		
-		if (!compactView) {
-			String labelText = manifest.getTooltipText();
+
+		if (!compactView && tooltipText != null) {
+			String labelText = tooltipText;
 			if (!labelText.startsWith("<html>")) {
 				labelText = "<html>" + labelText + "</html>";
 			}
@@ -530,11 +524,11 @@ public class ResourcePackPanel extends JPanel {
 		return panel;
 	}
 
-	public JPanel createDownloadablePackComponent(Manifest manifest) {
+	private JPanel createDownloadablePackComponent(Manifest manifest) {
 		boolean compactView = config.compactView();
 		int panelHeight = compactView ? 60 : 124;
 		final int finalPanelHeight = panelHeight;
-		
+
 		JPanel panel = new JPanel() {
 			@Override
 			public Point getToolTipLocation(MouseEvent event) {
@@ -561,8 +555,8 @@ public class ResourcePackPanel extends JPanel {
 		if (tooltipText != null) {
 			panel.setToolTipText(tooltipText);
 		}
-		if (!compactView) {
-			JLabel description = new JLabel("<html>" + manifest.getTooltipText() + "</html>");
+		if (!compactView && tooltipText != null) {
+			JLabel description = new JLabel(tooltipText);
 			description.setVerticalAlignment(JLabel.TOP);
 			description.setToolTipText(null); // Don't override panel tooltip
 			description.setBounds(5, 30, 210, 70);
@@ -578,10 +572,8 @@ public class ResourcePackPanel extends JPanel {
 		panel.add(packName);
 
 		String internalName = manifest.getInternalName();
-		packPanels.put(internalName, panel);
-
 		int buttonY = compactView ? 28 : 97;
-		
+
 		JButton actionButton = new JButton();
 		actionButton.setFocusPainted(false);
 		actionButton.setToolTipText(null);
@@ -589,7 +581,6 @@ public class ResourcePackPanel extends JPanel {
 		if (notInstalled) {
 			actionButton.setText("Install");
 			actionButton.setBackground(new Color(0x28BE28));
-			downloadButtons.put(internalName, actionButton);
 			actionButton.addActionListener(l ->
 			{
 				replaceButtonWithProgressBar(internalName, panel, actionButton, buttonY);
@@ -612,7 +603,7 @@ public class ResourcePackPanel extends JPanel {
 					});
 				}, () -> {
 					SwingUtilities.invokeLater(() -> {
-						JProgressBar progressBar = downloadProgressBars.get(internalName);
+						JProgressBar progressBar = downloadProgressBars.remove(internalName);
 						if (progressBar != null) {
 							progressBar.setValue(100);
 							progressBar.setString("100%");
@@ -621,7 +612,7 @@ public class ResourcePackPanel extends JPanel {
 					});
 				}, () -> {
 					SwingUtilities.invokeLater(() -> {
-						JProgressBar progressBar = downloadProgressBars.get(internalName);
+						JProgressBar progressBar = downloadProgressBars.remove(internalName);
 						if (progressBar != null) {
 							progressBar.setString("Failed");
 							panel.repaint();
@@ -654,6 +645,15 @@ public class ResourcePackPanel extends JPanel {
 
 		if (manifest.hasIcon()) {
 			String iconFileName = compactView ? "compact-icon.png" : "icon.png";
+			String iconKey = manifest.getInternalName() + ':' + manifest.getCommit() + ':' + iconFileName;
+			ImageIcon cachedIcon = packIcons.get(iconKey);
+			if (cachedIcon != null) {
+				showIcon(cachedIcon, icon, blackBox, panel);
+				panel.add(actionButton);
+				panel.add(blackBox);
+				panel.add(icon);
+				return panel;
+			}
 
 			okHttpClient
 				.newCall(new Request.Builder()
@@ -675,11 +675,30 @@ public class ResourcePackPanel extends JPanel {
 					}
 
 					@Override
-					public void onResponse(Call call, Response res) throws IOException {
-						byte[] bytes = res.body().bytes();
+					public void onResponse(Call call, Response res) {
+						byte[] bytes;
+						try (Response ignored = res) {
+							if (!res.isSuccessful() || res.body() == null)
+								throw new IOException("Unexpected icon response: " + res.code());
+							bytes = res.body().bytes();
+						} catch (IOException ex) {
+							if (compactView)
+								downloadRegularIcon(manifest, icon, blackBox, panel);
+							else
+								log.warn("Unable to download icon for pack \"{}\"", manifest.getInternalName(), ex);
+							return;
+						}
 						BufferedImage img;
-						synchronized (ImageIO.class) {
-							img = ImageIO.read(new ByteArrayInputStream(bytes));
+						try {
+							synchronized (ImageIO.class) {
+								img = ImageIO.read(new ByteArrayInputStream(bytes));
+							}
+						} catch (IOException ex) {
+							if (compactView)
+								downloadRegularIcon(manifest, icon, blackBox, panel);
+							else
+								log.warn("Unable to decode icon for pack \"{}\"", manifest.getInternalName(), ex);
+							return;
 						}
 
 						if (img != null) {
@@ -695,13 +714,10 @@ public class ResourcePackPanel extends JPanel {
 								g2d.dispose();
 							}
 
-							BufferedImage finalImg = img;
-							SwingUtilities.invokeLater(() -> {
-								icon.setIcon(new ImageIcon(finalImg));
-								icon.setVisible(true);
-								blackBox.setVisible(true);
-								panel.revalidate();
-								panel.repaint();
+						ImageIcon imageIcon = new ImageIcon(img);
+						packIcons.putIfAbsent(iconKey, imageIcon);
+						SwingUtilities.invokeLater(() -> {
+							showIcon(imageIcon, icon, blackBox, panel);
 							});
 						} else {
 							if (compactView) {
@@ -721,9 +737,17 @@ public class ResourcePackPanel extends JPanel {
 		return panel;
 	}
 
+	private static void showIcon(ImageIcon imageIcon, JLabel icon, JLabel blackBox, JPanel panel) {
+		icon.setIcon(imageIcon);
+		icon.setVisible(true);
+		blackBox.setVisible(true);
+		panel.revalidate();
+		panel.repaint();
+	}
+
 	private void replaceButtonWithProgressBar(String internalName, JPanel panel, JButton button, int y) {
 		panel.remove(button);
-		
+
 		JProgressBar progressBar = new JProgressBar(0, 100);
 		progressBar.setStringPainted(true);
 		progressBar.setString("0%");
@@ -734,9 +758,9 @@ public class ResourcePackPanel extends JPanel {
 		progressBar.setOpaque(true);
 		progressBar.setVisible(true);
 		progressBar.setBorderPainted(true);
-		
+
 		downloadProgressBars.put(internalName, progressBar);
-		
+
 		panel.add(progressBar);
 		panel.setComponentZOrder(progressBar, 0);
 		panel.revalidate();
@@ -752,7 +776,7 @@ public class ResourcePackPanel extends JPanel {
 	private void updateSearchSuggestions(java.util.Collection<Manifest> packs) {
 		var suggestionModel = searchBar.getSuggestionListModel();
 		suggestionModel.clear();
-		
+
 		// Collect all unique tags from all packs
 		Set<String> allTags = new HashSet<>();
 		for (var pack : packs) {
@@ -760,7 +784,7 @@ public class ResourcePackPanel extends JPanel {
 				allTags.addAll(pack.getTags());
 			}
 		}
-		
+
 		// Add tags to suggestions
 		allTags.stream()
 			.sorted()
@@ -784,11 +808,24 @@ public class ResourcePackPanel extends JPanel {
 				}
 
 				@Override
-				public void onResponse(Call call, Response res) throws IOException {
-					byte[] bytes = res.body().bytes();
+				public void onResponse(Call call, Response res) {
+					byte[] bytes;
+					try (Response ignored = res) {
+						if (!res.isSuccessful() || res.body() == null)
+							throw new IOException("Unexpected icon response: " + res.code());
+						bytes = res.body().bytes();
+					} catch (IOException ex) {
+						log.warn("Unable to download regular icon for pack \"{}\"", manifest.getInternalName(), ex);
+						return;
+					}
 					BufferedImage img;
-					synchronized (ImageIO.class) {
-						img = ImageIO.read(new ByteArrayInputStream(bytes));
+					try {
+						synchronized (ImageIO.class) {
+							img = ImageIO.read(new ByteArrayInputStream(bytes));
+						}
+					} catch (IOException ex) {
+						log.warn("Unable to decode regular icon for pack \"{}\"", manifest.getInternalName(), ex);
+						return;
 					}
 
 					if (img != null) {

@@ -1,18 +1,20 @@
 package rs117.hd.resourcepacks;
 
+import com.google.gson.Gson;
 import java.awt.Color;
-import java.awt.Frame;
-import java.awt.Rectangle;
 import java.io.File;
-import java.io.FileFilter;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -20,12 +22,9 @@ import javax.swing.SwingUtilities;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
-import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
-import net.runelite.client.ui.ClientUI;
-import net.runelite.client.ui.ContainableFrame;
 import net.runelite.client.util.ColorUtil;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -33,41 +32,27 @@ import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
-import rs117.hd.gui.HdSidebar;
-import rs117.hd.gui.components.MessagePanel;
 import rs117.hd.resourcepacks.data.Manifest;
 import rs117.hd.resourcepacks.impl.DefaultResourcePack;
-import rs117.hd.resourcepacks.impl.FileResourcePack;
-import rs117.hd.resourcepacks.impl.ZipResourcePack;
-import rs117.hd.utils.FileDownloader;
 import rs117.hd.utils.PopupUtils;
-import rs117.hd.utils.Props;
 import rs117.hd.utils.ResourcePath;
 
 import static rs117.hd.HdPluginConfig.*;
-import static rs117.hd.utils.ResourcePath.path;
 
 @Singleton
 @Slf4j
-public class ResourcePackManager {
+public final class ResourcePackManager {
 
-	public static ResourcePath RESOURCE_PACK_DIR = Props.getFolder("117hd-resource-packs", () -> path(new File(RuneLite.RUNELITE_DIR,"117hd-resource-packs").getPath()));
-	public static ResourcePath RESOURCE_PACK_PROPS = Props.getFile("117hd-resource-pack-commits", () -> path(new File(RuneLite.RUNELITE_DIR,"117hd-resource-packs").getPath(), "commits.properties"));
-
-	public static final HttpUrl RESOURCE_PACKS_MANIFEST_URL = HttpUrl.get("https://raw.githubusercontent.com/117HD/resource-pack-hub/manifest/manifest.json");
-	public static final HttpUrl RAW_GITHUB_URL = HttpUrl.get("https://raw.githubusercontent.com/");
+	private static final HttpUrl RESOURCE_PACKS_MANIFEST_URL = HttpUrl.get("https://raw.githubusercontent.com/117HD/resource-pack-hub/manifest/manifest.json");
 
 	private static final int MAX_UPDATE_CHECK_INTERVAL = 600000; // 10 minutes
-	private static final FileFilter RESOURCE_PACK_FILTER = file ->
-		file.isFile() || file.isDirectory() && (new File(file, "pack.properties")).isFile();
 
 	@Inject
 	private OkHttpClient okHttpClient;
 
 	@Inject
-	private HdPlugin plugin;
+	private Gson gson;
 
 	@Inject
 	private EventBus eventBus;
@@ -81,83 +66,34 @@ public class ResourcePackManager {
 	@Inject
 	private Client client;
 
-	@Inject
-	private ClientUI clientUI;
-
 	@Inject ClientThread clientThread;
 
-	@Getter
-	private ArrayList<AbstractResourcePack> installedPacks = new ArrayList<>();
+	@Inject
+	private ResourcePackRepository repository;
+
+	private final List<AbstractResourcePack> installedPacks = new CopyOnWriteArrayList<>();
+
+	private final Map<String, Manifest> downloadablePacks = new LinkedHashMap<>();
 
 	@Getter
-	private final HashMap<String, Manifest> downloadablePacks = new HashMap<>();
-
-	@Getter
-	private MessagePanel statusMessage;
+	private ResourcePackStatus status;
 
 	private long lastCheckForUpdates;
 
 	public void startUp() {
+		clearInstalledPacks();
 
 		if (!config.enableResourcePacks()) {
-			installedPacks.add(new DefaultResourcePack(path(HdPlugin.class, "resource-pack")));
+			installedPacks.add(new DefaultResourcePack(ResourcePath.path(ResourcePackManager.class.getClassLoader(), "rs117/hd/resource-pack")));
 			return;
 		}
-		SwingUtilities.invokeLater(() -> plugin.sidebar = plugin.getInjector().getInstance(HdSidebar.class));
-		
-		Properties commitHashes = loadCommitHashes();
-		ArrayList<AbstractResourcePack> loadedPacks = new ArrayList<>();
-		HashMap<String, AbstractResourcePack> packMap = new HashMap<>();
+		installedPacks.addAll(repository.loadInstalledPacks());
 
-		if (RESOURCE_PACK_DIR.exists()) {
-			if (RESOURCE_PACK_DIR.exists()) {
-				File[] files = RESOURCE_PACK_DIR.toFile().listFiles(RESOURCE_PACK_FILTER);
-				if (files != null) {
-					for (File file : files) {
-						boolean isZip = file.isFile() && file.getName().endsWith(".zip");
-						boolean hasPackProperties = file.isDirectory() && new File(file, "pack.properties").exists();
-
-						if (!isZip && !hasPackProperties) {
-							continue;
-						}
-
-						if (isOrphanedZipPack(file, commitHashes)) {
-							deleteOrphanedZipPack(file);
-							continue;
-						}
-
-						AbstractResourcePack pack = createResourcePack(file);
-
-						if (pack.isValid()) {
-							loadedPacks.add(pack);
-							packMap.put(pack.getManifest().getInternalName(), pack);
-						}
-					}
-				}
-			}
-		}
-
-		// Restore pack order from commits.properties
-		String packOrder = commitHashes.getProperty("packOrder");
-		if (packOrder != null && !packOrder.isEmpty()) {
-			String[] orderedNames = packOrder.split(",");
-			for (String internalName : orderedNames) {
-				internalName = internalName.trim();
-				AbstractResourcePack pack = packMap.remove(internalName);
-				if (pack != null) {
-					installedPacks.add(pack);
-				}
-			}
-		}
-
-		installedPacks.addAll(packMap.values());
-
-		installedPacks.add(new DefaultResourcePack(path(HdPlugin.class, "resource-pack")));
+		installedPacks.add(new DefaultResourcePack(ResourcePath.path(ResourcePackManager.class.getClassLoader(), "rs117/hd/resource-pack")));
 
 		savePackOrder();
 
 		checkForUpdates();
-		plugin.configLegacyTzHaarReskin = isEnabled("tzhaar_reskin");
 	}
 
 	private void migrateLegacyConfigsInternal() {
@@ -180,10 +116,13 @@ public class ResourcePackManager {
 	}
 
 	public void shutDown() {
+		clearInstalledPacks();
+	}
+
+	private void clearInstalledPacks() {
+		for (AbstractResourcePack pack : installedPacks)
+			repository.close(pack);
 		installedPacks.clear();
-		if (plugin.sidebar != null)
-			plugin.sidebar.destroy();
-		plugin.sidebar = null;
 	}
 
 	public void checkForUpdates() {
@@ -211,35 +150,40 @@ public class ResourcePackManager {
 					);
 				}
 
-				@Override
-				public void onResponse(Call call, Response res) {
-					Manifest[] manifests;
-					try {
-						if (res.body() == null)
-							throw new IllegalStateException("Manifest is null");
+			@Override
+			public void onResponse(Call call, Response res) {
+				Manifest[] manifests;
+				try (Response ignored = res) {
+					if (!res.isSuccessful())
+						throw new IOException("Unexpected response code " + res.code());
+					if (res.body() == null)
+						throw new IllegalStateException("Manifest is null");
 
-						manifests = plugin.getGson().fromJson(res.body().string(), Manifest[].class);
-					} catch (Exception ex) {
-						log.error("Error while reading downloaded manifest:", ex);
-						setStatus(
-							"Malformed Manifest",
-							"Something went wrong with our system...<br>"
-							+ "Join our Discord server for further information."
-						);
-						return;
-					}
+					manifests = gson.fromJson(res.body().string(), Manifest[].class);
+					if (manifests == null)
+						throw new IllegalStateException("Manifest is empty");
+				} catch (Exception ex) {
+					log.error("Error while reading downloaded manifest:", ex);
+					setStatus(
+						"Malformed Manifest",
+						"Something went wrong with our system...<br>"
+						+ "Join our Discord server for further information."
+					);
+					return;
+				}
 
-					if (manifests.length == 0) {
-						setStatus(
-							"No packs available",
-							"There are currently no packs available for download."
-						);
-						return;
-					}
+				if (manifests.length == 0) {
+					setStatus(
+						"No packs available",
+						"There are currently no packs available for download."
+					);
+					return;
+				}
 
 					SwingUtilities.invokeLater(() -> {
 						downloadablePacks.clear();
 
+						Arrays.sort(manifests, (left, right) -> left.getDisplayName().compareToIgnoreCase(right.getDisplayName()));
 						for (var manifest : manifests) {
 							downloadablePacks.put(manifest.getInternalName(), manifest);
 						}
@@ -257,13 +201,11 @@ public class ResourcePackManager {
 	private void setStatus(String title, String description) {
 		SwingUtilities.invokeLater(() -> {
 			if (title == null) {
-				statusMessage = null;
+				status = null;
 			} else {
-				statusMessage = new MessagePanel(title, description);
+				status = new ResourcePackStatus(title, description);
 			}
-			var sidebar = plugin.getSidebar();
-			if (sidebar != null)
-				sidebar.refresh();
+			eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
 		});
 	}
 
@@ -276,50 +218,47 @@ public class ResourcePackManager {
 				break;
 			}
 		}
-		
+
 		if (packToRemove == null) {
 			log.warn("Attempted to remove pack '{}' but it was not found", internalName);
 			return;
 		}
-		
+
 		// Don't delete the default pack
 		if (packToRemove instanceof DefaultResourcePack) {
 			log.warn("Attempted to remove default pack, ignoring");
 			return;
 		}
-		
+
 		// Store file path before removing from list
 		File fileToDelete = null;
 		if (packToRemove.path.isFileSystemResource()) {
 			fileToDelete = packToRemove.path.toFile();
 		}
-		
-		// Remove from the list first
-		installedPacks.remove(packToRemove);
-		
-		// Close the zip file if it's a ZipResourcePack to release the file lock
-		if (packToRemove instanceof ZipResourcePack) {
-			((ZipResourcePack) packToRemove).close();
-		}
-		
-		// Delete the zip file from disk
+
+		// Close zip files before deletion so Windows releases the file handle.
+		repository.close(packToRemove);
+
 		if (fileToDelete != null && fileToDelete.exists() && fileToDelete.isFile()) {
-			try {
-				fileToDelete.delete();
-			} catch (Exception e) {
-				log.error("Error deleting resource pack file for '{}':", internalName, e);
+			if (!fileToDelete.delete()) {
+				log.warn("Unable to delete resource pack file for '{}': {}", internalName, fileToDelete);
+				int packIndex = installedPacks.indexOf(packToRemove);
+				if (packIndex >= 0)
+					installedPacks.set(packIndex, repository.createPack(fileToDelete));
+				return;
 			}
 		}
-		
+
+		installedPacks.remove(packToRemove);
+
 		removeCommitHash(internalName);
 
 		savePackOrder();
-		
-		plugin.getSidebar().refresh();
+
 		eventBus.post(new ResourcePackUpdate(PackEventType.REMOVED, packToRemove));
 	}
 
-	public void downloadResourcePack(Manifest manifest, boolean updating) {
+	private void downloadResourcePack(Manifest manifest, boolean updating) {
 		downloadResourcePack(manifest, null, null, null, updating);
 	}
 
@@ -343,16 +282,32 @@ public class ResourcePackManager {
 			);
 			return;
 		}
-		
+
 		downloadResourcePackInternal(manifest, onProgress, onSuccess, onFailure, updating);
 	}
 
 	private void downloadResourcePackInternal(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, Runnable onFailure, boolean updating) {
-		if (!RESOURCE_PACK_DIR.exists()) {
-			RESOURCE_PACK_DIR.toFile().mkdir();
+		if (!isSafeInternalName(manifest.getInternalName())) {
+			log.warn("Refusing to download resource pack with unsafe internal name: {}", manifest.getInternalName());
+			if (onFailure != null)
+				onFailure.run();
+			return;
+		}
+		if (!repository.ensurePackDirectory()) {
+			log.warn("Unable to create resource pack directory");
+			if (onFailure != null)
+				onFailure.run();
+			return;
 		}
 
-		URL url = HttpUrl.parse(manifest.getLink())
+		HttpUrl repositoryUrl = HttpUrl.parse(manifest.getLink());
+		if (repositoryUrl == null || manifest.getCommit().isEmpty()) {
+			log.warn("Invalid download metadata for resource pack {}", manifest.getInternalName());
+			if (onFailure != null)
+				onFailure.run();
+			return;
+		}
+		URL url = repositoryUrl
 			.newBuilder()
 			.addPathSegment("archive")
 			.addPathSegment(manifest.getCommit() + ".zip")
@@ -362,12 +317,16 @@ public class ResourcePackManager {
 		// Use file size from manifest if available
 		Long expectedFileSize = manifest.getFileSize();
 
-		FileDownloader downloader = new FileDownloader();
-		downloader.downloadFile(
+		File zipFile = repository.archiveFile(manifest.getInternalName());
+		File temporaryFile = new File(zipFile.getPath() + ".part");
+		deleteFileQuietly(temporaryFile);
+
+		ResourcePackDownloader downloader = new ResourcePackDownloader(okHttpClient);
+		downloader.download(
 			url.toString(),
-			RESOURCE_PACK_DIR.resolve(manifest.getInternalName() + ".zip").toFile(),
+			temporaryFile,
 			expectedFileSize,
-			new FileDownloader.DownloadListener() {
+			new ResourcePackDownloader.Listener() {
 				@Override
 				public void onStarted() {
 					log.info("Downloading resource pack '{}' from {}", manifest.getInternalName(), url);
@@ -375,7 +334,8 @@ public class ResourcePackManager {
 
 				@Override
 				public void onFailure(Call call, IOException e) {
-					log.info("Error while downloading resource pack '{}' from {}:", manifest.getInternalName(), url, e);
+					deleteFileQuietly(temporaryFile);
+					log.warn("Error while downloading resource pack '{}' from {}", manifest.getInternalName(), url, e);
 					if (onFailure != null) {
 						onFailure.run();
 					}
@@ -390,49 +350,86 @@ public class ResourcePackManager {
 
 				@Override
 				public void onFinished() {
-					File zipFile = RESOURCE_PACK_DIR.resolve(manifest.getInternalName() + ".zip").toFile();
-
 					SwingUtilities.invokeLater(() -> {
-						AbstractResourcePack pack = createResourcePack(zipFile);
-
-						String internalName = pack.getManifest().getInternalName();
-
-						var localPack = getInstalledPack(internalName);
-						if (localPack == null) {
-							// Add before the default pack (which is always at the last index)
-							int lastIndex = installedPacks.size() - 1;
-							installedPacks.add(lastIndex, pack);
-						} else {
-							// Replace existing pack if updating
-							int index = installedPacks.indexOf(localPack);
-							if (index >= 0) {
-								// Close old pack if it's a zip
-								if (localPack instanceof ZipResourcePack) {
-									((ZipResourcePack) localPack).close();
-								}
-								installedPacks.set(index, pack);
-							}
-						}
-
-						saveCommitHash(internalName, manifest.getCommit());
-
-						plugin.getSidebar().refresh();
-						eventBus.post(new ResourcePackUpdate(PackEventType.ADDED, pack, manifest));
-
-
-						savePackOrder();
-
-						if (manifest.isHasSettings() && localPack == null && !updating) {
-							applyPackSettings(pack);
-						}
-						
-						if (onSuccess != null) {
-							onSuccess.run();
+						try {
+							installDownloadedPack(manifest, temporaryFile, zipFile, updating);
+							if (onSuccess != null)
+								onSuccess.run();
+						} catch (Exception ex) {
+							deleteFileQuietly(temporaryFile);
+							log.warn("Unable to install resource pack '{}'", manifest.getInternalName(), ex);
+							if (onFailure != null)
+								onFailure.run();
 						}
 					});
 				}
 			}
 		);
+	}
+
+	private void installDownloadedPack(Manifest manifest, File temporaryFile, File zipFile, boolean updating) throws IOException {
+		AbstractResourcePack validatedPack = repository.createPack(temporaryFile);
+		if (!validatedPack.isValid()) {
+			repository.close(validatedPack);
+			throw new IOException("Downloaded archive has invalid pack metadata");
+		}
+		String internalName = validatedPack.getManifest().getInternalName();
+		if (!manifest.getInternalName().equals(internalName)) {
+			repository.close(validatedPack);
+			throw new IOException("Archive metadata does not match the requested pack");
+		}
+		repository.close(validatedPack);
+
+		AbstractResourcePack localPack = getInstalledPack(internalName);
+		File backupFile = new File(zipFile.getPath() + ".previous");
+		deleteFileQuietly(backupFile);
+		repository.close(localPack);
+
+		try {
+			if (zipFile.exists())
+				Files.move(zipFile.toPath(), backupFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			Files.move(temporaryFile.toPath(), zipFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException ex) {
+			if (!zipFile.exists() && backupFile.exists())
+				Files.move(backupFile.toPath(), zipFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			if (localPack != null && zipFile.exists()) {
+				int localIndex = installedPacks.indexOf(localPack);
+				if (localIndex >= 0)
+					installedPacks.set(localIndex, repository.createPack(zipFile));
+			}
+			throw ex;
+		}
+
+		AbstractResourcePack pack = repository.createPack(zipFile);
+		if (localPack == null) {
+			installedPacks.add(installedPacks.size() - 1, pack);
+		} else {
+			installedPacks.set(installedPacks.indexOf(localPack), pack);
+		}
+		deleteFileQuietly(backupFile);
+		saveCommitHash(internalName, manifest.getCommit());
+		savePackOrder();
+
+		eventBus.post(new ResourcePackUpdate(PackEventType.ADDED, pack, manifest));
+		if (manifest.isHasSettings() && localPack == null && !updating)
+			applyPackSettings(pack);
+	}
+
+	private static boolean isSafeInternalName(String internalName) {
+		return internalName != null && internalName.matches("[A-Za-z0-9._-]+");
+	}
+
+	private static void deleteFileQuietly(File file) {
+		if (file.exists() && !file.delete())
+			log.warn("Unable to delete temporary resource pack file: {}", file);
+	}
+
+	public List<AbstractResourcePack> getInstalledPacks() {
+		return List.copyOf(installedPacks);
+	}
+
+	public List<Manifest> getDownloadablePacks() {
+		return List.copyOf(downloadablePacks.values());
 	}
 
 	public AbstractResourcePack getInstalledPack(String internalName) {
@@ -451,7 +448,7 @@ public class ResourcePackManager {
 		return pack != null ? pack.getResource(parts) : null;
 	}
 
-	public AbstractResourcePack locatePack(String... parts) {
+	private AbstractResourcePack locatePack(String... parts) {
 		for (AbstractResourcePack pack : installedPacks) {
 			if (pack.hasResource(parts)) {
 				return pack;
@@ -461,29 +458,19 @@ public class ResourcePackManager {
 	}
 
 	/**
-	 * Checks if a file is an orphaned zip pack (not tracked in commit hashes).
+	 * Moves a non-default pack and returns its resulting index, or -1 when the move is invalid.
 	 */
-	private boolean isOrphanedZipPack(File file, Properties commitHashes) {
-		if (!file.isFile() || !file.getName().toLowerCase().endsWith(".zip")) {
-			return false;
-		}
-		
-		String internalName = file.getName().substring(0, file.getName().length() - 4);
-		return !commitHashes.containsKey(internalName);
-	}
+	public int movePack(int fromIndex, int toIndex) {
+		int lastIndex = installedPacks.size() - 1;
+		if (fromIndex < 0 || fromIndex >= lastIndex || toIndex < 0)
+			return -1;
 
-	/**
-	 * Deletes an orphaned zip pack file.
-	 */
-	private void deleteOrphanedZipPack(File file) {
-		String internalName = file.getName().substring(0, file.getName().length() - 4);
-		log.info("Deleting orphaned zip pack '{}' (not found in commit hashes)", internalName);
-		
-		if (file.delete()) {
-			log.debug("Deleted orphaned zip pack: {}", file.getAbsolutePath());
-		} else {
-			log.warn("Failed to delete orphaned zip pack: {}", file.getAbsolutePath());
-		}
+		int targetIndex = Math.min(toIndex, lastIndex - 1);
+		if (targetIndex == fromIndex)
+			return -1;
+
+		Collections.swap(installedPacks, fromIndex, targetIndex);
+		return targetIndex;
 	}
 
 	/**
@@ -524,7 +511,6 @@ public class ResourcePackManager {
 		}
 
 		for (var manifest : packsToUpdate) {
-			removeResourcePack(manifest.getInternalName());
 			downloadResourcePack(manifest,true);
 		}
 	}
@@ -533,18 +519,7 @@ public class ResourcePackManager {
 	 * @return Properties object containing internalName -> commitHash mappings
 	 */
 	private Properties loadCommitHashes() {
-		Properties props = new Properties();
-		File propsFile = RESOURCE_PACK_PROPS.toFile();
-		
-		if (propsFile.exists() && propsFile.isFile()) {
-			try (FileInputStream fis = new FileInputStream(propsFile)) {
-				props.load(fis);
-			} catch (IOException e) {
-				log.warn("Failed to load commit hashes from {}: {}", propsFile, e.getMessage());
-			}
-		}
-		
-		return props;
+		return repository.loadProperties();
 	}
 
 	/**
@@ -553,40 +528,7 @@ public class ResourcePackManager {
 	 * 2. Commit hashes
 	 */
 	private void savePropertiesFile(Properties props) {
-		File propsFile = RESOURCE_PACK_PROPS.toFile();
-		try {
-			propsFile.getParentFile().mkdirs();
-			
-			try (FileOutputStream fos = new FileOutputStream(propsFile)) {
-				fos.write("# Resource pack commit hashes and order - packOrder:comma-separated-list, internalName:commitHash\n".getBytes());
-
-				String packOrder = props.getProperty("packOrder");
-				if (packOrder != null) {
-					fos.write(("packOrder=" + packOrder + "\n").getBytes());
-				}
-
-				List<String> commitHashKeys = new ArrayList<>();
-				
-				for (String key : props.stringPropertyNames()) {
-					if (key.equals("packOrder")) {
-						continue;
-					} else {
-						commitHashKeys.add(key);
-					}
-				}
-
-				commitHashKeys.sort(String::compareTo);
-
-				if (!commitHashKeys.isEmpty()) {
-					fos.write("\n# Commit hashes\n".getBytes());
-					for (String key : commitHashKeys) {
-						fos.write((key + "=" + props.getProperty(key) + "\n").getBytes());
-					}
-				}
-			}
-		} catch (IOException e) {
-			log.warn("Failed to save properties file: {}", e.getMessage());
-		}
+		repository.saveProperties(props);
 	}
 
 	/**
@@ -612,46 +554,31 @@ public class ResourcePackManager {
 	}
 
 	/**
-	 * Saves the current pack order to the properties file.
-	 * Public method to allow external components to trigger saving.
+	 * Persists an already-applied move and publishes its final state.
 	 */
-	public void savePackOrder() {
+	public void commitPackMove(AbstractResourcePack pack, int fromIndex, int toIndex) {
+		savePackOrder();
+		eventBus.post(new ResourcePackUpdate(PackEventType.MOVED, pack, fromIndex, toIndex));
+	}
+
+	private void savePackOrder() {
 		Properties props = loadCommitHashes();
 		List<String> packNames = new ArrayList<>();
-		
+
 		for (var pack : installedPacks) {
 			if (pack instanceof DefaultResourcePack) {
 				continue;
 			}
 			packNames.add(pack.getManifest().getInternalName());
 		}
-		
+
 		if (!packNames.isEmpty()) {
 			props.setProperty("packOrder", String.join(",", packNames));
 		} else {
 			props.remove("packOrder");
 		}
-		
+
 		savePropertiesFile(props);
-	}
-
-
-	/**
-	 * Creates an appropriate ResourcePack instance based on the file type.
-	 * @param file The file or directory representing the resource pack
-	 * @return ZipResourcePack if the file is a .zip, otherwise FileResourcePack
-	 */
-	private AbstractResourcePack createResourcePack(File file) {
-		String fileName = file.getName().toLowerCase();
-		AbstractResourcePack pack;
-		if (fileName.endsWith(".zip")) {
-			pack = new ZipResourcePack(file);
-			pack.setDevelopmentPack(false);
-		} else {
-			pack = new FileResourcePack(file);
-			pack.setDevelopmentPack(true);
-		}
-		return pack;
 	}
 
 	private void applyPackSettings(AbstractResourcePack pack) {
