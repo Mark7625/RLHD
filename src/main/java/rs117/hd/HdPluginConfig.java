@@ -1283,4 +1283,10 @@ public interface HdPluginConfig extends Config
 	default int getPluginUpdateMessage() {
 		return 0;
 	}
+
+	String KEY_RESOURCE_PACK_STATE = "resourcePackState";
+	@ConfigItem(keyName = KEY_RESOURCE_PACK_STATE, hidden = true, name = "", description = "")
+	default String resourcePackState() {
+		return null;
+	}
 }

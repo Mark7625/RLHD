@@ -4,6 +4,7 @@ import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.text.JTextComponent;
 
 /**
  * The sole boundary for arbitrary text displayed by resource-pack UI.
@@ -23,6 +24,11 @@ final class UiText {
 	static void setPlainToolTip(JComponent component, @Nullable String text) {
 		component.putClientProperty("html.disable", true);
 		component.setToolTipText(stripTags(text));
+	}
+
+	static void setPlainText(JTextComponent component, @Nullable String text) {
+		component.putClientProperty("html.disable", true);
+		component.setText(stripTags(text));
 	}
 
 	static String stripTags(@Nullable String text) {

@@ -72,6 +72,7 @@ import net.runelite.client.ui.ClientUI;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.OSType;
 import net.runelite.rlawt.AWTContext;
+import okhttp3.HttpUrl;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.Version;
 import org.lwjgl.opengl.*;
@@ -162,6 +163,8 @@ public class HdPlugin extends Plugin {
 	public static final ResourcePath PLUGIN_DIR = Props
 		.getFolder("rlhd.plugin-dir", () -> path(RuneLite.RUNELITE_DIR, "117hd"));
 
+	public static final String REPOSITORY_URL = "https://github.com/117HD/RLHD";
+	public static final HttpUrl RESOURCE_PACKS_MANIFEST_URL = HttpUrl.get("https://raw.githubusercontent.com/117HD/resource-pack-hub/manifest/manifest.json");
 	public static final String DISCORD_URL = "https://discord.gg/U4p6ChjgSE";
 	public static final String RUNELITE_URL = "https://runelite.net";
 	public static final String AMD_DRIVER_URL = "https://www.amd.com/en/support";
@@ -240,9 +243,6 @@ public class HdPlugin extends Plugin {
 	@Getter
 	private Gson gson;
 
-	@Getter
-	private HdSidebar sidebar;
-
 	@Inject
 	private Client client;
 
@@ -257,24 +257,6 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private PluginManager pluginManager;
-
-	@Inject
-	private ResourcePackManager resourcePackManager;
-
-	private void createSidebar() {
-		if (!config.enableResourcePacks())
-			return;
-
-		SwingUtilities.invokeLater(() -> sidebar = injector.getInstance(HdSidebar.class));
-	}
-
-	private void destroySidebar() {
-		SwingUtilities.invokeLater(() -> {
-			if (sidebar != null)
-				sidebar.destroy();
-			sidebar = null;
-		});
-	}
 
 	@Inject
 	private HdPluginConfig config;
@@ -310,6 +292,9 @@ public class HdPlugin extends Plugin {
 	private ModelOverrideManager modelOverrideManager;
 
 	@Inject
+	private ResourcePackManager resourcePackManager;
+
+	@Inject
 	private FishingSpotReplacer fishingSpotReplacer;
 
 	@Inject
@@ -317,6 +302,9 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private DeveloperTools developerTools;
+
+	@Getter
+	private HdSidebar sidebar;
 
 	@Inject
 	private FrameTimer frameTimer;
@@ -710,7 +698,7 @@ public class HdPlugin extends Plugin {
 
 				resourcePackManager.startUp();
 				configLegacyTzHaarReskin = resourcePackManager.isEnabled("tzhaar_reskin");
-				createSidebar();
+				initializeSidebar();
 
 				// Materials need to be initialized before compiling shader programs
 				textureManager.startUp();
@@ -903,9 +891,10 @@ public class HdPlugin extends Plugin {
 		if (length <= 1)
 			return array + "[" + from + "]";
 		int middle = from + length / 2;
-		return "i < " + middle +
-			   " ? " + generateFetchCases(array, from, middle) +
-			   " : " + generateFetchCases(array, middle, to);
+		return
+			"i < " + middle +
+			" ? " + generateFetchCases(array, from, middle) +
+			" : " + generateFetchCases(array, middle, to);
 	}
 
 	public String generateGetter(String type, int arrayLength) {
@@ -1888,7 +1877,7 @@ public class HdPlugin extends Plugin {
 								resourcePackManager.shutDown();
 								resourcePackManager.startUp();
 								configLegacyTzHaarReskin = resourcePackManager.isEnabled("tzhaar_reskin");
-								createSidebar();
+								initializeSidebar();
 								break;
 							case KEY_COMPACT_VIEW:
 								eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
@@ -2281,4 +2270,19 @@ public class HdPlugin extends Plugin {
 			}
 		);
 	}
+
+	private void initializeSidebar() {
+		if (!config.enableResourcePacks())
+			return;
+		SwingUtilities.invokeLater(() -> sidebar = injector.getInstance(HdSidebar.class));
+	}
+
+	private void destroySidebar() {
+		SwingUtilities.invokeLater(() -> {
+			if (sidebar != null)
+				sidebar.destroy();
+			sidebar = null;
+		});
+	}
+
 }

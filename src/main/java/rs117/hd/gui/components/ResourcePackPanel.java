@@ -30,17 +30,20 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.awt.GridLayout;
 import java.awt.Image;
+import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseAdapter;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -53,21 +56,24 @@ import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.JTextArea;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.plugins.screenmarkers.ScreenMarkerPlugin;
 import net.runelite.client.ui.ColorScheme;
-import net.runelite.client.ui.DynamicGridLayout;
 import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.components.DragAndDropReorderPane;
 import net.runelite.client.ui.components.IconTextField;
+import net.runelite.client.ui.components.MouseDragEventForwarder;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.SwingUtil;
@@ -94,7 +100,12 @@ public class ResourcePackPanel extends JPanel {
 	private static final ImageIcon ARROW_UP;
 	private static final ImageIcon ARROW_DOWN;
 	private static final ImageIcon FOLDER;
+	private static final ImageIcon REFRESH;
+	private static final ImageIcon ADD_ICON;
+	private static final ImageIcon BACK;
 	private static final HttpUrl RAW_GITHUB_URL = HttpUrl.get("https://raw.githubusercontent.com/");
+	private static final String MOVE_UP_BUTTON = "moveUpButton";
+	private static final String MOVE_DOWN_BUTTON = "moveDownButton";
 
 	static {
 		FADE = new ImageIcon(ImageUtil.loadImageResource(HdSidebar.class, "fade.png"));
@@ -107,6 +118,10 @@ public class ResourcePackPanel extends JPanel {
 		ARROW_DOWN = new ImageIcon(ARROW_DOWN_ICON);
 
 		FOLDER = new ImageIcon(ImageUtil.loadImageResource(HdSidebar.class, "folder_icon.png"));
+		REFRESH = new ImageIcon(ImageUtil.resizeImage(ImageUtil.loadImageResource(HdSidebar.class, "refresh.png"), 16, 16));
+		ADD_ICON = new ImageIcon(ImageUtil.loadImageResource(ScreenMarkerPlugin.class, "add_icon.png"));
+		BACK = new ImageIcon(ImageUtil.loadImageResource(HdSidebar.class,
+			"/net/runelite/client/plugins/config/config_back_icon.png"));
 	}
 
 	@Inject
@@ -131,78 +146,75 @@ public class ResourcePackPanel extends JPanel {
 	private int originalFromIndex; // Original starting position
 	private int currentToIndex; // Current destination (updated with each move)
 	private boolean justClicked = false; // Track if a move was just clicked
-
 	private enum PanelState {SELECTION, DOWNLOAD}
 
 	private PanelState currentState = null;
 
-	private final JPanel list;
-	private final JButton bottomButton;
-	private final JComboBox<PackTypeFilter> packTypeFilter;
+	private final DragAndDropReorderPane list;
+	private final Map<Component, AbstractResourcePack> draggablePacks = new IdentityHashMap<>();
+	private Component draggedPackCard;
+	private boolean draggingPack;
+	private final JButton officialPacksButton;
+	private final MessagePanel packOrderHint = new MessagePanel(
+		"Pack priority",
+		"Packs higher in the list take priority over packs below."
+	);
+	private final MessagePanel installHint = new MessagePanel(
+		"Looking for more?",
+		"Browse officially recognized resource packs with the green + button above."
+	);
 	private final JPanel filterPanel;
 	private final IconTextField searchBar;
-
-	private final MessagePanel installHint = new MessagePanel(
-		"Looking for more? ",
-		"You can install additional resource packs<br>by clicking the button below."
-	);
-
-	private enum PackTypeFilter {
-		ALL("All"),
-		RESOURCE("Resource"),
-		ADDON("Addon");
-
-		private final String displayName;
-
-		PackTypeFilter(String displayName) {
-			this.displayName = displayName;
-		}
-
-		@Override
-		public String toString() {
-			return displayName;
-		}
-	}
 
 	ResourcePackPanel() {
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 		setBorder(BorderFactory.createEmptyBorder());
 
-		list = new JPanel();
-		list.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 3));
-		list.setLayout(new DynamicGridLayout(0, 1, 0, 5));
+		list = new DragAndDropReorderPane();
+		list.setBorder(BorderFactory.createEmptyBorder(5, 10, 0, 3));
 		list.setAlignmentX(Component.LEFT_ALIGNMENT);
+		list.addDragListener(this::onPackDragged);
+		installDragPadding();
 
 		var scrollPane = new JScrollPane();
 		scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 		scrollPane.setPreferredSize(new Dimension(0x7000, 0x7000));
-		scrollPane.addComponentListener(new ComponentAdapter() {
-			public void componentResized(ComponentEvent e) {
-				int visibleAmount = scrollPane.getVerticalScrollBar().getVisibleAmount();
-				int maxSize = scrollPane.getVerticalScrollBar().getMaximum();
-				boolean displayHint = visibleAmount == maxSize;
-				if (displayHint) {
-					list.add(installHint);
-				} else {
-					list.remove(installHint);
-				}
-			}
-		});
 
 		JPanel scrollContainer = new FixedWidthPanel();
 		scrollContainer.setLayout(new BorderLayout());
-		scrollContainer.add(list, BorderLayout.NORTH);
+		JPanel listContent = new JPanel(new BorderLayout());
+		listContent.setOpaque(false);
+		listContent.add(list, BorderLayout.NORTH);
+		JPanel hints = new JPanel();
+		hints.setLayout(new BoxLayout(hints, BoxLayout.Y_AXIS));
+		hints.setOpaque(false);
+		hints.add(packOrderHint);
+		hints.add(installHint);
+		listContent.add(hints, BorderLayout.SOUTH);
+		scrollContainer.add(listContent, BorderLayout.NORTH);
 		scrollPane.setViewportView(scrollContainer);
 		add(scrollPane);
 
-		// Pack type filter dropdown
-		packTypeFilter = new JComboBox<>(PackTypeFilter.values());
-		packTypeFilter.setSelectedItem(PackTypeFilter.ALL);
-		packTypeFilter.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		packTypeFilter.setForeground(Color.WHITE);
-		packTypeFilter.addActionListener(e -> refreshPanel());
+		JPanel actions = new JPanel(new GridLayout(1, 2, 5, 0));
+		actions.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+		actions.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		officialPacksButton = new JButton();
+		officialPacksButton.setFocusPainted(false);
+		officialPacksButton.setMargin(new Insets(2, 4, 2, 4));
+		officialPacksButton.setHorizontalTextPosition(SwingConstants.RIGHT);
+		officialPacksButton.setIconTextGap(4);
+		officialPacksButton.setToolTipText("Browse officially recognized resource packs");
+		officialPacksButton.addActionListener(ev -> setState(currentState == PanelState.SELECTION ? PanelState.DOWNLOAD : PanelState.SELECTION));
+		actions.add(officialPacksButton);
+		JButton openFolderButton = new JButton("Open folder");
+		openFolderButton.setFocusPainted(false);
+		openFolderButton.setMargin(new Insets(2, 4, 2, 4));
+		openFolderButton.setToolTipText("Open the local resource-pack folder");
+		openFolderButton.addActionListener(ev -> LinkBrowser.open(resourcePackManager.getPackDirectory().getAbsolutePath()));
+		actions.add(openFolderButton);
+		add(actions, 0);
 
 		// Search bar
 		searchBar = new IconTextField();
@@ -230,16 +242,6 @@ public class ResourcePackPanel extends JPanel {
 		// Add common tags to search suggestions
 		// Tags will be dynamically added from manifests when packs are loaded
 
-		JPanel bottomPanel = new JPanel();
-		bottomPanel.setLayout(new BorderLayout());
-		bottomPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10));
-		bottomButton = new JButton("Initializing...");
-		bottomButton.setFocusPainted(false);
-		bottomButton.addActionListener(ev -> setState(currentState == PanelState.SELECTION ?
-			PanelState.DOWNLOAD : PanelState.SELECTION));
-		bottomPanel.add(bottomButton);
-		add(bottomPanel);
-
 		// Add filter panel at the top
 		filterPanel = new JPanel();
 		filterPanel.setLayout(new BorderLayout());
@@ -250,22 +252,11 @@ public class ResourcePackPanel extends JPanel {
 		filterControls.setLayout(new BorderLayout());
 		filterControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		// Make search bar bigger - take most of the space
-		searchBar.setPreferredSize(new Dimension(0, 30));
 		filterControls.add(searchBar, BorderLayout.CENTER);
-
-		// Make dropdown smaller and put it on the right with small gap
-		packTypeFilter.setPreferredSize(new Dimension(70, 30));
-		packTypeFilter.setMaximumSize(new Dimension(70, 30));
-		JPanel dropdownContainer = new JPanel(new BorderLayout());
-		dropdownContainer.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 0));
-		dropdownContainer.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		dropdownContainer.add(packTypeFilter, BorderLayout.CENTER);
-		filterControls.add(dropdownContainer, BorderLayout.EAST);
 
 		filterPanel.add(filterControls, BorderLayout.CENTER);
 		filterPanel.setVisible(false);
-		add(filterPanel, 0); // Add at the top
+		add(filterPanel, 1);
 
 		setState(PanelState.SELECTION);
 	}
@@ -274,6 +265,8 @@ public class ResourcePackPanel extends JPanel {
 		if (currentState == state)
 			return;
 		currentState = state;
+		officialPacksButton.setText(state == PanelState.SELECTION ? "Browse packs" : "My packs");
+		officialPacksButton.setIcon(state == PanelState.SELECTION ? ADD_ICON : BACK);
 		refreshPanel();
 	}
 
@@ -285,23 +278,30 @@ public class ResourcePackPanel extends JPanel {
 	private void refreshPanel() {
 		SwingUtilities.invokeLater(() -> {
 			list.removeAll();
+			draggablePacks.clear();
 
 			switch (currentState) {
 				case SELECTION: {
-					bottomButton.setText("Download resource packs");
 					filterPanel.setVisible(false);
 
 					var packs = resourcePackManager.getInstalledPacks();
+					packOrderHint.setVisible(packs.size() > 1);
+					installHint.setVisible(packs.size() <= 1);
 					for (int i = 0; i < packs.size(); i++) {
-						list.add(createInstalledPackComponent(packs.get(i), i));
+						AbstractResourcePack pack = packs.get(i);
+						JPanel card = createInstalledPackComponent(pack, i);
+						JPanel component = wrapPackCard(card);
+						list.add(component);
+						draggablePacks.put(component, pack);
+						attachDragEventForwarder(component);
 					}
 
-					list.add(installHint);
 					break;
 				}
 				case DOWNLOAD: {
-					bottomButton.setText("Show installed resource packs");
 					filterPanel.setVisible(true);
+					packOrderHint.setVisible(false);
+					installHint.setVisible(false);
 
 					resourcePackManager.checkForUpdates();
 
@@ -309,7 +309,6 @@ public class ResourcePackPanel extends JPanel {
 					if (status != null) {
 						list.add(new MessagePanel(status.getTitle(), status.getDescription()));
 					} else {
-						PackTypeFilter selectedFilter = (PackTypeFilter) packTypeFilter.getSelectedItem();
 						String searchQuery = searchBar.getText().toLowerCase(Locale.ROOT).trim();
 						var allPacks = resourcePackManager.getDownloadablePacks();
 
@@ -317,15 +316,6 @@ public class ResourcePackPanel extends JPanel {
 						updateSearchSuggestions(allPacks);
 
 						for (var pack : allPacks) {
-							// Filter by pack type
-							boolean matchesType = selectedFilter == PackTypeFilter.ALL ||
-								(selectedFilter == PackTypeFilter.RESOURCE && pack.isResourcePack()) ||
-								(selectedFilter == PackTypeFilter.ADDON && pack.isAddonPack());
-
-							if (!matchesType) {
-								continue;
-							}
-
 							// Filter by search query (display name and tags)
 							if (!searchQuery.isEmpty()) {
 								boolean matchesSearch = false;
@@ -355,13 +345,81 @@ public class ResourcePackPanel extends JPanel {
 					break;
 				}
 			}
+			list.setMaximumSize(new Dimension(Integer.MAX_VALUE, list.getPreferredSize().height));
 
 			revalidate();
 			repaint();
 		});
 	}
 
+	private void onPackDragged(Component component) {
+		AbstractResourcePack pack = draggablePacks.get(component);
+		if (pack == null)
+			return;
+
+		int fromIndex = resourcePackManager.getInstalledPacks().indexOf(pack);
+		if (fromIndex >= 0)
+			movePack(fromIndex, list.getPosition(component), false);
+	}
+
+	private JPanel wrapPackCard(JPanel card) {
+		JPanel wrapper = new JPanel(new BorderLayout());
+		wrapper.setOpaque(false);
+		wrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+		wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
+		wrapper.add(card, BorderLayout.CENTER);
+		return wrapper;
+	}
+
+	private void installDragPadding() {
+		list.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mousePressed(MouseEvent event) {
+				draggingPack = true;
+				for (Component component : list.getComponents()) {
+					if (component.contains(event.getX() - component.getX(), event.getY() - component.getY())) {
+						draggedPackCard = component;
+						return;
+					}
+				}
+			}
+
+			@Override
+			public void mouseReleased(MouseEvent event) {
+				draggedPackCard = null;
+				draggingPack = false;
+			}
+		});
+		list.addMouseMotionListener(new MouseAdapter() {
+			@Override
+			public void mouseDragged(MouseEvent event) {
+				if (draggedPackCard != null) {
+					int y = Math.max(list.getInsets().top, draggedPackCard.getY());
+					draggedPackCard.setLocation(list.getInsets().left, y);
+					updateMoveButtons();
+				}
+			}
+		});
+	}
+
+	private void updateMoveButtons() {
+		ArrayList<Component> cards = new ArrayList<>(draggablePacks.keySet());
+		cards.sort((left, right) -> Integer.compare(left.getY(), right.getY()));
+		for (int index = 0; index < cards.size(); index++) {
+			JPanel wrapper = (JPanel) cards.get(index);
+			JPanel card = (JPanel) wrapper.getComponent(0);
+			JButton moveUp = (JButton) card.getClientProperty(MOVE_UP_BUTTON);
+			JButton moveDown = (JButton) card.getClientProperty(MOVE_DOWN_BUTTON);
+			moveUp.setEnabled(index > 0);
+			moveDown.setEnabled(index < cards.size() - 1);
+		}
+	}
+
 	private void movePack(int fromIndex, int toIndex) {
+		movePack(fromIndex, toIndex, true);
+	}
+
+	private void movePack(int fromIndex, int toIndex, boolean refreshPanel) {
 		var packs = resourcePackManager.getInstalledPacks();
 		if (fromIndex < 0 || fromIndex >= packs.size())
 			return;
@@ -370,7 +428,8 @@ public class ResourcePackPanel extends JPanel {
 		if (finalToIndex < 0)
 			return;
 
-		refreshPanel();
+		if (refreshPanel)
+			refreshPanel();
 
 		justClicked = true;
 
@@ -385,14 +444,21 @@ public class ResourcePackPanel extends JPanel {
 			moveDebounce.cancel(false);
 		}
 
-		moveDebounce = executor.schedule(() -> {
-			if (justClicked) {
-				resourcePackManager.commitPackMove(pendingMovePack, originalFromIndex, currentToIndex);
-				justClicked = false;
-				moveDebounce = null;
-				pendingMovePack = null;
-			}
-		}, 800, TimeUnit.MILLISECONDS);
+		moveDebounce = executor.schedule(() -> SwingUtilities.invokeLater(this::commitPackMove), 800, TimeUnit.MILLISECONDS);
+	}
+
+	private void commitPackMove() {
+		if (draggingPack) {
+			moveDebounce = executor.schedule(() -> SwingUtilities.invokeLater(this::commitPackMove), 100, TimeUnit.MILLISECONDS);
+			return;
+		}
+		if (!justClicked)
+			return;
+
+		resourcePackManager.commitPackMove(pendingMovePack, originalFromIndex, currentToIndex);
+		justClicked = false;
+		moveDebounce = null;
+		pendingMovePack = null;
 	}
 
 	private JPanel createInstalledPackComponent(AbstractResourcePack pack, int index) {
@@ -410,7 +476,6 @@ public class ResourcePackPanel extends JPanel {
 		boolean isDefaultPack = pack instanceof DefaultResourcePack;
 		boolean isTop = index == 0;
 		int lastIndex = resourcePackManager.getInstalledPacks().size() - 1;
-		boolean isLastBeforeDefault = index == lastIndex - 1;
 
 		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		panel.setOpaque(true);
@@ -427,8 +492,9 @@ public class ResourcePackPanel extends JPanel {
 		moveDown.setBounds(190, 5, 22, 22);
 		moveDown.setToolTipText(null); // Don't override panel tooltip
 		panel.add(moveDown);
-		moveDown.setEnabled(!isLastBeforeDefault && !isDefaultPack);
-		moveDown.addActionListener(ev -> movePack(index, index + 1));
+		moveDown.setEnabled(index < lastIndex);
+		moveDown.addActionListener(ev -> movePack(resourcePackManager.getInstalledPacks().indexOf(pack),
+			resourcePackManager.getInstalledPacks().indexOf(pack) + 1));
 
 		JButton moveUp = new JButton();
 		moveUp.setText("");
@@ -437,8 +503,11 @@ public class ResourcePackPanel extends JPanel {
 		moveUp.setToolTipText(null); // Don't override panel tooltip
 		panel.add(moveUp);
 		moveUp.setBounds(165, 5, 22, 22);
-		moveUp.setEnabled(!isTop && !isDefaultPack);
-		moveUp.addActionListener(ev -> movePack(index, index - 1));
+		moveUp.setEnabled(!isTop);
+		moveUp.addActionListener(ev -> movePack(resourcePackManager.getInstalledPacks().indexOf(pack),
+			resourcePackManager.getInstalledPacks().indexOf(pack) - 1));
+		panel.putClientProperty(MOVE_UP_BUTTON, moveUp);
+		panel.putClientProperty(MOVE_DOWN_BUTTON, moveDown);
 
 		boolean hasFolderButton = pack.isDevelopmentPack();
 		if (hasFolderButton) {
@@ -469,9 +538,7 @@ public class ResourcePackPanel extends JPanel {
 		}
 
 		if (!compactView && descriptionText != null && !descriptionText.isEmpty()) {
-			JLabel description = new JLabel();
-			UiText.setPlainText(description, descriptionText);
-			description.setVerticalAlignment(JLabel.TOP);
+			JTextArea description = createDescription(descriptionText);
 			description.setToolTipText(null); // Don't override panel tooltip
 			description.setBounds(5, 30, 210, 70);
 			description.setForeground(Color.WHITE);
@@ -487,9 +554,12 @@ public class ResourcePackPanel extends JPanel {
 			panel.add(icon);
 		}
 
+		boolean modified = pack.isModified();
+		boolean custom = !isDefaultPack && !resourcePackManager.isTrackedOfficialPack(pack);
+		boolean invalid = !isDefaultPack && !pack.hasContent();
 		int packNameShift = pack.isDevelopmentPack() ? 19 : 0;
 		// Calculate width: stop before folder button (140) if present, otherwise before up arrow (165)
-		int packNameEndX = hasFolderButton ? 140 : 165;
+		int packNameEndX = modified ? 140 : hasFolderButton ? 140 : 165;
 		int packNameWidth = packNameEndX - (5 + packNameShift);
 		JLabel packName = new JLabel();
 		UiText.setPlainText(packName, manifest.getDisplayName());
@@ -498,6 +568,22 @@ public class ResourcePackPanel extends JPanel {
 		packName.setBounds(5 + packNameShift, 5, packNameWidth, 25);
 		packName.setForeground(Color.WHITE);
 		panel.add(packName);
+		if (modified || custom || invalid) {
+			JLabel integrity = new JLabel(modified ? "Modified" : invalid ? "Invalid" : "Custom");
+			integrity.setFont(FontManager.getRunescapeSmallFont());
+			integrity.setForeground(modified || invalid ? new Color(0xE0A13A) : Color.GRAY);
+			int integrityWidth = integrity.getPreferredSize().width;
+			integrity.setBounds(215 - integrityWidth, authorY, integrityWidth, integrity.getPreferredSize().height);
+			panel.add(integrity);
+		}
+		if (modified) {
+			JButton repair = new JButton(REFRESH);
+			SwingUtil.removeButtonDecorations(repair);
+			repair.setToolTipText("This official pack has been modified. Re-download the official archive.");
+			repair.setBounds(140, 5, 22, 22);
+			repair.addActionListener(ev -> resourcePackManager.redownloadResourcePack(pack));
+			panel.add(repair);
+		}
 
 
 		JLabel icon = new JLabel();
@@ -519,8 +605,18 @@ public class ResourcePackPanel extends JPanel {
 
 		panel.add(blackBox);
 		panel.add(icon);
-
 		return panel;
+	}
+
+	private void attachDragEventForwarder(Component component) {
+		if (component instanceof JButton)
+			return;
+		MouseDragEventForwarder forwarder = new MouseDragEventForwarder(list);
+		component.addMouseListener(forwarder);
+		component.addMouseMotionListener(forwarder);
+		if (component instanceof JPanel)
+			for (Component child : ((JPanel) component).getComponents())
+				attachDragEventForwarder(child);
 	}
 
 	private JPanel createDownloadablePackComponent(Manifest manifest) {
@@ -556,9 +652,7 @@ public class ResourcePackPanel extends JPanel {
 			UiText.setPlainToolTip(panel, descriptionText);
 		}
 		if (!compactView && descriptionText != null && !descriptionText.isEmpty()) {
-			JLabel description = new JLabel();
-			UiText.setPlainText(description, descriptionText);
-			description.setVerticalAlignment(JLabel.TOP);
+			JTextArea description = createDescription(descriptionText);
 			description.setToolTipText(null); // Don't override panel tooltip
 			description.setBounds(5, 30, 210, 70);
 			description.setForeground(Color.WHITE);
@@ -614,11 +708,8 @@ public class ResourcePackPanel extends JPanel {
 					});
 				}, () -> {
 					SwingUtilities.invokeLater(() -> {
-						JProgressBar progressBar = downloadProgressBars.remove(internalName);
-						if (progressBar != null) {
-							progressBar.setString("Failed");
-							panel.repaint();
-						}
+						downloadProgressBars.remove(internalName);
+						refreshPanel();
 					});
 				},false);
 			});
@@ -745,6 +836,20 @@ public class ResourcePackPanel extends JPanel {
 		blackBox.setVisible(true);
 		panel.revalidate();
 		panel.repaint();
+	}
+
+	private static JTextArea createDescription(String text) {
+		JTextArea description = new JTextArea();
+		UiText.setPlainText(description, text);
+		description.setFont(FontManager.getRunescapeSmallFont());
+		description.setForeground(Color.WHITE);
+		description.setLineWrap(true);
+		description.setWrapStyleWord(true);
+		description.setEditable(false);
+		description.setFocusable(false);
+		description.setOpaque(false);
+		description.setBorder(null);
+		return description;
 	}
 
 	private void replaceButtonWithProgressBar(String internalName, JPanel panel, JButton button, int y) {

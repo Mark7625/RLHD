@@ -35,4 +35,31 @@ public class FileResourcePack extends AbstractResourcePack {
 
 		return jsonFiles;
 	}
+
+	@Override
+	protected boolean hasPackContent() {
+		return hasContent(path.toFile(), true);
+	}
+
+	private static boolean hasContent(File directory, boolean root) {
+		File[] files = directory.listFiles();
+		if (files == null) {
+			return false;
+		}
+
+		for (File file : files) {
+			if (file.isDirectory()) {
+				if (hasContent(file, false)) {
+					return true;
+				}
+			} else if (!root || !isDisplayMetadata(file.getName())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isDisplayMetadata(String filename) {
+		return filename.equals("pack.properties") || filename.equals("icon.png") || filename.equals("compact-icon.png");
+	}
 }

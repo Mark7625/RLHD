@@ -17,11 +17,18 @@ import rs117.hd.utils.ResourcePath;
 @Slf4j
 public abstract class AbstractResourcePack {
 	private Manifest manifest;
+	private boolean manifestLoaded;
+	private boolean hasManifest;
+	private Boolean hasContent;
 	public final ResourcePath path;
 
 	@Getter
 	@Setter
 	private boolean developmentPack = false;
+
+	@Getter
+	@Setter
+	private boolean modified;
 
 	public AbstractResourcePack(ResourcePath resourcePackFileIn) {
 		this.path = resourcePackFileIn;
@@ -51,16 +58,39 @@ public abstract class AbstractResourcePack {
 	 */
 	public abstract List<ResourcePath> listJsonFiles(String directory);
 
-	public Manifest getManifest() {
-		try {
-			if (manifest == null) {
-				manifest = readMetadata(getInputStream("pack.properties"));
-			}
-			return manifest;
-		} catch (IOException e) {
-			log.warn("Failed to load pack.properties for resource pack {}: {}", this, e.getMessage());
-			return null;
+	/**
+	 * Returns whether the pack contains a resource other than its display metadata.
+	 */
+	public final boolean hasContent() {
+		if (hasContent == null) {
+			hasContent = hasPackContent();
 		}
+		return hasContent;
+	}
+
+	protected abstract boolean hasPackContent();
+
+	public Manifest getManifest() {
+		if (!manifestLoaded) {
+			manifestLoaded = true;
+			try {
+				manifest = readMetadata(getInputStream("pack.properties"));
+				hasManifest = manifest != null;
+			} catch (IOException e) {
+				log.debug("Resource pack {} has no pack.properties: {}", this, e.getMessage());
+			}
+			if (manifest == null) {
+				manifest = new Manifest(getFallbackName(), null, null);
+			}
+		}
+		return manifest;
+	}
+
+	private String getFallbackName() {
+		String filename = path.getFilename();
+		return filename.regionMatches(true, Math.max(0, filename.length() - 4), ".zip", 0, 4)
+			? filename.substring(0, filename.length() - 4)
+			: filename;
 	}
 
 	private static Manifest readMetadata(InputStream inputStream) {
@@ -72,7 +102,12 @@ public abstract class AbstractResourcePack {
 				log.warn("Resource pack metadata is missing displayName");
 				return null;
 			}
-			return new Manifest(displayName, props.getProperty("description"), props.getProperty("author"));
+			Manifest manifest = new Manifest(displayName, props.getProperty("description"), props.getProperty("author"));
+			String internalName = props.getProperty("internalName");
+			if (internalName != null && !internalName.isEmpty())
+				manifest.setInternalName(internalName);
+			manifest.setCommit(props.getProperty("commit", ""));
+			return manifest;
 		} catch (IOException ex) {
 			log.warn("Failed to read resource pack metadata", ex);
 			return null;
@@ -84,7 +119,8 @@ public abstract class AbstractResourcePack {
 	}
 
 	public boolean isValid() {
-		return getManifest() != null;
+		getManifest();
+		return hasManifest;
 	}
 
 	public BufferedImage getPackImage() {

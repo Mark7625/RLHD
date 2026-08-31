@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.MessageDigest;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -20,7 +21,7 @@ final class ResourcePackDownloader {
 
 		void onProgress(int progress);
 
-		void onFinished();
+		void onFinished(String sha256);
 	}
 
 	private final OkHttpClient client;
@@ -49,17 +50,19 @@ final class ResourcePackDownloader {
 
 					long contentLength = expectedFileSize != null ? expectedFileSize : body.contentLength();
 					long bytesRead = 0;
+					MessageDigest digest = PackHashes.sha256Digest();
 					byte[] buffer = new byte[4096];
 					try (InputStream input = body.byteStream(); FileOutputStream output = new FileOutputStream(destination)) {
 						for (int read; (read = input.read(buffer)) != -1;) {
 							output.write(buffer, 0, read);
+							digest.update(buffer, 0, read);
 							bytesRead += read;
 							listener.onProgress(contentLength > 0 ? (int) (bytesRead * 100 / contentLength) : -1);
 						}
 					}
 					if (expectedFileSize != null && bytesRead != expectedFileSize)
 						throw new IOException("Downloaded " + bytesRead + " bytes, expected " + expectedFileSize);
-					listener.onFinished();
+					listener.onFinished(PackHashes.toHex(digest.digest()));
 				} catch (IOException exception) {
 					listener.onFailure(call, exception);
 				}

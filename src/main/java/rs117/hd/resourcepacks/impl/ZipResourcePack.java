@@ -44,6 +44,8 @@ public final class ZipResourcePack extends AbstractResourcePack {
 
 	private String detectRootPrefix() {
 		// GitHub zip archives have a root folder, find it by looking for pack.properties.
+		String commonRoot = null;
+		boolean hasRootFile = false;
 		var entries = zipFile.entries();
 		while (entries.hasMoreElements()) {
 			ZipEntry entry = entries.nextElement();
@@ -52,8 +54,20 @@ public final class ZipResourcePack extends AbstractResourcePack {
 				int separator = name.lastIndexOf('/');
 				return separator < 0 ? "" : name.substring(0, separator + 1);
 			}
+
+			int separator = name.indexOf('/');
+			if (separator < 0) {
+				hasRootFile = true;
+				continue;
+			}
+			String root = name.substring(0, separator);
+			if (commonRoot == null) {
+				commonRoot = root;
+			} else if (!commonRoot.equals(root)) {
+				return "";
+			}
 		}
-		return "";
+		return !hasRootFile && commonRoot != null ? commonRoot + "/" : "";
 	}
 
 	private String normalizeZipPath(String... parts) {
@@ -114,6 +128,33 @@ public final class ZipResourcePack extends AbstractResourcePack {
 		}
 
 		return jsonFiles;
+	}
+
+	@Override
+	protected boolean hasPackContent() {
+		if (zipFile == null) {
+			return false;
+		}
+
+		var entries = zipFile.entries();
+		while (entries.hasMoreElements()) {
+			ZipEntry entry = entries.nextElement();
+			if (entry.isDirectory()) {
+				continue;
+			}
+			String name = entry.getName();
+			if (!rootPrefix.isEmpty() && name.startsWith(rootPrefix)) {
+				name = name.substring(rootPrefix.length());
+			}
+			if (!isDisplayMetadata(name)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean isDisplayMetadata(String path) {
+		return path.equals("pack.properties") || path.equals("icon.png") || path.equals("compact-icon.png");
 	}
 
 	/**

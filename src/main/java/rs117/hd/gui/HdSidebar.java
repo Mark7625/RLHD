@@ -49,20 +49,21 @@ import net.runelite.client.util.SwingUtil;
 import rs117.hd.HdPlugin;
 import rs117.hd.gui.components.ResourcePackPanel;
 
-public class HdSidebar extends PluginPanel {
-	@Inject
-	private ClientToolbar clientToolbar;
 
+public class HdSidebar extends PluginPanel {
+	private final ClientToolbar clientToolbar;
+	private final ResourcePackPanel resourcePackPanel;
+	private final EventBus eventBus;
 	private final NavigationButton navigationButton;
 	private final MaterialTabGroup tabGroup;
 	private final JPanel tabPanel;
 
-	private final ResourcePackPanel resourcePackPanel;
-	private final EventBus eventBus;
-
 	@Inject
 	public HdSidebar(ClientToolbar clientToolbar, ResourcePackPanel resourcePackPanel, EventBus eventBus) {
 		super(false);
+		this.clientToolbar = clientToolbar;
+		this.resourcePackPanel = resourcePackPanel;
+		this.eventBus = eventBus;
 		setLayout(new BorderLayout());
 
 		addHeader();
@@ -92,8 +93,6 @@ public class HdSidebar extends PluginPanel {
 			.build();
 		clientToolbar.addNavigation(navigationButton);
 
-		this.resourcePackPanel = resourcePackPanel;
-		this.eventBus = eventBus;
 		eventBus.register(resourcePackPanel);
 		MaterialTab resourcePackTab = addTab(resourcePackPanel, "pack_icon.png", "Resource Packs");
 		addTab(new JPanel(), "toolbox_icon.png", "Development Tools");
@@ -105,6 +104,7 @@ public class HdSidebar extends PluginPanel {
 		clientToolbar.removeNavigation(navigationButton);
 		tabGroup.removeAll();
 		tabPanel.removeAll();
+		removeAll();
 	}
 
 	private MaterialTab addTab(JPanel tabContent, String image, String tooltip) {
@@ -138,8 +138,8 @@ public class HdSidebar extends PluginPanel {
 
 		JPanel buttons = new JPanel(new GridLayout(1, 3, 10, 0));
 		buttons.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		buttons.add(titleButton("discord.png", "Get help or make suggestions", "https://discord.gg/U4p6ChjgSE"));
-		buttons.add(titleButton("github.png", "Report issues or contribute on GitHub", "https://github.com/117HD/RLHD"));
+		buttons.add(titleButton("discord.png", "Get help or make suggestions", HdPlugin.DISCORD_URL));
+		buttons.add(titleButton("github.png", "Report issues or contribute on GitHub", HdPlugin.REPOSITORY_URL));
 		container.add(buttons, BorderLayout.EAST);
 
 		add(container, BorderLayout.NORTH);

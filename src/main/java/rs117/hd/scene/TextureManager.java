@@ -189,15 +189,17 @@ public class TextureManager {
 
 	@Nullable
 	public BufferedImage loadTexture(String filename) {
-		for (String ext : SUPPORTED_IMAGE_EXTENSIONS) {
-			ResourcePath path = resourcePackManager.locateFile("materials", filename + "." + ext);
-			if (path == null)
-				continue;
+		for (var pack : resourcePackManager.getInstalledPacks()) {
+			for (String ext : SUPPORTED_IMAGE_EXTENSIONS) {
+				ResourcePath path = pack.getResource("materials", filename + "." + ext);
+				if (!path.exists())
+					continue;
 
-			try {
-				return path.loadImage();
-			} catch (Exception ex) {
-				log.trace("Unable to load texture: {}", path, ex);
+				try {
+					return path.loadImage();
+				} catch (Exception ex) {
+					log.trace("Unable to load texture: {}", path, ex);
+				}
 			}
 		}
 

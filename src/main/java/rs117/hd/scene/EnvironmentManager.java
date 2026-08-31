@@ -57,7 +57,7 @@ import static rs117.hd.utils.ResourcePath.path;
 public class EnvironmentManager {
 
 	private static final ResourcePath ENVIRONMENTS_PATH = Props
-		.getFile("rlhd.environments-path", () -> path(HdPlugin.class,"resource-pack", "environments" , "environments.json"));
+		.getFile("rlhd.environments-path", () -> path(HdPlugin.class, "resource-pack", "environments", "environments.json"));
 
 	@Inject
 	private Client client;
@@ -179,19 +179,20 @@ public class EnvironmentManager {
 
 	public void load(boolean first) {
 		try {
-			Environment[] defaultEnvironments = ENVIRONMENTS_PATH.loadJson(plugin.getGson(), Environment[].class);
-			if (defaultEnvironments == null)
-				throw new IOException("Empty or invalid: " + ENVIRONMENTS_PATH);
-
-			List<Environment> allEnvironments = new ArrayList<>(Arrays.asList(defaultEnvironments));
+			List<Environment> allEnvironments = new ArrayList<>();
+			if (ENVIRONMENTS_PATH.isFileSystemResource() && ENVIRONMENTS_PATH.exists()) {
+				for (Environment environment : loadEnvironmentsFromFile(ENVIRONMENTS_PATH))
+					mergeEnvironment(allEnvironments, environment, ENVIRONMENTS_PATH, "development override");
+			}
 			mergeEnvironmentsFromResourcePacks(allEnvironments);
+			if (allEnvironments.isEmpty())
+				throw new IOException("No environments were loaded from resource packs");
 
 			if (!config.pohThemeEnvironments())
 				allEnvironments.removeIf(env -> env.isPohTheme);
 
 			environments = allEnvironments.toArray(new Environment[0]);
-			log.debug("Loaded {} environments ({} from default, {} from resource packs)",
-				environments.length, defaultEnvironments.length, environments.length - defaultEnvironments.length);
+			log.debug("Loaded {} environments from resource packs", environments.length);
 
 			HashMap<String, Environment> map = new HashMap<>();
 			for (var env : environments)
@@ -545,8 +546,8 @@ public class EnvironmentManager {
 	}
 
 	/**
-	 * Merges an environment into the list. If an environment with the same area name exists,
-	 * it will be replaced. Otherwise, it will be added as a new environment.
+	 * Merges an environment into the list. The first matching area wins, so packs higher in the
+	 * configured order take priority over packs below them.
 	 * @param environments List to merge into
 	 * @param newEnv Environment to merge
 	 * @param sourcePath Path where the environment was loaded from (for logging)
@@ -562,7 +563,6 @@ public class EnvironmentManager {
 			Environment existing = environments.get(i);
 			if (existing.area != null && existing.area.name != null &&
 				existing.area.name.equals(newEnv.area.name)) {
-				environments.set(i, newEnv);
 				return;
 			}
 		}
