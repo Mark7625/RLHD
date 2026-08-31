@@ -34,13 +34,10 @@ public class MessagePanel extends JPanel {
 			setContent(title, description);
 	}
 
-	/**
-	 * Changes the content of the panel to the given parameters.
-	 * The description has to be wrapped in html so that its text can be wrapped.
-	 */
-	public void setContent(String title, String description) {
-		this.titleLabel.setText(title);
-		this.descriptionLabel.setText("<html><body style='text-align:center'>" + description + "</body></html>");
+	/** Changes the content of the panel using plain text only. */
+	private void setContent(String title, String description) {
+		UiText.setPlainText(titleLabel, title);
+		UiText.setPlainText(descriptionLabel, description);
 		setVisible(true);
 	}
 }

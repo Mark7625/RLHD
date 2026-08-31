@@ -454,7 +454,8 @@ public class ResourcePackPanel extends JPanel {
 		Manifest manifest = pack.getManifest();
 
 		// Author is always shown, but positioned differently in compact view
-		JLabel author = new JLabel(manifest.getAuthor());
+		JLabel author = new JLabel();
+		UiText.setPlainText(author, manifest.getAuthor());
 		author.setFont(FontManager.getRunescapeSmallFont());
 		author.setToolTipText(null); // Don't override panel tooltip
 		int authorY = compactView ? 28 : 105;
@@ -462,17 +463,14 @@ public class ResourcePackPanel extends JPanel {
 		author.setForeground(Color.WHITE);
 		panel.add(author);
 
-		String tooltipText = manifest.getTooltipText();
-		if (tooltipText != null) {
-			panel.setToolTipText(tooltipText);
+		String descriptionText = manifest.getDescription();
+		if (descriptionText != null && !descriptionText.isEmpty()) {
+			UiText.setPlainToolTip(panel, descriptionText);
 		}
 
-		if (!compactView && tooltipText != null) {
-			String labelText = tooltipText;
-			if (!labelText.startsWith("<html>")) {
-				labelText = "<html>" + labelText + "</html>";
-			}
-			JLabel description = new JLabel(labelText);
+		if (!compactView && descriptionText != null && !descriptionText.isEmpty()) {
+			JLabel description = new JLabel();
+			UiText.setPlainText(description, descriptionText);
 			description.setVerticalAlignment(JLabel.TOP);
 			description.setToolTipText(null); // Don't override panel tooltip
 			description.setBounds(5, 30, 210, 70);
@@ -493,7 +491,8 @@ public class ResourcePackPanel extends JPanel {
 		// Calculate width: stop before folder button (140) if present, otherwise before up arrow (165)
 		int packNameEndX = hasFolderButton ? 140 : 165;
 		int packNameWidth = packNameEndX - (5 + packNameShift);
-		JLabel packName = new JLabel(manifest.getDisplayName());
+		JLabel packName = new JLabel();
+		UiText.setPlainText(packName, manifest.getDisplayName());
 		packName.setFont(FontManager.getRunescapeBoldFont());
 		packName.setToolTipText(null); // Don't override panel tooltip
 		packName.setBounds(5 + packNameShift, 5, packNameWidth, 25);
@@ -543,7 +542,8 @@ public class ResourcePackPanel extends JPanel {
 		panel.setMinimumSize(new Dimension(221, panelHeight));
 		panel.setPreferredSize(new Dimension(221, panelHeight));
 
-		JLabel author = new JLabel(manifest.getAuthor());
+		JLabel author = new JLabel();
+		UiText.setPlainText(author, manifest.getAuthor());
 		author.setFont(FontManager.getRunescapeSmallFont());
 		author.setToolTipText(null);
 		int authorY = compactView ? 28 : 105;
@@ -551,12 +551,13 @@ public class ResourcePackPanel extends JPanel {
 		author.setForeground(Color.WHITE);
 		panel.add(author);
 
-		String tooltipText = manifest.getTooltipText();
-		if (tooltipText != null) {
-			panel.setToolTipText(tooltipText);
+		String descriptionText = manifest.getDescription();
+		if (descriptionText != null && !descriptionText.isEmpty()) {
+			UiText.setPlainToolTip(panel, descriptionText);
 		}
-		if (!compactView && tooltipText != null) {
-			JLabel description = new JLabel(tooltipText);
+		if (!compactView && descriptionText != null && !descriptionText.isEmpty()) {
+			JLabel description = new JLabel();
+			UiText.setPlainText(description, descriptionText);
 			description.setVerticalAlignment(JLabel.TOP);
 			description.setToolTipText(null); // Don't override panel tooltip
 			description.setBounds(5, 30, 210, 70);
@@ -564,7 +565,8 @@ public class ResourcePackPanel extends JPanel {
 			panel.add(description);
 		}
 
-		JLabel packName = new JLabel(manifest.getDisplayName());
+		JLabel packName = new JLabel();
+		UiText.setPlainText(packName, manifest.getDisplayName());
 		packName.setFont(FontManager.getRunescapeBoldFont());
 		packName.setToolTipText(null);
 		packName.setBounds(5, 5, 200, 25);
@@ -781,7 +783,8 @@ public class ResourcePackPanel extends JPanel {
 		Set<String> allTags = new HashSet<>();
 		for (var pack : packs) {
 			if (pack.getTags() != null) {
-				allTags.addAll(pack.getTags());
+				for (String tag : pack.getTags())
+					allTags.add(UiText.stripTags(tag));
 			}
 		}
 
