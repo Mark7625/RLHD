@@ -48,16 +48,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import javax.imageio.ImageIO;
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
@@ -67,6 +69,7 @@ import javax.swing.JTextArea;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.screenmarkers.ScreenMarkerPlugin;
 import net.runelite.client.ui.ColorScheme;
@@ -91,6 +94,7 @@ import rs117.hd.resourcepacks.ResourcePackStatus;
 import rs117.hd.resourcepacks.ResourcePackUpdate;
 import rs117.hd.resourcepacks.data.Manifest;
 import rs117.hd.resourcepacks.impl.DefaultResourcePack;
+import rs117.hd.utils.PopupUtils;
 
 
 @Slf4j
@@ -131,21 +135,18 @@ public class ResourcePackPanel extends JPanel {
 	private ResourcePackManager resourcePackManager;
 
 	@Inject
-	private HdPluginConfig config;
+	private Client client;
 
 	@Inject
-	private ScheduledExecutorService executor;
+	private HdPluginConfig config;
 
 	// Map to track download progress bars for each pack
 	private final Map<String, JProgressBar> downloadProgressBars = new HashMap<>();
 	private final Map<String, ImageIcon> packIcons = new ConcurrentHashMap<>();
 
-	// Debounce for pack move events and UI refresh
-	private ScheduledFuture<?> moveDebounce;
-	private AbstractResourcePack pendingMovePack;
-	private int originalFromIndex; // Original starting position
-	private int currentToIndex; // Current destination (updated with each move)
-	private boolean justClicked = false; // Track if a move was just clicked
+	private AbstractResourcePack draggedMovePack;
+	private int draggedMoveFromIndex;
+	private int draggedMoveToIndex;
 	private enum PanelState {SELECTION, DOWNLOAD}
 
 	private PanelState currentState = null;
@@ -153,7 +154,6 @@ public class ResourcePackPanel extends JPanel {
 	private final DragAndDropReorderPane list;
 	private final Map<Component, AbstractResourcePack> draggablePacks = new IdentityHashMap<>();
 	private Component draggedPackCard;
-	private boolean draggingPack;
 	private final JButton officialPacksButton;
 	private final MessagePanel packOrderHint = new MessagePanel(
 		"Pack priority",
@@ -375,7 +375,6 @@ public class ResourcePackPanel extends JPanel {
 		list.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mousePressed(MouseEvent event) {
-				draggingPack = true;
 				for (Component component : list.getComponents()) {
 					if (component.contains(event.getX() - component.getX(), event.getY() - component.getY())) {
 						draggedPackCard = component;
@@ -386,8 +385,8 @@ public class ResourcePackPanel extends JPanel {
 
 			@Override
 			public void mouseReleased(MouseEvent event) {
+				commitDraggedMove();
 				draggedPackCard = null;
-				draggingPack = false;
 			}
 		});
 		list.addMouseMotionListener(new MouseAdapter() {
@@ -419,7 +418,7 @@ public class ResourcePackPanel extends JPanel {
 		movePack(fromIndex, toIndex, true);
 	}
 
-	private void movePack(int fromIndex, int toIndex, boolean refreshPanel) {
+	private void movePack(int fromIndex, int toIndex, boolean commitImmediately) {
 		var packs = resourcePackManager.getInstalledPacks();
 		if (fromIndex < 0 || fromIndex >= packs.size())
 			return;
@@ -428,41 +427,29 @@ public class ResourcePackPanel extends JPanel {
 		if (finalToIndex < 0)
 			return;
 
-		if (refreshPanel)
-			refreshPanel();
-
-		justClicked = true;
-
-		if (moveDebounce == null || moveDebounce.isDone() || pendingMovePack != pack) {
-			originalFromIndex = fromIndex;
-			pendingMovePack = pack;
+		if (commitImmediately) {
+			resourcePackManager.commitPackMove(pack, fromIndex, finalToIndex);
+			return;
 		}
-
-		currentToIndex = finalToIndex;
-
-		if (moveDebounce != null && !moveDebounce.isDone()) {
-			moveDebounce.cancel(false);
+		if (draggedMovePack != pack) {
+			draggedMovePack = pack;
+			draggedMoveFromIndex = fromIndex;
 		}
-
-		moveDebounce = executor.schedule(() -> SwingUtilities.invokeLater(this::commitPackMove), 800, TimeUnit.MILLISECONDS);
+		draggedMoveToIndex = finalToIndex;
 	}
 
-	private void commitPackMove() {
-		if (draggingPack) {
-			moveDebounce = executor.schedule(() -> SwingUtilities.invokeLater(this::commitPackMove), 100, TimeUnit.MILLISECONDS);
-			return;
-		}
-		if (!justClicked)
+	private void commitDraggedMove() {
+		if (draggedMovePack == null)
 			return;
 
-		resourcePackManager.commitPackMove(pendingMovePack, originalFromIndex, currentToIndex);
-		justClicked = false;
-		moveDebounce = null;
-		pendingMovePack = null;
+		resourcePackManager.commitPackMove(draggedMovePack, draggedMoveFromIndex, draggedMoveToIndex);
+		draggedMovePack = null;
 	}
 
 	private JPanel createInstalledPackComponent(AbstractResourcePack pack, int index) {
 		boolean compactView = config.compactView();
+		boolean packEnabled = resourcePackManager.isPackEnabled(pack);
+		boolean hasPackImage = pack.hasPackImage(compactView);
 
 		int panelHeight = compactView ? 45 : 124;
 
@@ -477,7 +464,7 @@ public class ResourcePackPanel extends JPanel {
 		boolean isTop = index == 0;
 		int lastIndex = resourcePackManager.getInstalledPacks().size() - 1;
 
-		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		panel.setBackground(packEnabled ? ColorScheme.DARKER_GRAY_COLOR : ColorScheme.MEDIUM_GRAY_COLOR);
 		panel.setOpaque(true);
 		panel.setLayout(null);
 
@@ -489,8 +476,8 @@ public class ResourcePackPanel extends JPanel {
 		moveDown.setText("");
 		moveDown.setIcon(ARROW_DOWN);
 		SwingUtil.removeButtonDecorations(moveDown);
-		moveDown.setBounds(190, 5, 22, 22);
-		moveDown.setToolTipText(null); // Don't override panel tooltip
+		moveDown.setBounds(165, 5, 22, 22);
+		moveDown.setToolTipText("Deprioritize this pack, or drag and drop to reorder");
 		panel.add(moveDown);
 		moveDown.setEnabled(index < lastIndex);
 		moveDown.addActionListener(ev -> movePack(resourcePackManager.getInstalledPacks().indexOf(pack),
@@ -500,9 +487,9 @@ public class ResourcePackPanel extends JPanel {
 		moveUp.setText("");
 		moveUp.setIcon(ARROW_UP);
 		SwingUtil.removeButtonDecorations(moveUp);
-		moveUp.setToolTipText(null); // Don't override panel tooltip
+		moveUp.setToolTipText("Prioritize this pack, or drag and drop to reorder");
 		panel.add(moveUp);
-		moveUp.setBounds(165, 5, 22, 22);
+		moveUp.setBounds(140, 5, 22, 22);
 		moveUp.setEnabled(!isTop);
 		moveUp.addActionListener(ev -> movePack(resourcePackManager.getInstalledPacks().indexOf(pack),
 			resourcePackManager.getInstalledPacks().indexOf(pack) - 1));
@@ -515,12 +502,17 @@ public class ResourcePackPanel extends JPanel {
 			openFolder.setIcon(FOLDER);
 			SwingUtil.removeButtonDecorations(openFolder);
 			openFolder.setToolTipText("Open folder");
-			openFolder.setBounds(140, 5, 22, 22);
+			openFolder.setBounds(115, 5, 22, 22);
 			panel.add(openFolder);
 			openFolder.addActionListener(ev -> LinkBrowser.open(pack.path.toFile().getAbsolutePath()));
 		}
 
 		Manifest manifest = pack.getManifest();
+		Color textColor = packEnabled ? Color.WHITE : Color.GRAY;
+		boolean modified = pack.isModified();
+		boolean custom = !isDefaultPack && !resourcePackManager.isTrackedOfficialPack(pack);
+		boolean invalid = !isDefaultPack && !pack.hasContent();
+		String descriptionText = getDescription(pack, manifest, custom, invalid);
 
 		// Author is always shown, but positioned differently in compact view
 		JLabel author = new JLabel();
@@ -529,49 +521,62 @@ public class ResourcePackPanel extends JPanel {
 		author.setToolTipText(null); // Don't override panel tooltip
 		int authorY = compactView ? 28 : 105;
 		author.setBounds(5, authorY, 65, author.getPreferredSize().height);
-		author.setForeground(Color.WHITE);
+		author.setForeground(textColor);
 		panel.add(author);
 
-		String descriptionText = manifest.getDescription();
+		JCheckBox enabled = new JCheckBox();
+		enabled.setOpaque(false);
+		enabled.setFocusPainted(false);
+		enabled.setSelected(packEnabled);
+		enabled.setEnabled(!(pack instanceof DefaultResourcePack));
+		enabled.setToolTipText(pack instanceof DefaultResourcePack
+			? "The built-in pack is always enabled"
+			: packEnabled ? "Disable this pack" : "Enable this pack");
+		enabled.setMargin(new Insets(0, 0, 0, 0));
+		enabled.setBounds(190, 4, 25, 22);
+		enabled.addActionListener(ev -> resourcePackManager.setPackEnabled(pack, enabled.isSelected()));
+		panel.add(enabled);
+		if (resourcePackManager.hasSettingsConflict(pack)) {
+			JLabel settingsConflict = new JLabel("!");
+			settingsConflict.setFont(FontManager.getRunescapeBoldFont());
+			settingsConflict.setForeground(new Color(0xE0A13A));
+			settingsConflict.setToolTipText("A setting applied by this pack was changed manually and will not be reverted automatically.");
+			settingsConflict.setBounds(122, authorY, 12, settingsConflict.getPreferredSize().height);
+			panel.add(settingsConflict);
+		}
+
 		if (descriptionText != null && !descriptionText.isEmpty()) {
 			UiText.setPlainToolTip(panel, descriptionText);
+			UiText.setPlainToolTip(author, descriptionText);
 		}
 
 		if (!compactView && descriptionText != null && !descriptionText.isEmpty()) {
 			JTextArea description = createDescription(descriptionText);
 			description.setToolTipText(null); // Don't override panel tooltip
 			description.setBounds(5, 30, 210, 70);
-			description.setForeground(Color.WHITE);
+			description.setForeground(textColor);
 			panel.add(description);
 		}
 
-
-		if (pack.isDevelopmentPack()) {
-			JLabel icon = new JLabel("");
-			icon.setIcon(DEV_ICON);
-			icon.setToolTipText("This is a development pack");
-			icon.setBounds(3, 7, 18, 18);
-			panel.add(icon);
-		}
-
-		boolean modified = pack.isModified();
-		boolean custom = !isDefaultPack && !resourcePackManager.isTrackedOfficialPack(pack);
-		boolean invalid = !isDefaultPack && !pack.hasContent();
-		int packNameShift = pack.isDevelopmentPack() ? 19 : 0;
-		// Calculate width: stop before folder button (140) if present, otherwise before up arrow (165)
-		int packNameEndX = modified ? 140 : hasFolderButton ? 140 : 165;
-		int packNameWidth = packNameEndX - (5 + packNameShift);
+		// Stop before the checkbox, or before the preceding folder/repair button when present.
+		int packNameEndX = modified || hasFolderButton ? 115 : 140;
+		int packNameWidth = packNameEndX - 5;
 		JLabel packName = new JLabel();
 		UiText.setPlainText(packName, manifest.getDisplayName());
 		packName.setFont(FontManager.getRunescapeBoldFont());
 		packName.setToolTipText(null); // Don't override panel tooltip
-		packName.setBounds(5 + packNameShift, 5, packNameWidth, 25);
-		packName.setForeground(Color.WHITE);
+		packName.setBounds(5, 5, packNameWidth, 25);
+		packName.setForeground(textColor);
+		if (descriptionText != null && !descriptionText.isEmpty())
+			UiText.setPlainToolTip(packName, descriptionText);
 		panel.add(packName);
 		if (modified || custom || invalid) {
 			JLabel integrity = new JLabel(modified ? "Modified" : invalid ? "Invalid" : "Custom");
 			integrity.setFont(FontManager.getRunescapeSmallFont());
 			integrity.setForeground(modified || invalid ? new Color(0xE0A13A) : Color.GRAY);
+			UiText.setPlainToolTip(integrity, modified
+				? "This official pack has been modified. Re-download it to restore the official archive."
+				: invalid ? "This pack contains no usable resource files." : "This is a locally installed custom pack.");
 			int integrityWidth = integrity.getPreferredSize().width;
 			integrity.setBounds(215 - integrityWidth, authorY, integrityWidth, integrity.getPreferredSize().height);
 			panel.add(integrity);
@@ -580,7 +585,7 @@ public class ResourcePackPanel extends JPanel {
 			JButton repair = new JButton(REFRESH);
 			SwingUtil.removeButtonDecorations(repair);
 			repair.setToolTipText("This official pack has been modified. Re-download the official archive.");
-			repair.setBounds(140, 5, 22, 22);
+			repair.setBounds(115, 5, 22, 22);
 			repair.addActionListener(ev -> resourcePackManager.redownloadResourcePack(pack));
 			panel.add(repair);
 		}
@@ -592,7 +597,7 @@ public class ResourcePackPanel extends JPanel {
 		JLabel blackBox = new JLabel();
 		blackBox.setIcon(FADE);
 
-		if (pack.hasPackImage(compactView)) {
+		if (hasPackImage) {
 			icon.setIcon(new ImageIcon(pack.getPackImage(compactView)));
 			icon.setVisible(true);
 			blackBox.setVisible(true);
@@ -605,7 +610,68 @@ public class ResourcePackPanel extends JPanel {
 
 		panel.add(blackBox);
 		panel.add(icon);
+		if (pack.isDevelopmentPack() && !hasPackImage) {
+			JLabel developmentMarker = new JLabel(DEV_ICON);
+			developmentMarker.setToolTipText("This pack is loaded from a local development path.");
+			int markerWidth = DEV_ICON.getIconWidth();
+			int markerHeight = DEV_ICON.getIconHeight();
+			developmentMarker.setBounds(30, (panelHeight - markerHeight) / 2, markerWidth, markerHeight);
+			panel.add(developmentMarker);
+			panel.setComponentZOrder(developmentMarker, panel.getComponentCount() - 1);
+		}
+		if (!isDefaultPack)
+			addRemovalMenu(panel, pack, resourcePackManager.isTrackedOfficialPack(pack));
 		return panel;
+	}
+
+	private void addRemovalMenu(JPanel panel, AbstractResourcePack pack, boolean official) {
+		JPopupMenu menu = new JPopupMenu();
+		JMenuItem remove = new JMenuItem(official ? "Uninstall" : "Delete");
+		remove.addActionListener(event -> confirmPackRemoval(panel, pack, official));
+		menu.add(remove);
+		panel.setComponentPopupMenu(menu);
+		for (Component component : panel.getComponents()) {
+			if (component instanceof JComponent && !(component instanceof AbstractButton))
+				((JComponent) component).setComponentPopupMenu(menu);
+		}
+	}
+
+	private void confirmPackRemoval(Component anchor, AbstractResourcePack pack, boolean official) {
+		String packName = UiText.stripTags(pack.getManifest().getDisplayName());
+		PopupUtils.displayPopupMessage(
+			client,
+			anchor,
+			official ? "Uninstall resource pack" : "Delete local resource pack",
+			official
+				? "Do you really want to uninstall &quot;" + packName + "&quot;?"
+				: "Do you really want to delete the local resource pack &quot;" + packName + "&quot;?<br><br>" +
+				  "The associated files will be permanently deleted from your computer.",
+			new String[] { "Cancel", official ? "Uninstall" : "Delete" },
+			buttonIndex -> {
+				if (buttonIndex == 1)
+					resourcePackManager.removeResourcePack(pack.getManifest().getInternalName());
+				return true;
+			}
+		);
+	}
+
+	private static String getDescription(AbstractResourcePack pack, Manifest manifest, boolean custom, boolean invalid) {
+		String description = manifest.getDescription();
+		if (description != null && !description.trim().isEmpty())
+			return description;
+		if (!custom)
+			return "";
+
+		String source = pack.path.isFileSystemResource() && pack.path.toFile().isDirectory() ? "folder" : "archive";
+		if (!pack.isValid())
+			return invalid
+				? "Empty custom resource pack from a local " + source + " without a manifest."
+				: "Custom resource pack from a local " + source + " without a manifest.";
+		if (pack.isDevelopmentPack())
+			return "Local development resource pack.";
+		return invalid
+			? "Empty custom resource pack from a local " + source + "."
+			: "Custom resource pack from a local " + source + ".";
 	}
 
 	private void attachDragEventForwarder(Component component) {
@@ -714,13 +780,12 @@ public class ResourcePackPanel extends JPanel {
 				},false);
 			});
 		} else {
-			actionButton.setText("Remove");
+			actionButton.setText("Uninstall");
 			actionButton.setBackground(new Color(0xBE2828));
-			actionButton.addActionListener(l ->
-			{
-				actionButton.setText("Removing");
-				actionButton.setBackground(ColorScheme.MEDIUM_GRAY_COLOR);
-				resourcePackManager.removeResourcePack(internalName);
+			actionButton.addActionListener(event -> {
+				AbstractResourcePack installedPack = resourcePackManager.getInstalledPack(internalName);
+				if (installedPack != null)
+					confirmPackRemoval(panel, installedPack, true);
 			});
 		}
 		actionButton.setBounds(115, buttonY, 105, 25);

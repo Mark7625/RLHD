@@ -6,12 +6,17 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
+import java.nio.file.FileVisitResult;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -268,6 +273,8 @@ public final class ResourcePackManager {
 			log.warn("Attempted to remove default pack, ignoring");
 			return;
 		}
+		if (isPackEnabled(packToRemove))
+			revertPackSettings(packToRemove);
 
 		// Store file path before removing from list
 		File fileToDelete = null;
@@ -278,9 +285,9 @@ public final class ResourcePackManager {
 		// Close zip files before deletion so Windows releases the file handle.
 		repository.close(packToRemove);
 
-		if (fileToDelete != null && fileToDelete.exists() && fileToDelete.isFile()) {
-			if (!fileToDelete.delete()) {
-				log.warn("Unable to delete resource pack file for '{}': {}", internalName, fileToDelete);
+		if (fileToDelete != null && fileToDelete.exists()) {
+			if (!deleteResourcePackFile(fileToDelete)) {
+				log.warn("Unable to delete resource pack for '{}': {}", internalName, fileToDelete);
 				int packIndex = installedPacks.indexOf(packToRemove);
 				if (packIndex >= 0)
 					installedPacks.set(packIndex, repository.createPack(fileToDelete));
@@ -290,6 +297,8 @@ public final class ResourcePackManager {
 
 		installedPacks.remove(packToRemove);
 		packState.sha256ByPack.remove(internalName);
+		packState.disabledPacks.remove(internalName);
+		packState.settingsByPack.remove(internalName);
 
 		savePackOrder();
 
@@ -461,7 +470,7 @@ public final class ResourcePackManager {
 	}
 
 	private static boolean isSafeInternalName(String internalName) {
-		return internalName != null && internalName.matches("[A-Za-z0-9._-]+");
+		return internalName != null && internalName.matches("[a-z0-9_-]+");
 	}
 
 	private static boolean isCommitHash(String commit) {
@@ -482,8 +491,70 @@ public final class ResourcePackManager {
 			log.warn("Unable to delete temporary resource pack file: {}", file);
 	}
 
+	private static boolean deleteResourcePackFile(File file) {
+		try {
+			Files.walkFileTree(file.toPath(), new SimpleFileVisitor<java.nio.file.Path>() {
+				@Override
+				public FileVisitResult visitFile(java.nio.file.Path path, BasicFileAttributes attributes) throws IOException {
+					Files.delete(path);
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult postVisitDirectory(java.nio.file.Path directory, IOException exception) throws IOException {
+					if (exception != null)
+						throw exception;
+					Files.delete(directory);
+					return FileVisitResult.CONTINUE;
+				}
+			});
+			return true;
+		} catch (IOException ex) {
+			log.warn("Unable to delete resource pack path: {}", file, ex);
+			return false;
+		}
+	}
+
 	public List<AbstractResourcePack> getInstalledPacks() {
 		return List.copyOf(installedPacks);
+	}
+
+	public List<AbstractResourcePack> getEnabledPacks() {
+		return installedPacks.stream().filter(this::isPackEnabled).collect(Collectors.toList());
+	}
+
+	public boolean isPackEnabled(AbstractResourcePack pack) {
+		return pack instanceof DefaultResourcePack || !packState.disabledPacks.contains(pack.getManifest().getInternalName());
+	}
+
+	public boolean hasSettingsConflict(AbstractResourcePack pack) {
+		Map<String, ResourcePackState.AppliedSetting> settings = packState.settingsByPack.get(pack.getManifest().getInternalName());
+		if (settings == null)
+			return false;
+		for (Map.Entry<String, ResourcePackState.AppliedSetting> entry : settings.entrySet()) {
+			if (!Objects.equals(configManager.getConfiguration(CONFIG_GROUP, entry.getKey()), entry.getValue().appliedValue))
+				return true;
+		}
+		return false;
+	}
+
+	public void setPackEnabled(AbstractResourcePack pack, boolean enabled) {
+		if (pack instanceof DefaultResourcePack)
+			return;
+
+		String internalName = pack.getManifest().getInternalName();
+		if (enabled) {
+			if (!packState.disabledPacks.remove(internalName))
+				return;
+			if (pack.hasResource("settings.properties"))
+				applyPackSettings(pack);
+		} else {
+			if (!packState.disabledPacks.add(internalName))
+				return;
+			revertPackSettings(pack);
+		}
+		savePackOrder();
+		eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
 	}
 
 	public List<Manifest> getDownloadablePacks() {
@@ -524,6 +595,8 @@ public final class ResourcePackManager {
 
 	private AbstractResourcePack locatePack(String... parts) {
 		for (AbstractResourcePack pack : installedPacks) {
+			if (!isPackEnabled(pack))
+				continue;
 			if (pack.hasResource(parts)) {
 				return pack;
 			}
@@ -623,6 +696,10 @@ public final class ResourcePackManager {
 					loaded.packOrder = new ArrayList<>();
 				if (loaded.sha256ByPack == null)
 					loaded.sha256ByPack = new LinkedHashMap<>();
+				if (loaded.disabledPacks == null)
+					loaded.disabledPacks = new LinkedHashSet<>();
+				if (loaded.settingsByPack == null)
+					loaded.settingsByPack = new LinkedHashMap<>();
 				packState = loaded;
 			}
 		} catch (RuntimeException ex) {
@@ -664,12 +741,23 @@ public final class ResourcePackManager {
 				settings.load(inputStream);
 			}
 
-			// Map settings from properties file to config keys
+			Map<String, ResourcePackState.AppliedSetting> appliedSettings = packState.settingsByPack
+				.computeIfAbsent(pack.getManifest().getInternalName(), ignored -> new LinkedHashMap<>());
 			for (String key : settings.stringPropertyNames()) {
 				String value = settings.getProperty(key).trim();
+				ResourcePackState.AppliedSetting applied = appliedSettings.get(key);
+				if (applied != null && !Objects.equals(configManager.getConfiguration(CONFIG_GROUP, key), applied.appliedValue))
+					continue;
+				if (applied == null) {
+					applied = new ResourcePackState.AppliedSetting();
+					applied.previousValue = configManager.getConfiguration(CONFIG_GROUP, key);
+					appliedSettings.put(key, applied);
+				}
+				applied.appliedValue = value;
 				configManager.setConfiguration(CONFIG_GROUP, key, value);
 				log.info("Applied setting: {} = {}", key, value);
 			}
+			savePackOrder();
 
 			boolean loggedIn = client.getGameState() == GameState.LOGGED_IN;
 			boolean interacting = loggedIn && client.getLocalPlayer() != null && client.getLocalPlayer().isInteracting();
@@ -701,6 +789,22 @@ public final class ResourcePackManager {
 			}
 		} catch (Exception ex) {
 			log.error("Error applying pack settings:", ex);
+		}
+	}
+
+	private void revertPackSettings(AbstractResourcePack pack) {
+		Map<String, ResourcePackState.AppliedSetting> settings = packState.settingsByPack.get(pack.getManifest().getInternalName());
+		if (settings == null)
+			return;
+
+		for (Map.Entry<String, ResourcePackState.AppliedSetting> entry : settings.entrySet()) {
+			ResourcePackState.AppliedSetting applied = entry.getValue();
+			if (!Objects.equals(configManager.getConfiguration(CONFIG_GROUP, entry.getKey()), applied.appliedValue))
+				continue;
+			if (applied.previousValue == null)
+				configManager.unsetConfiguration(CONFIG_GROUP, entry.getKey());
+			else
+				configManager.setConfiguration(CONFIG_GROUP, entry.getKey(), applied.previousValue);
 		}
 	}
 

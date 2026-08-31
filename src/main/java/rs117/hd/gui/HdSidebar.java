@@ -30,6 +30,7 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -59,7 +60,8 @@ public class HdSidebar extends PluginPanel {
 	private final JPanel tabPanel;
 
 	@Inject
-	public HdSidebar(ClientToolbar clientToolbar, ResourcePackPanel resourcePackPanel, EventBus eventBus) {
+	public HdSidebar(ClientToolbar clientToolbar, ResourcePackPanel resourcePackPanel, EventBus eventBus,
+		@Named("developerMode") boolean developerMode) {
 		super(false);
 		this.clientToolbar = clientToolbar;
 		this.resourcePackPanel = resourcePackPanel;
@@ -95,7 +97,10 @@ public class HdSidebar extends PluginPanel {
 
 		eventBus.register(resourcePackPanel);
 		MaterialTab resourcePackTab = addTab(resourcePackPanel, "pack_icon.png", "Resource Packs");
-		addTab(new JPanel(), "toolbox_icon.png", "Development Tools");
+		if (developerMode) {
+			// addTab(new JPanel(), "toolbox_icon.png", "Development Tools");
+		}
+		tabGroup.setVisible(tabGroup.getComponentCount() > 1);
 		resourcePackTab.select();
 	}
 
