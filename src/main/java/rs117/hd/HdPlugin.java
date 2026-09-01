@@ -1892,6 +1892,7 @@ public class HdPlugin extends Plugin {
 							case KEY_GROUND_TEXTURES:
 							case KEY_MODEL_TEXTURES:
 							case KEY_TEXTURE_RESOLUTION:
+							case KEY_GPU_TEXTURE_RESIZING:
 							case KEY_INFERNAL_CAPE:
 								reloadTexturesAndMaterials = true;
 								// fall-through

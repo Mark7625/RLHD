@@ -1275,6 +1275,18 @@ public interface HdPluginConfig extends Config
 		return true;
 	}
 
+	String KEY_GPU_TEXTURE_RESIZING = "experimentalGpuTextureResizing";
+	@ConfigItem(
+		keyName = KEY_GPU_TEXTURE_RESIZING,
+		name = "GPU texture resizing",
+		description = "Resize resource-pack textures on the GPU. This can speed up texture reloads, but may slightly change filtering compared with the default CPU path.",
+		section = experimentalSettings
+	)
+	default boolean gpuTextureResizing() {
+		return false;
+	}
+
+
 	/*====== Internal settings ======*/
 
 	@ConfigItem(keyName = "pluginUpdateMessage", hidden = true, name = "", description = "")
