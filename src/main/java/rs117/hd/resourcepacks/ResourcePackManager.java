@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
@@ -98,6 +99,7 @@ public final class ResourcePackManager {
 			return;
 		}
 		loadPackState();
+		recoverInterruptedReplacements();
 		loadInstalledPacks();
 		watchPackDirectory();
 
@@ -110,6 +112,32 @@ public final class ResourcePackManager {
 		verifyInstalledPacks();
 		restorePackOrder();
 		savePackOrder();
+	}
+
+	/** Restores a verified previous archive left behind if the client stopped during replacement. */
+	private void recoverInterruptedReplacements() {
+		for (Map.Entry<String, String> entry : packState.sha256ByPack.entrySet()) {
+			String internalName = entry.getKey();
+			String expectedSha256 = entry.getValue();
+			if (!isSafeInternalName(internalName) || expectedSha256 == null || !expectedSha256.matches("[0-9a-fA-F]{64}"))
+				continue;
+
+			File archive = repository.archiveFile(internalName);
+			File backup = new File(archive.getPath() + ".previous");
+			if (archive.exists() || !backup.isFile())
+				continue;
+
+			try {
+				if (!expectedSha256.equalsIgnoreCase(PackHashes.sha256(backup))) {
+					log.warn("Not recovering previous archive for '{}': SHA-256 does not match the installed pack state", internalName);
+					continue;
+				}
+				Files.move(backup.toPath(), archive.toPath());
+				log.info("Recovered resource pack '{}' from an interrupted replacement", internalName);
+			} catch (IOException ex) {
+				log.warn("Unable to recover previous archive for resource pack '{}'", internalName, ex);
+			}
+		}
 	}
 
 	private void watchPackDirectory() {
@@ -309,10 +337,12 @@ public final class ResourcePackManager {
 		downloadResourcePack(manifest, null, null, null, updating);
 	}
 
-	public void downloadResourcePack(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, Runnable onFailure, boolean updating) {
+	public void downloadResourcePack(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, java.util.function.Consumer<String> onFailure, boolean updating) {
 		boolean packExists = getInstalledPack(manifest.getInternalName()) != null;
 
 		if (manifest.isHasSettings() && !updating && !packExists) {
+			if (onProgress != null)
+				onProgress.accept(-2);
 			PopupUtils.displayPopupMessage(
 				client,
 				"Pack Settings Override",
@@ -325,7 +355,7 @@ public final class ResourcePackManager {
 						return true;
 					}
 					if (onFailure != null)
-						onFailure.run();
+						onFailure.accept(null);
 					return true;
 				}
 			);
@@ -335,17 +365,17 @@ public final class ResourcePackManager {
 		downloadResourcePackInternal(manifest, onProgress, onSuccess, onFailure, updating);
 	}
 
-	private void downloadResourcePackInternal(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, Runnable onFailure, boolean updating) {
+	private void downloadResourcePackInternal(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, java.util.function.Consumer<String> onFailure, boolean updating) {
 		if (!isSafeInternalName(manifest.getInternalName())) {
 			log.warn("Refusing to download resource pack with unsafe internal name: {}", manifest.getInternalName());
 			if (onFailure != null)
-				onFailure.run();
+				onFailure.accept("The resource pack has an invalid internal identifier.");
 			return;
 		}
 		if (!repository.ensurePackDirectory()) {
 			log.warn("Unable to create resource pack directory");
 			if (onFailure != null)
-				onFailure.run();
+				onFailure.accept("Unable to create the resource-pack folder. Check available disk space and permissions.");
 			return;
 		}
 
@@ -353,7 +383,7 @@ public final class ResourcePackManager {
 		if (repositoryUrl == null || !isCommitHash(manifest.getCommit())) {
 			log.warn("Invalid download metadata for resource pack {}", manifest.getInternalName());
 			if (onFailure != null)
-				onFailure.run();
+				onFailure.accept("The resource pack has invalid download metadata.");
 			return;
 		}
 		URL url = repositoryUrl
@@ -386,7 +416,7 @@ public final class ResourcePackManager {
 					deleteFileQuietly(temporaryFile);
 					log.warn("Error while downloading resource pack '{}' from {}", manifest.getInternalName(), url, e);
 					if (onFailure != null) {
-						onFailure.run();
+						onFailure.accept(getDownloadFailureMessage(e));
 					}
 				}
 
@@ -408,12 +438,24 @@ public final class ResourcePackManager {
 							deleteFileQuietly(temporaryFile);
 							log.warn("Unable to install resource pack '{}'", manifest.getInternalName(), ex);
 							if (onFailure != null)
-								onFailure.run();
+								onFailure.accept(getDownloadFailureMessage(ex));
 						}
 					});
 				}
 			}
 		);
+	}
+
+	private static String getDownloadFailureMessage(Exception exception) {
+		String message = exception.getMessage();
+		String lowerCaseMessage = message == null ? "" : message.toLowerCase(Locale.ROOT);
+		if (lowerCaseMessage.contains("no space left") || lowerCaseMessage.contains("disk full"))
+			return "Not enough free disk space to install this resource pack.";
+		if (exception instanceof java.io.InterruptedIOException || lowerCaseMessage.contains("timed out"))
+			return "The download timed out. Check your network connection and try again.";
+		if (message == null || message.isEmpty())
+			return "Unable to download or install this resource pack.";
+		return "Unable to download or install this resource pack: " + message;
 	}
 
 	private void installDownloadedPack(Manifest manifest, File temporaryFile, File zipFile, String sha256, boolean updating) throws IOException {

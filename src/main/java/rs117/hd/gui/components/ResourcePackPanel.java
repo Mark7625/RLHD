@@ -29,6 +29,7 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.Image;
@@ -68,6 +69,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.JTextArea;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.plaf.basic.BasicButtonUI;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.client.eventbus.Subscribe;
@@ -108,6 +110,14 @@ public class ResourcePackPanel extends JPanel {
 	private static final ImageIcon ADD_ICON;
 	private static final ImageIcon BACK;
 	private static final Color DISABLED_PACK_COLOR = new Color(0x252525);
+	private static final BasicButtonUI SHADOW_TEXT_BUTTON_UI = new BasicButtonUI() {
+		@Override
+		protected void paintText(Graphics graphics, AbstractButton button, Rectangle textRect, String text) {
+			graphics.setColor(Color.BLACK);
+			graphics.drawString(text, textRect.x + 1, textRect.y + graphics.getFontMetrics().getAscent() + 1);
+			super.paintText(graphics, button, textRect, text);
+		}
+	};
 	private static final HttpUrl RAW_GITHUB_URL = HttpUrl.get("https://raw.githubusercontent.com/");
 	private static final String MOVE_UP_BUTTON = "moveUpButton";
 	private static final String MOVE_DOWN_BUTTON = "moveDownButton";
@@ -124,9 +134,10 @@ public class ResourcePackPanel extends JPanel {
 
 		FOLDER = new ImageIcon(ImageUtil.loadImageResource(HdSidebar.class, "folder_icon.png"));
 		REFRESH = new ImageIcon(ImageUtil.resizeImage(ImageUtil.loadImageResource(HdSidebar.class, "refresh.png"), 16, 16));
-		ADD_ICON = new ImageIcon(ImageUtil.loadImageResource(ScreenMarkerPlugin.class, "add_icon.png"));
-		BACK = new ImageIcon(ImageUtil.loadImageResource(HdSidebar.class,
-			"/net/runelite/client/plugins/config/config_back_icon.png"));
+		ADD_ICON = new ImageIcon(ImageUtil.resizeImage(
+			ImageUtil.loadImageResource(ScreenMarkerPlugin.class, "add_icon.png"), 16, 16));
+		BACK = new ImageIcon(ImageUtil.resizeImage(ImageUtil.loadImageResource(HdSidebar.class,
+			"/net/runelite/client/plugins/config/config_back_icon.png"), 16, 16));
 	}
 
 	@Inject
@@ -168,9 +179,13 @@ public class ResourcePackPanel extends JPanel {
 	private final IconTextField searchBar;
 
 	ResourcePackPanel() {
-		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 		setBorder(BorderFactory.createEmptyBorder());
+		JPanel topControls = new JPanel();
+		topControls.setLayout(new BoxLayout(topControls, BoxLayout.Y_AXIS));
+		topControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		add(topControls, BorderLayout.NORTH);
 
 		list = new DragAndDropReorderPane();
 		list.setBorder(BorderFactory.createEmptyBorder(5, 10, 0, 3));
@@ -196,11 +211,12 @@ public class ResourcePackPanel extends JPanel {
 		listContent.add(hints, BorderLayout.SOUTH);
 		scrollContainer.add(listContent, BorderLayout.NORTH);
 		scrollPane.setViewportView(scrollContainer);
-		add(scrollPane);
+		add(scrollPane, BorderLayout.CENTER);
 
 		JPanel actions = new JPanel(new GridLayout(1, 2, 5, 0));
 		actions.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
 		actions.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		actions.setMaximumSize(new Dimension(Integer.MAX_VALUE, 35));
 		officialPacksButton = new JButton();
 		officialPacksButton.setFocusPainted(false);
 		officialPacksButton.setMargin(new Insets(2, 4, 2, 4));
@@ -215,7 +231,7 @@ public class ResourcePackPanel extends JPanel {
 		openFolderButton.setToolTipText("Open the local resource-pack folder");
 		openFolderButton.addActionListener(ev -> LinkBrowser.open(resourcePackManager.getPackDirectory().getAbsolutePath()));
 		actions.add(openFolderButton);
-		add(actions, 0);
+		topControls.add(actions);
 
 		// Search bar
 		searchBar = new IconTextField();
@@ -257,7 +273,7 @@ public class ResourcePackPanel extends JPanel {
 
 		filterPanel.add(filterControls, BorderLayout.CENTER);
 		filterPanel.setVisible(false);
-		add(filterPanel, 1);
+		topControls.add(filterPanel);
 
 		setState(PanelState.SELECTION);
 	}
@@ -738,7 +754,9 @@ public class ResourcePackPanel extends JPanel {
 		int buttonY = compactView ? 28 : 97;
 
 		JButton actionButton = new JButton();
+		actionButton.setUI(SHADOW_TEXT_BUTTON_UI);
 		actionButton.setFocusPainted(false);
+		actionButton.setMargin(new Insets(2, 4, 2, 4));
 		actionButton.setToolTipText(null);
 		boolean notInstalled = resourcePackManager.getInstalledPack(internalName) == null;
 		if (notInstalled) {
@@ -751,9 +769,16 @@ public class ResourcePackPanel extends JPanel {
 					SwingUtilities.invokeLater(() -> {
 						JProgressBar progressBar = downloadProgressBars.get(internalName);
 						if (progressBar != null) {
+							if (progress == -2) {
+								progressBar.setString("Waiting...");
+								progressBar.setToolTipText("Waiting for confirmation");
+								panel.repaint();
+								return;
+							}
 							// Skip if progress is -1 (unknown file size)
 							if (progress < 0) {
 								progressBar.setString("Downloading...");
+								progressBar.setToolTipText(null);
 								panel.repaint();
 								return;
 							}
@@ -761,6 +786,7 @@ public class ResourcePackPanel extends JPanel {
 							int clampedProgress = Math.max(0, Math.min(100, progress));
 							progressBar.setValue(clampedProgress);
 							progressBar.setString(clampedProgress + "%");
+							progressBar.setToolTipText(null);
 							panel.repaint(); // Force repaint to show progress
 						}
 					});
@@ -773,10 +799,24 @@ public class ResourcePackPanel extends JPanel {
 							panel.repaint();
 						}
 					});
-				}, () -> {
+				}, failureMessage -> {
 					SwingUtilities.invokeLater(() -> {
-						downloadProgressBars.remove(internalName);
-						refreshPanel();
+						JProgressBar progressBar = downloadProgressBars.remove(internalName);
+						if (progressBar == null)
+							return;
+						if (failureMessage == null) {
+							refreshPanel();
+							return;
+						}
+
+						panel.remove(progressBar);
+						actionButton.setText("Failed. Retry?");
+						actionButton.setBackground(new Color(0xFFFF00));
+						UiText.setPlainToolTip(actionButton, failureMessage + " Click to retry.");
+						panel.add(actionButton);
+						panel.setComponentZOrder(actionButton, 0);
+						panel.revalidate();
+						panel.repaint();
 					});
 				},false);
 			});
@@ -786,7 +826,7 @@ public class ResourcePackPanel extends JPanel {
 			actionButton.addActionListener(event -> {
 				AbstractResourcePack installedPack = resourcePackManager.getInstalledPack(internalName);
 				if (installedPack != null)
-					confirmPackRemoval(panel, installedPack, true);
+					resourcePackManager.removeResourcePack(installedPack.getManifest().getInternalName());
 			});
 		}
 		actionButton.setBounds(115, buttonY, 105, 25);
