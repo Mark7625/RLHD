@@ -115,7 +115,7 @@ public final class ResourcePackManager {
 	private void watchPackDirectory() {
 		watchingPackDirectory = true;
 		packDirectoryWatcher = ResourcePath.path(getPackDirectory()).watch((path, first) -> {
-			if (!first) {
+			if (!first && repository.isRelevantPackChange(path)) {
 				queueInstalledPackReload();
 			}
 		});

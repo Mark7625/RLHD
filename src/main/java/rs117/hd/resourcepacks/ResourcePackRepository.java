@@ -43,6 +43,20 @@ final class ResourcePackRepository {
 		return PACK_DIRECTORY.toFile().mkdirs() || PACK_DIRECTORY.exists();
 	}
 
+	boolean isRelevantPackChange(ResourcePath path) {
+		File file = path.toFile();
+		if (file.isDirectory() || file.getName().toLowerCase().endsWith(".zip"))
+			return true;
+
+		File parent = file.getParentFile();
+		while (parent != null && !parent.equals(PACK_DIRECTORY.toFile())) {
+			if (parent.isDirectory())
+				return true;
+			parent = parent.getParentFile();
+		}
+		return false;
+	}
+
 	File archiveFile(String internalName) {
 		return PACK_DIRECTORY.resolve(internalName + ".zip").toFile();
 	}
