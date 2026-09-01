@@ -107,6 +107,7 @@ public class ResourcePackPanel extends JPanel {
 	private static final ImageIcon REFRESH;
 	private static final ImageIcon ADD_ICON;
 	private static final ImageIcon BACK;
+	private static final Color DISABLED_PACK_COLOR = new Color(0x252525);
 	private static final HttpUrl RAW_GITHUB_URL = HttpUrl.get("https://raw.githubusercontent.com/");
 	private static final String MOVE_UP_BUTTON = "moveUpButton";
 	private static final String MOVE_DOWN_BUTTON = "moveDownButton";
@@ -464,7 +465,7 @@ public class ResourcePackPanel extends JPanel {
 		boolean isTop = index == 0;
 		int lastIndex = resourcePackManager.getInstalledPacks().size() - 1;
 
-		panel.setBackground(packEnabled ? ColorScheme.DARKER_GRAY_COLOR : ColorScheme.MEDIUM_GRAY_COLOR);
+		panel.setBackground(packEnabled ? ColorScheme.DARKER_GRAY_COLOR : DISABLED_PACK_COLOR);
 		panel.setOpaque(true);
 		panel.setLayout(null);
 
