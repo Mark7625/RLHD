@@ -71,7 +71,7 @@ public class HdSidebar extends PluginPanel {
 		addHeader();
 
 		JPanel container = new JPanel();
-		container.setBorder(new EmptyBorder(4, 0, 8, 0));
+		container.setBorder(new EmptyBorder(4, 0, 0, 0));
 		container.setLayout(new BorderLayout());
 
 		tabGroup = new MaterialTabGroup();

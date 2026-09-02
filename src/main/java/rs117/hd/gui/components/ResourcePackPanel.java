@@ -136,8 +136,8 @@ public class ResourcePackPanel extends JPanel {
 		REFRESH = new ImageIcon(ImageUtil.resizeImage(ImageUtil.loadImageResource(HdSidebar.class, "refresh.png"), 16, 16));
 		ADD_ICON = new ImageIcon(ImageUtil.resizeImage(
 			ImageUtil.loadImageResource(ScreenMarkerPlugin.class, "add_icon.png"), 16, 16));
-		BACK = new ImageIcon(ImageUtil.resizeImage(ImageUtil.loadImageResource(HdSidebar.class,
-			"/net/runelite/client/plugins/config/config_back_icon.png"), 16, 16));
+		BACK = new ImageIcon(ImageUtil.flipImage(
+			ImageUtil.loadImageResource(HdSidebar.class, "arrow_right.png"), true, false));
 	}
 
 	@Inject
@@ -167,10 +167,6 @@ public class ResourcePackPanel extends JPanel {
 	private final Map<Component, AbstractResourcePack> draggablePacks = new IdentityHashMap<>();
 	private Component draggedPackCard;
 	private final JButton officialPacksButton;
-	private final MessagePanel packOrderHint = new MessagePanel(
-		"Pack priority",
-		"Packs higher in the list take priority over packs below."
-	);
 	private final MessagePanel installHint = new MessagePanel(
 		"Looking for more?",
 		"Browse officially recognized resource packs with the green + button above."
@@ -182,18 +178,20 @@ public class ResourcePackPanel extends JPanel {
 		setLayout(new BorderLayout());
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 		setBorder(BorderFactory.createEmptyBorder());
+		installHint.setBorder(BorderFactory.createEmptyBorder(20, 0, 38, 0));
 		JPanel topControls = new JPanel();
 		topControls.setLayout(new BoxLayout(topControls, BoxLayout.Y_AXIS));
 		topControls.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		add(topControls, BorderLayout.NORTH);
 
 		list = new DragAndDropReorderPane();
-		list.setBorder(BorderFactory.createEmptyBorder(5, 10, 0, 3));
+		list.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 3));
 		list.setAlignmentX(Component.LEFT_ALIGNMENT);
 		list.addDragListener(this::onPackDragged);
 		installDragPadding();
 
 		var scrollPane = new JScrollPane();
+		scrollPane.setBorder(BorderFactory.createEmptyBorder(5, 0, 0, 0));
 		scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 		scrollPane.setPreferredSize(new Dimension(0x7000, 0x7000));
@@ -206,7 +204,6 @@ public class ResourcePackPanel extends JPanel {
 		JPanel hints = new JPanel();
 		hints.setLayout(new BoxLayout(hints, BoxLayout.Y_AXIS));
 		hints.setOpaque(false);
-		hints.add(packOrderHint);
 		hints.add(installHint);
 		listContent.add(hints, BorderLayout.SOUTH);
 		scrollContainer.add(listContent, BorderLayout.NORTH);
@@ -262,7 +259,7 @@ public class ResourcePackPanel extends JPanel {
 		// Add filter panel at the top
 		filterPanel = new JPanel();
 		filterPanel.setLayout(new BorderLayout());
-		filterPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+		filterPanel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 11));
 		filterPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
 		JPanel filterControls = new JPanel();
@@ -302,7 +299,6 @@ public class ResourcePackPanel extends JPanel {
 					filterPanel.setVisible(false);
 
 					var packs = resourcePackManager.getInstalledPacks();
-					packOrderHint.setVisible(packs.size() > 1);
 					installHint.setVisible(packs.size() <= 1);
 					for (int i = 0; i < packs.size(); i++) {
 						AbstractResourcePack pack = packs.get(i);
@@ -317,7 +313,6 @@ public class ResourcePackPanel extends JPanel {
 				}
 				case DOWNLOAD: {
 					filterPanel.setVisible(true);
-					packOrderHint.setVisible(false);
 					installHint.setVisible(false);
 
 					resourcePackManager.checkForUpdates();
@@ -382,7 +377,7 @@ public class ResourcePackPanel extends JPanel {
 	private JPanel wrapPackCard(JPanel card) {
 		JPanel wrapper = new JPanel(new BorderLayout());
 		wrapper.setOpaque(false);
-		wrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+		wrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 1));
 		wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
 		wrapper.add(card, BorderLayout.CENTER);
 		return wrapper;
