@@ -19,7 +19,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -78,6 +80,7 @@ public final class ResourcePackManager {
 
 	private final List<AbstractResourcePack> installedPacks = new CopyOnWriteArrayList<>();
 	private final AtomicBoolean reloadQueued = new AtomicBoolean();
+	private final Map<String, Long> managedArchiveChanges = new ConcurrentHashMap<>();
 	private FileWatcher.UnregisterCallback packDirectoryWatcher = () -> {};
 	private volatile boolean watchingPackDirectory;
 
@@ -109,9 +112,112 @@ public final class ResourcePackManager {
 	private void loadInstalledPacks() {
 		installedPacks.addAll(repository.loadInstalledPacks());
 		installedPacks.add(new DefaultResourcePack(ResourcePath.path(ResourcePackManager.class.getClassLoader(), "rs117/hd/resource-pack")));
+		restoreOfficialPackNames();
+		reconcilePackIdentities();
 		verifyInstalledPacks();
 		restorePackOrder();
+		clearUninstalledEnableStates();
 		savePackOrder();
+	}
+
+	private void clearUninstalledEnableStates() {
+		Set<String> installedNames = installedPacks.stream()
+			.map(pack -> pack.getManifest().getInternalName())
+			.collect(Collectors.toSet());
+		packState.disabledPacks.retainAll(installedNames);
+	}
+
+	/** Restores official identifiers for archives whose pack.properties only contains display metadata. */
+	private void restoreOfficialPackNames() {
+		for (AbstractResourcePack pack : installedPacks) {
+			if (pack instanceof DefaultResourcePack || !pack.path.isFileSystemResource())
+				continue;
+
+			try {
+				File file = pack.path.toFile();
+				ResourcePackState.PackIdentity identity = new ResourcePackState.PackIdentity(
+					PackHashes.sha256(file.getName()), PackHashes.sha256(file));
+				String internalName = findMatchingOfficialPack(identity);
+				if (internalName != null)
+					pack.getManifest().setInternalName(internalName);
+			} catch (IOException ex) {
+				log.warn("Unable to restore official identity for resource pack {}", pack.getPackName(), ex);
+			}
+		}
+	}
+
+	private String findMatchingOfficialPack(ResourcePackState.PackIdentity identity) {
+		String matchingInternalName = null;
+		for (Map.Entry<String, String> entry : packState.sha256ByPack.entrySet()) {
+			ResourcePackState.PackIdentity previousIdentity = packState.packIdentities.get(entry.getKey());
+			boolean filenameMatches = previousIdentity != null && Objects.equals(identity.filenameHash, previousIdentity.filenameHash);
+			boolean contentsMatch = entry.getValue() != null && entry.getValue().equalsIgnoreCase(identity.sha256);
+			if (!filenameMatches && !contentsMatch)
+				continue;
+			if (matchingInternalName != null && !matchingInternalName.equals(entry.getKey()))
+				return null;
+			matchingInternalName = entry.getKey();
+		}
+		return matchingInternalName;
+	}
+
+	/**
+	 * Records both filename and content identities for local packs, including renamed official archives.
+	 */
+	private void reconcilePackIdentities() {
+		for (AbstractResourcePack pack : installedPacks) {
+			if (pack instanceof DefaultResourcePack || !pack.path.isFileSystemResource())
+				continue;
+
+			String internalName = pack.getManifest().getInternalName();
+			try {
+				File file = pack.path.toFile();
+				ResourcePackState.PackIdentity identity = new ResourcePackState.PackIdentity(
+					PackHashes.sha256(file.getName()), PackHashes.sha256(file));
+				String previousInternalName = findMatchingPack(identity);
+				if (previousInternalName != null && !previousInternalName.equals(internalName)) {
+					movePackState(previousInternalName, internalName);
+					packState.packIdentities.remove(previousInternalName);
+				}
+				packState.packIdentities.put(internalName, identity);
+			} catch (IOException ex) {
+				log.warn("Unable to identify local resource pack '{}'; preserving its existing state", internalName, ex);
+			}
+		}
+	}
+
+	private String findMatchingPack(ResourcePackState.PackIdentity identity) {
+		String matchingFilename = null;
+		String matchingContent = null;
+		for (Map.Entry<String, ResourcePackState.PackIdentity> entry : packState.packIdentities.entrySet()) {
+			ResourcePackState.PackIdentity previousIdentity = entry.getValue();
+			if (previousIdentity == null)
+				continue;
+			if (Objects.equals(identity.filenameHash, previousIdentity.filenameHash)) {
+				if (matchingFilename != null && !matchingFilename.equals(entry.getKey()))
+					return null;
+				matchingFilename = entry.getKey();
+			}
+			if (Objects.equals(identity.sha256, previousIdentity.sha256)) {
+				if (matchingContent != null && !matchingContent.equals(entry.getKey()))
+					matchingContent = "";
+				else
+					matchingContent = entry.getKey();
+			}
+		}
+		return matchingFilename != null ? matchingFilename : "".equals(matchingContent) ? null : matchingContent;
+	}
+
+	private void movePackState(String previousInternalName, String internalName) {
+		for (int index = 0; index < packState.packOrder.size(); index++) {
+			if (previousInternalName.equals(packState.packOrder.get(index)))
+				packState.packOrder.set(index, internalName);
+		}
+		if (packState.disabledPacks.remove(previousInternalName))
+			packState.disabledPacks.add(internalName);
+		Map<String, ResourcePackState.AppliedSetting> settings = packState.settingsByPack.remove(previousInternalName);
+		if (settings != null)
+			packState.settingsByPack.putIfAbsent(internalName, settings);
 	}
 
 	/** Restores a verified previous archive left behind if the client stopped during replacement. */
@@ -143,10 +249,25 @@ public final class ResourcePackManager {
 	private void watchPackDirectory() {
 		watchingPackDirectory = true;
 		packDirectoryWatcher = ResourcePath.path(getPackDirectory()).watch((path, first) -> {
-			if (!first && repository.isRelevantPackChange(path)) {
+			if (!first && repository.isRelevantPackChange(path) && !isManagedArchiveChange(path)) {
 				queueInstalledPackReload();
 			}
 		});
+	}
+
+	private boolean isManagedArchiveChange(ResourcePath path) {
+		String filename = path.toFile().getAbsolutePath();
+		Long expiresAt = managedArchiveChanges.get(filename);
+		if (expiresAt == null)
+			return false;
+		if (System.currentTimeMillis() <= expiresAt)
+			return true;
+		managedArchiveChanges.remove(filename, expiresAt);
+		return false;
+	}
+
+	private void ignoreManagedArchiveChanges(File archive) {
+		managedArchiveChanges.put(archive.getAbsolutePath(), System.currentTimeMillis() + 5000);
 	}
 
 	private void queueInstalledPackReload() {
@@ -162,7 +283,7 @@ public final class ResourcePackManager {
 
 			clearInstalledPacks();
 			loadInstalledPacks();
-			eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
+			eventBus.post(new ResourcePackUpdate(PackEventType.CONTENT_CHANGED));
 		});
 	}
 
@@ -202,7 +323,9 @@ public final class ResourcePackManager {
 			return;
 		lastCheckForUpdates = System.currentTimeMillis();
 
-		setStatus("Loading...", "Fetching list of resource packs...");
+		boolean showRefreshStatus = downloadablePacks.isEmpty();
+		if (showRefreshStatus)
+			setStatus("Loading...", "Fetching list of resource packs...");
 
 		okHttpClient
 			.newCall(new Request.Builder()
@@ -215,11 +338,12 @@ public final class ResourcePackManager {
 					// Allow retrying without delay
 					lastCheckForUpdates = 0;
 
-					setStatus(
-						"Network Error",
-						"Check your network connection.<br>"
-						+ "Join our Discord server if the issue persists."
-					);
+					if (showRefreshStatus)
+						setStatus(
+							"Network Error",
+							"Check your network connection.<br>"
+							+ "Join our Discord server if the issue persists."
+						);
 				}
 
 			@Override
@@ -259,8 +383,7 @@ public final class ResourcePackManager {
 						for (var manifest : manifests) {
 							downloadablePacks.put(manifest.getInternalName(), manifest);
 						}
-
-						checkAndUpdateOutdatedPacks();
+						reconcileOfficialPacks();
 
 						setStatus(null, null);
 
@@ -272,12 +395,11 @@ public final class ResourcePackManager {
 
 	private void setStatus(String title, String description) {
 		SwingUtilities.invokeLater(() -> {
-			if (title == null) {
-				status = null;
-			} else {
-				status = new ResourcePackStatus(title, description);
-			}
-			eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
+			ResourcePackStatus newStatus = title == null ? null : new ResourcePackStatus(title, description);
+			if (Objects.equals(status, newStatus))
+				return;
+			status = newStatus;
+			eventBus.post(new ResourcePackUpdate(PackEventType.UI_CHANGED));
 		});
 	}
 
@@ -314,6 +436,7 @@ public final class ResourcePackManager {
 		repository.close(packToRemove);
 
 		if (fileToDelete != null && fileToDelete.exists()) {
+			ignoreManagedArchiveChanges(fileToDelete);
 			if (!deleteResourcePackFile(fileToDelete)) {
 				log.warn("Unable to delete resource pack for '{}': {}", internalName, fileToDelete);
 				int packIndex = installedPacks.indexOf(packToRemove);
@@ -325,6 +448,7 @@ public final class ResourcePackManager {
 
 		installedPacks.remove(packToRemove);
 		packState.sha256ByPack.remove(internalName);
+		packState.packIdentities.remove(internalName);
 		packState.disabledPacks.remove(internalName);
 		packState.settingsByPack.remove(internalName);
 
@@ -338,6 +462,38 @@ public final class ResourcePackManager {
 	}
 
 	public void downloadResourcePack(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, java.util.function.Consumer<String> onFailure, boolean updating) {
+		runOnEdt(() -> downloadResourcePackOnEdt(manifest, onProgress, onSuccess, onFailure, updating));
+	}
+
+	private void downloadResourcePackOnEdt(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, java.util.function.Consumer<String> onFailure, boolean updating) {
+		downloadResourcePackOnEdt(manifest, onProgress, onSuccess, onFailure, updating, false);
+	}
+
+	private void downloadResourcePackOnEdt(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, java.util.function.Consumer<String> onFailure, boolean updating, boolean replaceCustomArchive) {
+		String preconditionFailure = getDownloadPreconditionFailure(manifest);
+		if (preconditionFailure != null) {
+			if (onFailure != null)
+				onFailure.accept(preconditionFailure);
+			return;
+		}
+		if (!replaceCustomArchive && hasCustomArchiveCollision(manifest)) {
+			File archive = getArchiveFile(manifest);
+			PopupUtils.displayPopupMessage(
+				client,
+				"Replace custom resource pack",
+				"The custom pack file &quot;" + archive.getName() + "&quot; will be replaced by the official pack.<br><br>"
+					+ "Do you want to continue?",
+				new String[] { "Cancel", "Replace" },
+				buttonIndex -> {
+					if (buttonIndex == 1)
+						downloadResourcePackOnEdt(manifest, onProgress, onSuccess, onFailure, updating, true);
+					else if (onFailure != null)
+						onFailure.accept(null);
+					return true;
+				}
+			);
+			return;
+		}
 		boolean packExists = getInstalledPack(manifest.getInternalName()) != null;
 
 		if (manifest.isHasSettings() && !updating && !packExists) {
@@ -351,7 +507,7 @@ public final class ResourcePackManager {
 				new String[] { "Cancel", "Continue" },
 				i -> {
 					if (i == 1) {
-						downloadResourcePackInternal(manifest, onProgress, onSuccess, onFailure, false);
+						downloadResourcePackInternal(manifest, onProgress, onSuccess, onFailure, false, replaceCustomArchive);
 						return true;
 					}
 					if (onFailure != null)
@@ -362,14 +518,14 @@ public final class ResourcePackManager {
 			return;
 		}
 
-		downloadResourcePackInternal(manifest, onProgress, onSuccess, onFailure, updating);
+		downloadResourcePackInternal(manifest, onProgress, onSuccess, onFailure, updating, replaceCustomArchive);
 	}
 
-	private void downloadResourcePackInternal(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, java.util.function.Consumer<String> onFailure, boolean updating) {
-		if (!isSafeInternalName(manifest.getInternalName())) {
-			log.warn("Refusing to download resource pack with unsafe internal name: {}", manifest.getInternalName());
+	private void downloadResourcePackInternal(Manifest manifest, java.util.function.Consumer<Integer> onProgress, Runnable onSuccess, java.util.function.Consumer<String> onFailure, boolean updating, boolean replaceCustomArchive) {
+		String preconditionFailure = getDownloadPreconditionFailure(manifest);
+		if (preconditionFailure != null) {
 			if (onFailure != null)
-				onFailure.accept("The resource pack has an invalid internal identifier.");
+				onFailure.accept(preconditionFailure);
 			return;
 		}
 		if (!repository.ensurePackDirectory()) {
@@ -396,7 +552,7 @@ public final class ResourcePackManager {
 		// Use file size from manifest if available
 		Long expectedFileSize = manifest.getFileSize();
 
-		File zipFile = repository.archiveFile(manifest.getInternalName());
+		File zipFile = getArchiveFile(manifest);
 		File temporaryFile = new File(zipFile.getPath() + ".part");
 		deleteFileQuietly(temporaryFile);
 
@@ -415,23 +571,21 @@ public final class ResourcePackManager {
 				public void onFailure(Call call, IOException e) {
 					deleteFileQuietly(temporaryFile);
 					log.warn("Error while downloading resource pack '{}' from {}", manifest.getInternalName(), url, e);
-					if (onFailure != null) {
-						onFailure.accept(getDownloadFailureMessage(e));
-					}
+					if (onFailure != null)
+						runOnEdt(() -> onFailure.accept(getDownloadFailureMessage(e)));
 				}
 
 				@Override
 				public void onProgress(int progress) {
-					if (onProgress != null) {
-						onProgress.accept(progress);
-					}
+					if (onProgress != null)
+						runOnEdt(() -> onProgress.accept(progress));
 				}
 
 				@Override
 				public void onFinished(String sha256) {
-					SwingUtilities.invokeLater(() -> {
+					runOnEdt(() -> {
 						try {
-							installDownloadedPack(manifest, temporaryFile, zipFile, sha256, updating);
+							installDownloadedPack(manifest, temporaryFile, zipFile, sha256, updating, replaceCustomArchive);
 							if (onSuccess != null)
 								onSuccess.run();
 						} catch (Exception ex) {
@@ -446,6 +600,32 @@ public final class ResourcePackManager {
 		);
 	}
 
+	private String getDownloadPreconditionFailure(Manifest manifest) {
+		String internalName = manifest.getInternalName();
+		if (!isSafeInternalName(internalName)) {
+			log.warn("Refusing to download resource pack with unsafe internal name: {}", internalName);
+			return "The resource pack has an invalid internal identifier.";
+		}
+		if (manifest.hasSha256() && !isSha256(manifest.getSha256()))
+			return "The resource pack has an invalid official checksum.";
+
+		return null;
+	}
+
+	private boolean hasCustomArchiveCollision(Manifest manifest) {
+		return getArchiveFile(manifest).exists() && !packState.sha256ByPack.containsKey(manifest.getInternalName());
+	}
+
+	private File getArchiveFile(Manifest manifest) {
+		AbstractResourcePack installedPack = getInstalledPack(manifest.getInternalName());
+		if (installedPack != null && isTrackedOfficialPack(installedPack) && installedPack.path.isFileSystemResource()) {
+			File file = installedPack.path.toFile();
+			if (file.isFile())
+				return file;
+		}
+		return repository.archiveFile(manifest.getInternalName());
+	}
+
 	private static String getDownloadFailureMessage(Exception exception) {
 		String message = exception.getMessage();
 		String lowerCaseMessage = message == null ? "" : message.toLowerCase(Locale.ROOT);
@@ -458,16 +638,23 @@ public final class ResourcePackManager {
 		return "Unable to download or install this resource pack: " + message;
 	}
 
-	private void installDownloadedPack(Manifest manifest, File temporaryFile, File zipFile, String sha256, boolean updating) throws IOException {
+	private void installDownloadedPack(Manifest manifest, File temporaryFile, File zipFile, String sha256, boolean updating, boolean replaceCustomArchive) throws IOException {
+		if (manifest.hasSha256() && !manifest.getSha256().equalsIgnoreCase(sha256))
+			throw new IOException("Downloaded archive does not match the official SHA-256 checksum");
 		AbstractResourcePack validatedPack = repository.createPack(temporaryFile);
 		if (!validatedPack.isValid()) {
 			repository.close(validatedPack);
 			throw new IOException("Downloaded archive has invalid pack metadata");
 		}
-		String internalName = validatedPack.getManifest().getInternalName();
-		if (!manifest.getInternalName().equals(internalName)) {
+		String internalName = manifest.getInternalName();
+		String preconditionFailure = getDownloadPreconditionFailure(manifest);
+		if (preconditionFailure != null) {
 			repository.close(validatedPack);
-			throw new IOException("Archive metadata does not match the requested pack");
+			throw new IOException(preconditionFailure);
+		}
+		if (!replaceCustomArchive && hasCustomArchiveCollision(manifest)) {
+			repository.close(validatedPack);
+			throw new IOException("A custom pack file was added while downloading. Please try again.");
 		}
 		String archiveCommit = validatedPack.getManifest().getCommit();
 		if (!archiveCommit.isEmpty() && !manifest.getCommit().equals(archiveCommit))
@@ -476,9 +663,11 @@ public final class ResourcePackManager {
 		repository.close(validatedPack);
 
 		AbstractResourcePack localPack = getInstalledPack(internalName);
+		boolean preserveEnabledState = localPack != null && isTrackedOfficialPack(localPack);
 		File backupFile = new File(zipFile.getPath() + ".previous");
 		deleteFileQuietly(backupFile);
 		repository.close(localPack);
+		ignoreManagedArchiveChanges(zipFile);
 
 		try {
 			if (zipFile.exists())
@@ -496,6 +685,7 @@ public final class ResourcePackManager {
 		}
 
 		AbstractResourcePack pack = repository.createPack(zipFile);
+		pack.getManifest().setInternalName(internalName);
 		if (localPack == null) {
 			installedPacks.add(installedPacks.size() - 1, pack);
 		} else {
@@ -503,6 +693,10 @@ public final class ResourcePackManager {
 		}
 		deleteFileQuietly(backupFile);
 		packState.sha256ByPack.put(internalName, sha256);
+		if (!preserveEnabledState)
+			packState.disabledPacks.remove(internalName);
+		packState.packIdentities.put(internalName, new ResourcePackState.PackIdentity(
+			PackHashes.sha256(zipFile.getName()), sha256));
 		pack.setModified(false);
 		savePackOrder();
 
@@ -517,6 +711,10 @@ public final class ResourcePackManager {
 
 	private static boolean isCommitHash(String commit) {
 		return commit != null && commit.matches("[0-9a-fA-F]{7,64}");
+	}
+
+	private static boolean isSha256(String sha256) {
+		return sha256 != null && sha256.matches("[0-9a-fA-F]{64}");
 	}
 
 	private static HttpUrl githubRepositoryUrl(String link) {
@@ -555,6 +753,13 @@ public final class ResourcePackManager {
 			log.warn("Unable to delete resource pack path: {}", file, ex);
 			return false;
 		}
+	}
+
+	private static void runOnEdt(Runnable runnable) {
+		if (SwingUtilities.isEventDispatchThread())
+			runnable.run();
+		else
+			SwingUtilities.invokeLater(runnable);
 	}
 
 	public List<AbstractResourcePack> getInstalledPacks() {
@@ -596,7 +801,7 @@ public final class ResourcePackManager {
 			revertPackSettings(pack);
 		}
 		savePackOrder();
-		eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
+		eventBus.post(new ResourcePackUpdate(PackEventType.CONTENT_CHANGED));
 	}
 
 	public List<Manifest> getDownloadablePacks() {
@@ -630,6 +835,25 @@ public final class ResourcePackManager {
 			downloadResourcePack(manifest, true);
 	}
 
+	public boolean hasUpdate(AbstractResourcePack pack) {
+		if (pack == null || !isTrackedOfficialPack(pack))
+			return false;
+		Manifest availablePack = downloadablePacks.get(pack.getManifest().getInternalName());
+		if (availablePack == null)
+			return false;
+		if (availablePack.hasSha256() && isSha256(availablePack.getSha256()))
+			return !availablePack.getSha256().equalsIgnoreCase(packState.sha256ByPack.get(pack.getManifest().getInternalName()));
+		String installedCommit = pack.getManifest().getCommit();
+		return !installedCommit.isEmpty() && !availablePack.getCommit().isEmpty()
+			&& !installedCommit.equals(availablePack.getCommit());
+	}
+
+	public void updateResourcePack(AbstractResourcePack pack) {
+		Manifest manifest = downloadablePacks.get(pack.getManifest().getInternalName());
+		if (manifest != null && hasUpdate(pack))
+			downloadResourcePack(manifest, true);
+	}
+
 	public ResourcePath locateFile(String... parts) {
 		AbstractResourcePack pack = locatePack(parts);
 		return pack != null ? pack.getResource(parts) : null;
@@ -660,45 +884,6 @@ public final class ResourcePackManager {
 		return targetIndex;
 	}
 
-	/**
-	 * Checks for outdated packs by comparing archive metadata with the manifest,
-	 * and automatically re-downloads any outdated packs.
-	 */
-	private void checkAndUpdateOutdatedPacks() {
-		ArrayList<Manifest> packsToUpdate = new ArrayList<>();
-
-		for (var pack : installedPacks) {
-			if (pack instanceof DefaultResourcePack) {
-				continue;
-			}
-
-			String internalName = pack.getManifest().getInternalName();
-			Manifest manifest = downloadablePacks.get(internalName);
-
-			if (manifest == null) {
-				continue;
-			}
-
-			String installedCommit = pack.getManifest().getCommit();
-			String availableCommit = manifest.getCommit();
-			if (!installedCommit.isEmpty() && !availableCommit.isEmpty() && !installedCommit.equals(availableCommit)) {
-				packsToUpdate.add(manifest);
-			}
-		}
-
-		if (!packsToUpdate.isEmpty()) {
-			List<String> namesList = packsToUpdate.stream()
-				.map(Manifest::getInternalName)
-				.collect(Collectors.toList());
-
-			String names = String.join(", ", namesList);
-			log.info("{} | Packs outdated: {}", namesList.size(), names);
-		}
-
-		for (var manifest : packsToUpdate) {
-			downloadResourcePack(manifest,true);
-		}
-	}
 	/**
 	 * Persists an already-applied move and publishes its final state.
 	 */
@@ -738,6 +923,8 @@ public final class ResourcePackManager {
 					loaded.packOrder = new ArrayList<>();
 				if (loaded.sha256ByPack == null)
 					loaded.sha256ByPack = new LinkedHashMap<>();
+				if (loaded.packIdentities == null)
+					loaded.packIdentities = new LinkedHashMap<>();
 				if (loaded.disabledPacks == null)
 					loaded.disabledPacks = new LinkedHashSet<>();
 				if (loaded.settingsByPack == null)
@@ -757,12 +944,60 @@ public final class ResourcePackManager {
 				continue;
 			File file = pack.path.isFileSystemResource() ? pack.path.toFile() : null;
 			try {
-				pack.setModified(file == null || !file.isFile() || !expected.equals(PackHashes.sha256(file)));
+				pack.setModified(file == null || !file.isFile() || !expected.equalsIgnoreCase(PackHashes.sha256(file)));
 			} catch (IOException ex) {
 				log.warn("Unable to verify resource pack {}", pack.getPackName(), ex);
 				pack.setModified(true);
 			}
 		}
+	}
+
+	/** Promotes archives that match a checksum published by the official pack list. */
+	private void reconcileOfficialPacks() {
+		boolean stateChanged = false;
+		for (AbstractResourcePack pack : installedPacks) {
+			if (!pack.path.isFileSystemResource())
+				continue;
+
+			File file = pack.path.toFile();
+			try {
+				if (!file.isFile())
+					continue;
+				String sha256 = PackHashes.sha256(file);
+				Manifest manifest = findOfficialManifest(sha256);
+				if (manifest == null)
+					continue;
+				String internalName = pack.getManifest().getInternalName();
+				if (!manifest.getInternalName().equals(internalName)) {
+					movePackState(internalName, manifest.getInternalName());
+					packState.packIdentities.remove(internalName);
+					pack.getManifest().setInternalName(manifest.getInternalName());
+					internalName = manifest.getInternalName();
+					stateChanged = true;
+				}
+				if (!sha256.equalsIgnoreCase(packState.sha256ByPack.put(internalName, sha256)))
+					stateChanged = true;
+				packState.packIdentities.put(internalName, new ResourcePackState.PackIdentity(
+					PackHashes.sha256(file.getName()), sha256));
+				pack.setModified(false);
+			} catch (IOException ex) {
+				log.warn("Unable to verify resource pack {} against its official checksum", pack.getPackName(), ex);
+			}
+		}
+		if (stateChanged)
+			savePackOrder();
+	}
+
+	private Manifest findOfficialManifest(String sha256) {
+		Manifest match = null;
+		for (Manifest manifest : downloadablePacks.values()) {
+			if (!isSha256(manifest.getSha256()) || !manifest.getSha256().equalsIgnoreCase(sha256))
+				continue;
+			if (match != null)
+				return null;
+			match = manifest;
+		}
+		return match;
 	}
 
 	private void applyPackSettings(AbstractResourcePack pack) {

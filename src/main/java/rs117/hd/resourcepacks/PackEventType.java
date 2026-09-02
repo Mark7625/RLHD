@@ -4,5 +4,6 @@ public enum PackEventType {
 	ADDED,
 	REMOVED,
 	MOVED,
-	REFRESHED
+	CONTENT_CHANGED,
+	UI_CHANGED
 }

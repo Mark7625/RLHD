@@ -164,7 +164,7 @@ public class HdPlugin extends Plugin {
 		.getFolder("rlhd.plugin-dir", () -> path(RuneLite.RUNELITE_DIR, "117hd"));
 
 	public static final String REPOSITORY_URL = "https://github.com/117HD/RLHD";
-	public static final HttpUrl RESOURCE_PACKS_MANIFEST_URL = HttpUrl.get("https://raw.githubusercontent.com/117HD/resource-pack-hub/manifest/manifest.json");
+	public static final String RESOURCE_PACKS_MANIFEST_URL = "https://raw.githubusercontent.com/117HD/resource-packs/manifest/manifest.json";
 	public static final String DISCORD_URL = "https://discord.gg/U4p6ChjgSE";
 	public static final String RUNELITE_URL = "https://runelite.net";
 	public static final String AMD_DRIVER_URL = "https://www.amd.com/en/support";
@@ -1880,7 +1880,7 @@ public class HdPlugin extends Plugin {
 								initializeSidebar();
 								break;
 							case KEY_COMPACT_VIEW:
-								eventBus.post(new ResourcePackUpdate(PackEventType.REFRESHED));
+								eventBus.post(new ResourcePackUpdate(PackEventType.UI_CHANGED));
 								break;
 							case KEY_SEASONAL_THEME:
 							case KEY_SEASONAL_HEMISPHERE:

@@ -42,6 +42,7 @@ import net.runelite.client.eventbus.Subscribe;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.config.DefaultSkyColor;
+import rs117.hd.resourcepacks.PackEventType;
 import rs117.hd.resourcepacks.ResourcePackManager;
 import rs117.hd.resourcepacks.ResourcePackUpdate;
 import rs117.hd.scene.environments.Environment;
@@ -573,6 +574,9 @@ public class EnvironmentManager {
 
 	@Subscribe
 	public void onResourcePackUpdate(ResourcePackUpdate event) {
+		if (event.stateIs(PackEventType.UI_CHANGED))
+			return;
+
 		load(false);
 	}
 

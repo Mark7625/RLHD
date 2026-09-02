@@ -79,9 +79,10 @@ public abstract class AbstractResourcePack {
 			} catch (IOException e) {
 				log.debug("Resource pack {} has no pack.properties: {}", this, e.getMessage());
 			}
-			if (manifest == null) {
+			if (manifest == null)
 				manifest = new Manifest(getFallbackName(), null, null);
-			}
+			if (manifest.getInternalName().isEmpty())
+				manifest.setInternalName(getFallbackInternalName());
 		}
 		return manifest;
 	}
@@ -93,7 +94,15 @@ public abstract class AbstractResourcePack {
 			: filename;
 	}
 
-	private static Manifest readMetadata(InputStream inputStream) {
+	private String getFallbackInternalName() {
+		try {
+			return "custom." + PackHashes.sha256(path.getFilename());
+		} catch (IOException ex) {
+			throw new IllegalStateException("SHA-256 is unavailable", ex);
+		}
+	}
+
+	private Manifest readMetadata(InputStream inputStream) {
 		try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, Charsets.UTF_8))) {
 			Properties props = new Properties();
 			props.load(reader);
@@ -104,7 +113,7 @@ public abstract class AbstractResourcePack {
 			}
 			Manifest manifest = new Manifest(displayName, props.getProperty("description"), props.getProperty("author"));
 			String internalName = props.getProperty("internalName");
-			if (internalName != null && !internalName.isEmpty())
+			if (internalName != null && !internalName.trim().isEmpty())
 				manifest.setInternalName(internalName);
 			manifest.setCommit(props.getProperty("commit", ""));
 			return manifest;

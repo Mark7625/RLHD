@@ -46,6 +46,7 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.*;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
+import rs117.hd.resourcepacks.PackEventType;
 import rs117.hd.resourcepacks.ResourcePackManager;
 import rs117.hd.resourcepacks.ResourcePackUpdate;
 import rs117.hd.utils.Props;
@@ -352,6 +353,9 @@ public class TextureManager {
 
 	@Subscribe
 	public void onResourcePackUpdate(ResourcePackUpdate event) {
+		if (event.stateIs(PackEventType.UI_CHANGED))
+			return;
+
 		for (var layer : materialManager.textureLayers) {
 			layer.needsUpload = true;
 		}

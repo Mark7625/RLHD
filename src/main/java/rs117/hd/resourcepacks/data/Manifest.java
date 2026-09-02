@@ -17,11 +17,11 @@ public class Manifest {
 	private String author;
 	private String description;
 	private String link = "";
+	private String sha256 = "";
 	private PackType packType;
 
 	public Manifest(String name, String description, String author) {
 		this.displayName = name;
-		this.internalName = name.toLowerCase().replace(" ", "_");
 		this.author = author;
 		this.description = description;
 		this.packType = PackType.RESOURCE;
@@ -43,6 +43,10 @@ public class Manifest {
 
 	public Boolean isDevelopmentPack() {
 		return dev;
+	}
+
+	public boolean hasSha256() {
+		return sha256 != null && !sha256.isEmpty();
 	}
 
 	public PackType getPackType() {
