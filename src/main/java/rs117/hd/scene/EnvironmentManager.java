@@ -577,7 +577,7 @@ public class EnvironmentManager {
 		if (event.stateIs(PackEventType.UI_CHANGED))
 			return;
 
-		load(false);
+		clientThread.invoke(() -> load(false));
 	}
 
 	public boolean allowRoofShadows() {

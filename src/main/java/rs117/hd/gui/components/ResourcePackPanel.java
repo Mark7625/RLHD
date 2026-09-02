@@ -125,6 +125,8 @@ public class ResourcePackPanel extends JPanel {
 	private static final String MOVE_UP_BUTTON = "moveUpButton";
 	private static final String MOVE_DOWN_BUTTON = "moveDownButton";
 	private static final String DOWNLOAD_CARD_ID = "downloadCardId";
+	private static final String DOWNLOAD_MANIFEST = "downloadManifest";
+	private static final String DOWNLOAD_ACTION_BUTTON = "downloadActionButton";
 
 	static {
 		FADE = new ImageIcon(ImageUtil.loadImageResource(HdSidebar.class, "fade.png"));
@@ -306,10 +308,29 @@ public class ResourcePackPanel extends JPanel {
 		if (currentState == PanelState.DOWNLOAD && event.stateIs(PackEventType.ADDED)
 			&& downloadProgressBars.containsKey(event.getInternalName()))
 			return;
-		if (currentState == PanelState.DOWNLOAD && event.stateIs(PackEventType.ADDED, PackEventType.REMOVED)
+		if (currentState == PanelState.DOWNLOAD && event.stateIs(PackEventType.REMOVED)
+			&& configureDownloadablePackInstallAction(event.getInternalName()))
+			return;
+		if (currentState == PanelState.DOWNLOAD && event.stateIs(PackEventType.ADDED)
 			&& replaceDownloadablePackCard(event.getInternalName()))
 			return;
 		refreshPanel();
+	}
+
+	private boolean configureDownloadablePackInstallAction(String internalName) {
+		for (Component component : list.getComponents()) {
+			if (!(component instanceof JComponent)
+				|| !internalName.equals(((JComponent) component).getClientProperty(DOWNLOAD_CARD_ID)))
+				continue;
+			Manifest manifest = (Manifest) ((JComponent) component).getClientProperty(DOWNLOAD_MANIFEST);
+			JButton actionButton = (JButton) ((JComponent) component).getClientProperty(DOWNLOAD_ACTION_BUTTON);
+			if (manifest == null || actionButton == null)
+				return false;
+			configureInstallAction(actionButton, manifest, (JPanel) component, actionButton.getY());
+			component.repaint();
+			return true;
+		}
+		return false;
 	}
 
 	private boolean applyInstalledPackChange(ResourcePackUpdate event) {
@@ -810,6 +831,7 @@ public class ResourcePackPanel extends JPanel {
 		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		panel.setOpaque(true);
 		panel.putClientProperty(DOWNLOAD_CARD_ID, manifest.getInternalName());
+		panel.putClientProperty(DOWNLOAD_MANIFEST, manifest);
 		panel.setLayout(null);
 		panel.setBounds(0, 0, 221, panelHeight);
 		panel.setMinimumSize(new Dimension(221, panelHeight));
@@ -852,71 +874,10 @@ public class ResourcePackPanel extends JPanel {
 		actionButton.setFocusPainted(false);
 		actionButton.setMargin(new Insets(2, 4, 2, 4));
 		actionButton.setToolTipText(null);
+		panel.putClientProperty(DOWNLOAD_ACTION_BUTTON, actionButton);
 		boolean notInstalled = resourcePackManager.getInstalledPack(internalName) == null;
 		if (notInstalled) {
-			actionButton.setText("Install");
-			actionButton.setBackground(new Color(0x28BE28));
-			actionButton.addActionListener(l ->
-			{
-				replaceButtonWithProgressBar(internalName, panel, actionButton, buttonY);
-				resourcePackManager.downloadResourcePack(
-					manifest,
-					progress -> {
-						JProgressBar progressBar = downloadProgressBars.get(internalName);
-						if (progressBar != null) {
-							if (progress == -2) {
-								progressBar.setString("Waiting...");
-								progressBar.setToolTipText("Waiting for confirmation");
-								panel.repaint();
-								return;
-							}
-							// Skip if progress is -1 (unknown file size)
-							if (progress < 0) {
-								progressBar.setString("Downloading...");
-								progressBar.setToolTipText(null);
-								panel.repaint();
-								return;
-							}
-							// Clamp progress to valid range (0-100)
-							int clampedProgress = Math.min(100, progress);
-							progressBar.setValue(clampedProgress);
-							progressBar.setString(clampedProgress + "%");
-							progressBar.setToolTipText(null);
-							panel.repaint(); // Force repaint to show progress
-						}
-					},
-					() -> {
-						JProgressBar progressBar = downloadProgressBars.remove(internalName);
-						if (progressBar != null) {
-							panel.remove(progressBar);
-							configureUninstallAction(actionButton, internalName);
-							panel.add(actionButton);
-							panel.setComponentZOrder(actionButton, 0);
-							panel.revalidate();
-							panel.repaint();
-						}
-					},
-					failureMessage -> {
-						JProgressBar progressBar = downloadProgressBars.remove(internalName);
-						if (progressBar == null)
-							return;
-						if (failureMessage == null) {
-							refreshPanel();
-							return;
-						}
-
-						panel.remove(progressBar);
-						actionButton.setText("Failed. Retry?");
-						actionButton.setBackground(new Color(0xFFFF00));
-						UiText.setPlainToolTip(actionButton, failureMessage + " Click to retry.");
-						panel.add(actionButton);
-						panel.setComponentZOrder(actionButton, 0);
-						panel.revalidate();
-						panel.repaint();
-					},
-					false
-				);
-			});
+			configureInstallAction(actionButton, manifest, panel, buttonY);
 		} else if (resourcePackManager.hasUpdate(resourcePackManager.getInstalledPack(internalName))) {
 			actionButton.setText("Update");
 			actionButton.setBackground(new Color(0x28BE28));
@@ -1048,6 +1009,78 @@ public class ResourcePackPanel extends JPanel {
 			if (installedPack != null)
 				resourcePackManager.removeResourcePack(installedPack.getManifest().getInternalName());
 		});
+	}
+
+	private void configureInstallAction(JButton actionButton, Manifest manifest, JPanel panel, int buttonY) {
+		String internalName = manifest.getInternalName();
+		for (var listener : actionButton.getActionListeners())
+			actionButton.removeActionListener(listener);
+		actionButton.setText("Install");
+		actionButton.setBackground(new Color(0x28BE28));
+		actionButton.setToolTipText(null);
+		actionButton.addActionListener(event -> {
+			replaceButtonWithProgressBar(internalName, panel, actionButton, buttonY);
+			resourcePackManager.downloadResourcePack(
+				manifest,
+				progress -> updateDownloadProgress(internalName, panel, progress),
+				() -> finishDownload(internalName, panel, actionButton),
+				failureMessage -> failDownload(internalName, panel, actionButton, failureMessage),
+				false
+			);
+		});
+	}
+
+	private void updateDownloadProgress(String internalName, JPanel panel, int progress) {
+		JProgressBar progressBar = downloadProgressBars.get(internalName);
+		if (progressBar == null)
+			return;
+		if (progress == -2) {
+			progressBar.setString("Waiting...");
+			progressBar.setToolTipText("Waiting for confirmation");
+		} else if (progress < 0) {
+			progressBar.setString("Downloading...");
+			progressBar.setToolTipText(null);
+		} else {
+			int clampedProgress = Math.min(100, progress);
+			progressBar.setValue(clampedProgress);
+			progressBar.setString(clampedProgress + "%");
+			progressBar.setToolTipText(null);
+		}
+		panel.repaint();
+	}
+
+	private void finishDownload(String internalName, JPanel panel, JButton actionButton) {
+		JProgressBar progressBar = downloadProgressBars.remove(internalName);
+		if (progressBar == null)
+			return;
+		panel.remove(progressBar);
+		configureUninstallAction(actionButton, internalName);
+		panel.add(actionButton);
+		panel.setComponentZOrder(actionButton, 0);
+		panel.revalidate();
+		panel.repaint();
+	}
+
+	private void failDownload(String internalName, JPanel panel, JButton actionButton, String failureMessage) {
+		JProgressBar progressBar = downloadProgressBars.remove(internalName);
+		if (progressBar == null)
+			return;
+		if (failureMessage == null) {
+			configureInstallAction(actionButton, (Manifest) panel.getClientProperty(DOWNLOAD_MANIFEST), panel, actionButton.getY());
+			panel.remove(progressBar);
+			panel.add(actionButton);
+			panel.revalidate();
+			panel.repaint();
+			return;
+		}
+		panel.remove(progressBar);
+		actionButton.setText("Failed. Retry?");
+		actionButton.setBackground(new Color(0xFFFF00));
+		UiText.setPlainToolTip(actionButton, failureMessage + " Click to retry.");
+		panel.add(actionButton);
+		panel.setComponentZOrder(actionButton, 0);
+		panel.revalidate();
+		panel.repaint();
 	}
 
 	private static void showIcon(ImageIcon imageIcon, JLabel icon, JLabel blackBox, JPanel panel) {
