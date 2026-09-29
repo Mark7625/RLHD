@@ -832,7 +832,7 @@ public class SceneUploader implements AutoCloseable {
 					zone.glVaoA,
 					zone.tboF.getTexId(),
 					model, modelOverride, alphaStart, alphaEnd,
-					x - basex, y, z - basez,
+					x - basex, y + modelOverride.heightOffset, z - basez,
 					lx, lz, ux, uz,
 					rid, level, id
 				);
@@ -1568,6 +1568,9 @@ public class SceneUploader implements AutoCloseable {
 		final float modelHeight = model.getModelHeight();
 		final byte modelTransparency = model.getTransparency();
 
+		if (modelOverride.rotate != 0)
+			orientation = (int) (modelOverride.rotate * DEG_TO_JAU);
+
 		int orientSin = 0;
 		int orientCos = 0;
 		if (orientation != 0) {
@@ -1577,6 +1580,8 @@ public class SceneUploader implements AutoCloseable {
 		}
 
 		ensureVerticesAllocated(vertexCount);
+
+		y += modelOverride.heightOffset;
 
 		for (int v = 0, vertexOffset = 0; v < vertexCount; ++v) {
 			int vx = (int) vertexX[v];
@@ -1933,6 +1938,9 @@ public class SceneUploader implements AutoCloseable {
 		final boolean[] visibility = isModelPartiallyVisible ? PooledArrayType.BOOL.borrow(vertexCount) : null;
 		final float[] modelProjected = PooledArrayType.FLOAT.borrow(vertexCount * 3);
 
+		if (modelOverride.rotate != 0)
+			orientation = (int) (modelOverride.rotate * DEG_TO_JAU);
+
 		// Identity orient, will result in no rotation
 		float orientSinf = 0;
 		float orientCosf = 1;
@@ -1944,6 +1952,8 @@ public class SceneUploader implements AutoCloseable {
 		}
 
 		ensureVerticesAllocated(vertexCount);
+
+		y += modelOverride.heightOffset;
 
 		boolean shouldSort = true;
 		boolean allVertsVisible = true;
@@ -2024,6 +2034,12 @@ public class SceneUploader implements AutoCloseable {
 		final int radius = model.getRadius();
 		final byte modelTransparency = model.getTransparency();
 
+		int cachedVanillaTexturedId = -1;
+		ModelOverride cachedVanillaTextureOverride = null;
+
+		int cachedAhsl = -1;
+		ModelOverride cachedAhslOverride = null;
+
 		faceOverrides.ensureCapacity(triangleCount);
 		faceMaterials.ensureCapacity(triangleCount);
 		faceUVTypes.ensureCapacity(triangleCount);
@@ -2053,7 +2069,12 @@ public class SceneUploader implements AutoCloseable {
 				} else {
 					material = materialManager.fromVanillaTexture(textureId);
 					if (modelOverride.materialOverrides != null) {
-						var override = modelOverride.materialOverrides.get(material);
+						final var override = cachedVanillaTexturedId == textureId ?
+							cachedVanillaTextureOverride :
+							modelOverride.materialOverrides.get(material);
+						cachedVanillaTexturedId = textureId;
+						cachedVanillaTextureOverride = override;
+
 						if (override != null) {
 							faceOverride = override;
 							material = faceOverride.textureMaterial;
@@ -2062,7 +2083,12 @@ public class SceneUploader implements AutoCloseable {
 				}
 			} else if (modelOverride.colorOverrides != null) {
 				final int ahsl = (0xFF - transparency) << 16 | model.getFaceColors1()[f];
-				final var override = modelOverride.testColorOverrides(ahsl);
+				final var override = cachedAhsl == ahsl ?
+					cachedAhslOverride :
+					modelOverride.testColorOverrides(ahsl);
+				cachedAhsl = ahsl;
+				cachedAhslOverride = override;
+
 				if (override != null) {
 					faceOverride = override;
 					material = faceOverride.baseMaterial;
