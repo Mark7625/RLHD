@@ -27,7 +27,19 @@
           "light": "Mining helmet light",
           "bary0": 0.348,
           "bary1": 0.032,
-          "bary2": 0.621
+          "bary2": 0.62
+        }
+      }
+    },
+    "44v84f-72f95c46dac26776": {
+      "name": "Piece 3",
+      "meshKey": "44v84f-72f95c46dac26776",
+      "triangles": {
+        "65": {
+          "light": "ABERRANT_SPECTRES",
+          "bary0": 0.034,
+          "bary1": 0.184,
+          "bary2": 0.782
         }
       }
     }

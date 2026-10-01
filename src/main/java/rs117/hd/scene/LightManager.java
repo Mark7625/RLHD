@@ -78,6 +78,8 @@ public class LightManager {
 	private static final ResourcePath LIGHTS_PATH = Props
 		.getFile("rlhd.lights-path", () -> path(LightManager.class, "lights.json"));
 
+	private static final float ANIMATION_STOP_FADE_OUT_DURATION = 0.2f;
+
 	@Inject
 	private Client client;
 
@@ -611,6 +613,9 @@ public class LightManager {
 					}
 				} else if (light.def.despawnWithParent) {
 					light.lifetime = 0;
+				} else if (light.animationSpecific) {
+					light.fadeOutDuration = ANIMATION_STOP_FADE_OUT_DURATION;
+					light.lifetime = light.elapsedTime + light.fadeOutDuration;
 				} else if (light.lifetime == -1) {
 					// Schedule despawning of the light if the parent just despawned, and the light isn't already scheduled to despawn
 					float minLifetime = light.spawnDelay + light.fadeInDuration;
