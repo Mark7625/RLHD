@@ -98,10 +98,7 @@ public class LightManager {
 
 	@Inject
 	private ModelOverrideManager modelOverrideManager;
-
-	@Inject
-	private EntityHiderPlugin entityHiderPlugin;
-
+	
 	@Inject
 	private ModelLightManager modelLightManager;
 
