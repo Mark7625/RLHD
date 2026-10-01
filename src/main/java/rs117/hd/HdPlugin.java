@@ -64,10 +64,8 @@ import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
-import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
-import net.runelite.client.plugins.entityhider.EntityHiderPlugin;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.OSType;
@@ -79,6 +77,7 @@ import org.lwjgl.system.Callback;
 import org.lwjgl.system.Configuration;
 import rs117.hd.config.ColorFilter;
 import rs117.hd.config.DynamicLights;
+import rs117.hd.config.GroundBlending;
 import rs117.hd.config.SeasonalHemisphere;
 import rs117.hd.config.SeasonalTheme;
 import rs117.hd.config.ShadingMode;
@@ -153,7 +152,6 @@ import static rs117.hd.utils.buffer.GLBuffer.STORAGE_WRITE;
 	tags = { "hd", "high", "detail", "graphics", "shaders", "textures", "gpu", "shadows", "lights" },
 	conflicts = "GPU"
 )
-@PluginDependency(EntityHiderPlugin.class)
 public class HdPlugin extends Plugin {
 	public static final ResourcePath PLUGIN_DIR = Props
 		.getFolder("rlhd.plugin-dir", () -> path(RuneLite.RUNELITE_DIR, "117hd"));
@@ -337,6 +335,7 @@ public class HdPlugin extends Plugin {
 	public static boolean APPLE_ARM;
 
 	public static boolean SUPPORTS_INDIRECT_DRAW;
+	public static boolean SUPPORTS_MULTI_INDIRECT_DRAW;
 	public static boolean SUPPORTS_STORAGE_BUFFERS;
 
 	public Canvas canvas;
@@ -399,6 +398,8 @@ public class HdPlugin extends Plugin {
 	// Configs used frequently enough to be worth caching
 	public boolean configGroundTextures;
 	public boolean configGroundBlending;
+	public boolean configGroundBlendingColors;
+	public boolean configGroundBlendingTextures;
 	public boolean configModelTextures;
 	public boolean configLegacyTzHaarReskin;
 	public boolean configProjectileLights;
@@ -427,6 +428,7 @@ public class HdPlugin extends Plugin {
 	public ShadowMode configShadowMode;
 	public SeasonalTheme configSeasonalTheme;
 	public SeasonalHemisphere configSeasonalHemisphere;
+	public boolean configSeasonalFoliage;
 	public VanillaShadowMode configVanillaShadowMode;
 	public ShadingMode configShadingMode;
 	public ColorFilter configColorFilter = ColorFilter.NONE;
@@ -578,23 +580,27 @@ public class HdPlugin extends Plugin {
 				INTEL_GPU = glRenderer.contains("Intel");
 				NVIDIA_GPU = glRenderer.toLowerCase().contains("nvidia");
 
-				SUPPORTS_INDIRECT_DRAW = config.indirectDraw().get(NVIDIA_GPU && !APPLE);
+				SUPPORTS_INDIRECT_DRAW =
+					(GL_CAPS.OpenGL40 || GL_CAPS.GL_ARB_draw_indirect) &&
+					config.indirectDraw().get(NVIDIA_GPU && !APPLE);
+				SUPPORTS_MULTI_INDIRECT_DRAW = SUPPORTS_INDIRECT_DRAW && (GL_CAPS.OpenGL43 || GL_CAPS.GL_ARB_multi_draw_indirect);
 				SUPPORTS_STORAGE_BUFFERS = GL_CAPS.GL_ARB_buffer_storage && !DEBUG_MAC_OS && config.storageBuffers().get(!INTEL_GPU);
 
 				log.info("Starting 117 HD... (count: {})", startupCount);
-				log.info("Renderer:          {}", rendererClass.getSimpleName());
-				log.info("rlawt version:     {}", rlawtVersion);
-				log.info("LWJGL Version:     {}", Version.getVersion());
-				log.info("Java version:      {} ({})", javaVmName, javaVersion);
-				log.info("Java memory limit: {} (free: {})", formatBytes(runtime.maxMemory()), formatBytes(runtime.freeMemory()));
-				log.info("Operating system:  {} {} ({}-bit {})", osType, osVersion, wordSize, osArch);
-				log.info("CPU:               {} ({} threads)", HDUtils.getCpuName(), runtime.availableProcessors());
-				log.info("Memory:            {}", formatBytes(HDUtils.getTotalSystemMemory()));
-				log.info("GPU:               {} ({})", glRenderer, glVendor);
-				log.info("GPU driver:        {}", glGetString(GL_VERSION));
-				log.info("Indirect draw:     {}", SUPPORTS_INDIRECT_DRAW);
-				log.info("Storage buffers:   {}", SUPPORTS_STORAGE_BUFFERS);
-				log.info("Low memory mode:   {}", useLowMemoryMode);
+				log.info("Renderer:            {}", rendererClass.getSimpleName());
+				log.info("rlawt version:       {}", rlawtVersion);
+				log.info("LWJGL Version:       {}", Version.getVersion());
+				log.info("Java version:        {} ({})", javaVmName, javaVersion);
+				log.info("Java memory limit:   {} (free: {})", formatBytes(runtime.maxMemory()), formatBytes(runtime.freeMemory()));
+				log.info("Operating system:    {} {} ({}-bit {})", osType, osVersion, wordSize, osArch);
+				log.info("CPU:                 {} ({} threads)", HDUtils.getCpuName(), runtime.availableProcessors());
+				log.info("Memory:              {}", formatBytes(HDUtils.getTotalSystemMemory()));
+				log.info("GPU:                 {} ({})", glRenderer, glVendor);
+				log.info("GPU driver:          {}", glGetString(GL_VERSION));
+				log.info("Indirect draw:       {}", SUPPORTS_INDIRECT_DRAW);
+				log.info("Multi indirect draw: {}", SUPPORTS_MULTI_INDIRECT_DRAW);
+				log.info("Storage buffers:     {}", SUPPORTS_STORAGE_BUFFERS);
+				log.info("Low memory mode:     {}", useLowMemoryMode);
 
 				renderer = injector.getInstance(rendererClass);
 
@@ -1650,7 +1656,10 @@ public class HdPlugin extends Plugin {
 		configShadowsEnabled = configShadowMode != ShadowMode.OFF;
 		configRoofShadows = config.roofShadows();
 		configGroundTextures = config.groundTextures();
-		configGroundBlending = config.groundBlending();
+		var groundBlending = config.groundBlending();
+		configGroundBlending = groundBlending != GroundBlending.OFF;
+		configGroundBlendingColors = groundBlending.colors;
+		configGroundBlendingTextures = groundBlending.textures;
 		configModelTextures = config.modelTextures();
 		configLegacyTzHaarReskin = config.legacyTzHaarReskin();
 		configProjectileLights = config.projectileLights();
@@ -1677,6 +1686,7 @@ public class HdPlugin extends Plugin {
 		configHideVanillaWaterEffects = config.hideVanillaWaterEffects();
 		configSeasonalTheme = config.seasonalTheme();
 		configSeasonalHemisphere = config.seasonalHemisphere();
+		configSeasonalFoliage = config.seasonalFoliage();
 
 		var newColorFilter = config.colorFilter();
 		if (newColorFilter != configColorFilter) {
@@ -1845,6 +1855,7 @@ public class HdPlugin extends Plugin {
 								reloadEnvironments = true;
 								reloadModelOverrides = true;
 								// fall-through
+							case KEY_SEASONAL_FOLIAGE:
 							case KEY_ANISOTROPIC_FILTERING_LEVEL:
 							case KEY_GROUND_TEXTURES:
 							case KEY_MODEL_TEXTURES:

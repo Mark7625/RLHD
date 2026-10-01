@@ -408,7 +408,7 @@ public class SceneManager {
 								int oldIdx = nextRoofChanges.find(prevRoofId);
 								if (oldIdx != -1) {
 									if (nextRoofChanges.getValue(oldIdx) != newRoofId)
-										log.debug(
+										log.trace(
 											"Roof change mismatch: {} -> {} vs {}",
 											prevRoofId,
 											newRoofId,
@@ -605,10 +605,13 @@ public class SceneManager {
 				if (staggerLoad) {
 					// Reuse the old zone while uploading a correct one
 					sorted.zone.cull = false;
-					sorted.zone.uploadJob = ZoneUploadJob
-						.build(ctx, nextSceneContext, newZone, false, sorted.x, sorted.z);
-					sorted.zone.uploadJob.revealAfterTimestampMs =
-						timeMs + ceil(clamp(sorted.dist / 15.0f, 0.25f, 1.5f) * 1000.0f);
+					// Synchronize creation of delayed upload jobs with zone swaps and invalidation
+					synchronized (ctx) {
+						ZoneUploadJob upload = ZoneUploadJob.build(ctx, nextSceneContext, newZone, false, sorted.x, sorted.z);
+						upload.revealAfterTimestampMs =
+							timeMs + ceil(clamp(sorted.dist / 15.0f, 0.25f, 1.5f) * 1000.0f);
+						sorted.zone.setUploadJob(upload);
+					}
 				} else {
 					nextZones[sorted.x][sorted.z] = newZone;
 					ZoneUploadJob

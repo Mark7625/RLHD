@@ -24,7 +24,6 @@
  */
 package rs117.hd.renderer.zone;
 
-import java.util.Arrays;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +34,7 @@ import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.MaterialManager;
 import rs117.hd.scene.ModelOverrideManager;
 import rs117.hd.scene.ProceduralGenerator;
-import rs117.hd.scene.areas.Area;
+import rs117.hd.scene.SceneContext;
 import rs117.hd.scene.ground_materials.GroundMaterial;
 import rs117.hd.scene.materials.Material;
 import rs117.hd.scene.model_overrides.InheritTileColorType;
@@ -54,7 +53,6 @@ import rs117.hd.utils.collections.PrimitiveCharArray;
 import rs117.hd.utils.collections.PrimitiveIntArray;
 
 import static net.runelite.api.Constants.*;
-import static net.runelite.api.Constants.SCENE_SIZE;
 import static net.runelite.api.Perspective.*;
 import static rs117.hd.scene.SceneContext.TILE_OVERRIDE_MAIN;
 import static rs117.hd.scene.SceneContext.TILE_OVERRIDE_OVERLAY;
@@ -200,7 +198,15 @@ public class SceneUploader implements AutoCloseable {
 			}
 		}
 
-		if (ctx.fillGaps)
+		// Skip gap filling for any unloaded regions by checking if they are completely empty.
+		// This used to be more important when XTEAs prevented extended scene loading until the area had been visited,
+		// but it can still occur for scene loads while the client is initially loading the cache.
+		boolean shouldFillGaps =
+			ctx.fillGaps &&
+			zone.sizeO > 0 &&
+			ctx.sceneBase != null &&
+			(ctx.currentArea == null || ctx.currentArea.fillGaps);
+		if (shouldFillGaps)
 			estimateZoneGapFillers(ctx, zone, mzx, mzz);
 	}
 
@@ -251,8 +257,8 @@ public class SceneUploader implements AutoCloseable {
 				uploadZoneWater(ctx, zone, mzx, mzz, vb, fb);
 			zone.levelOffsets[Zone.LEVEL_WATER_SURFACE] = vb.position();
 
-			if (ctx.fillGaps)
-				uploadZoneGapFillers(ctx, zone, mzx, mzz, vb, fb);
+			if (zone.hasGapFiller)
+				uploadZoneGapFillers(ctx, mzx, mzz, vb, fb);
 			zone.levelOffsets[Zone.LEVEL_GAP_FILLER] = vb.position();
 		}
 	}
@@ -396,6 +402,9 @@ public class SceneUploader implements AutoCloseable {
 			} else {
 				z.onlyWater = false;
 			}
+
+			if (tileZ != 0 || override.doubleSidedFaces)
+				z.sizeO += 2;
 		}
 
 		SceneTileModel model = t.getSceneTileModel();
@@ -428,6 +437,9 @@ public class SceneUploader implements AutoCloseable {
 			} else {
 				z.onlyWater = false;
 			}
+
+			if (tileZ != 0 || overlayOverride.doubleSidedFaces || underlayOverride.doubleSidedFaces)
+				z.sizeO += len;
 		}
 
 		WallObject wallObject = t.getWallObject();
@@ -694,25 +706,36 @@ public class SceneUploader implements AutoCloseable {
 
 	private void estimateRenderableSize(Zone z, Renderable r, ModelOverride modelOverride) {
 		boolean mightHaveTransparency = modelOverride.mightHaveTransparency;
+		boolean mightBeDoubleSided = modelOverride.mightBeDoubleSided;
 		Model m = null;
 		if (r instanceof Model) {
 			m = (Model) r;
 		} else if (r instanceof DynamicObject) {
 			var dynamic = (DynamicObject) r;
 			m = dynamic.getModelZbuf();
-			if (dynamic.getRecordedObjectComposition() != null)
+			if (dynamic.getRecordedObjectComposition() != null) {
 				mightHaveTransparency = true;
+				mightBeDoubleSided = true;
+			}
 		}
 		if (m == null)
 			return;
 
 		int faceCount = m.getFaceCount();
 		byte[] transparencies = m.getFaceTransparencies();
-		short[] faceTextures = m.getFaceTextures();
+		boolean isVanillaTextured = m.getFaceTextures() != null;
 		byte modelTransparency = m.getTransparency();
-		z.sizeO += faceCount;
+
 		z.sizeF += faceCount;
-		if (transparencies != null || faceTextures != null || modelTransparency != 0 || mightHaveTransparency)
+
+		mightBeDoubleSided |= isVanillaTextured;
+		if (mightBeDoubleSided)
+			faceCount *= 2; // sizeF remains the same, since the double-sided faces will reuse the textureFaceIdx
+
+		z.sizeO += faceCount;
+
+		mightHaveTransparency |= transparencies != null || isVanillaTextured || modelTransparency != 0;
+		if (mightHaveTransparency)
 			z.sizeA += faceCount;
 	}
 
@@ -808,7 +831,7 @@ public class SceneUploader implements AutoCloseable {
 					zone.glVaoA,
 					zone.tboF.getTexId(),
 					model, modelOverride, alphaStart, alphaEnd,
-					x - basex, y, z - basez,
+					x - basex, y + modelOverride.heightOffset, z - basez,
 					lx, lz, ux, uz,
 					rid, level, id
 				);
@@ -926,16 +949,19 @@ public class SceneUploader implements AutoCloseable {
 				swMaterial = seMaterial = neMaterial = nwMaterial = material;
 			}
 
-			boolean useBlendedMaterialAndColor =
+			boolean allowBlending =
 				plugin.configGroundBlending &&
 				textureId == -1 &&
 				!proceduralGenerator.useDefaultColor(tile, override);
+			boolean blendColors = plugin.configGroundBlendingColors && allowBlending;
+			boolean blendTextures = plugin.configGroundBlendingTextures && allowBlending;
+
 			GroundMaterial groundMaterial = null;
 			if (override != TileOverride.NONE) {
 				groundMaterial = override.groundMaterial;
 				uvOrientation = override.uvOrientation;
 				uvScale = override.uvScale;
-				if (!useBlendedMaterialAndColor) {
+				if (!blendColors) {
 					swColor = override.modifyColor(swColor);
 					seColor = override.modifyColor(seColor);
 					nwColor = override.modifyColor(nwColor);
@@ -946,24 +972,25 @@ public class SceneUploader implements AutoCloseable {
 				groundMaterial = override.groundMaterial;
 			}
 
-			if (useBlendedMaterialAndColor) {
-				// get the vertices' colors and textures from hashmaps
+			if (blendColors) {
 				swColor = ctx.vertexTerrainColor.getOrDefault(swVertexKey, swColor);
 				seColor = ctx.vertexTerrainColor.getOrDefault(seVertexKey, seColor);
 				neColor = ctx.vertexTerrainColor.getOrDefault(neVertexKey, neColor);
 				nwColor = ctx.vertexTerrainColor.getOrDefault(nwVertexKey, nwColor);
+			}
 
-				if (plugin.configGroundTextures) {
+			if (plugin.configGroundTextures) {
+				if (blendTextures) {
 					swMaterial = ctx.vertexTerrainTexture.getOrDefault(swVertexKey, swMaterial);
 					seMaterial = ctx.vertexTerrainTexture.getOrDefault(seVertexKey, seMaterial);
 					neMaterial = ctx.vertexTerrainTexture.getOrDefault(neVertexKey, neMaterial);
 					nwMaterial = ctx.vertexTerrainTexture.getOrDefault(nwVertexKey, nwMaterial);
+				} else if (groundMaterial != null) {
+					swMaterial = groundMaterial.getRandomMaterial(worldPos[0], worldPos[1], worldPos[2]);
+					seMaterial = groundMaterial.getRandomMaterial(worldPos[0] + 1, worldPos[1], worldPos[2]);
+					nwMaterial = groundMaterial.getRandomMaterial(worldPos[0], worldPos[1] + 1, worldPos[2]);
+					neMaterial = groundMaterial.getRandomMaterial(worldPos[0] + 1, worldPos[1] + 1, worldPos[2]);
 				}
-			} else if (plugin.configGroundTextures && groundMaterial != null) {
-				swMaterial = groundMaterial.getRandomMaterial(worldPos[0], worldPos[1], worldPos[2]);
-				seMaterial = groundMaterial.getRandomMaterial(worldPos[0] + 1, worldPos[1], worldPos[2]);
-				nwMaterial = groundMaterial.getRandomMaterial(worldPos[0], worldPos[1] + 1, worldPos[2]);
-				neMaterial = groundMaterial.getRandomMaterial(worldPos[0] + 1, worldPos[1] + 1, worldPos[2]);
 			}
 
 			if (ctx.isVertexOverlay(neVertexKey) && ctx.isVertexUnderlay(neVertexKey))
@@ -1051,22 +1078,46 @@ public class SceneUploader implements AutoCloseable {
 			lx2, neHeight, lz2,
 			uvx, uvy, 0,
 			neNormals[0], neNormals[1], neNormals[2],
-			texturedFaceIdx
+			texturedFaceIdx, false
 		);
 
 		vb.putStaticVertex(
 			lx3, nwHeight, lz3,
 			uvx - uvcos, uvy - uvsin, 0,
 			nwNormals[0], nwNormals[1], nwNormals[2],
-			texturedFaceIdx
+			texturedFaceIdx, false
 		);
 
 		vb.putStaticVertex(
 			lx1, seHeight, lz1,
 			uvx + uvsin, uvy - uvcos, 0,
 			seNormals[0], seNormals[1], seNormals[2],
-			texturedFaceIdx
+			texturedFaceIdx, false
 		);
+
+		boolean isDoubleSided = !onlyWaterSurface && (tileZ != 0 || override.doubleSidedFaces);
+		if (isDoubleSided) {
+			vb.putStaticVertex(
+				lx1, seHeight, lz1,
+				uvx + uvsin, uvy - uvcos, 0,
+				-seNormals[0], -seNormals[1], -seNormals[2],
+				texturedFaceIdx, true
+			);
+
+			vb.putStaticVertex(
+				lx3, nwHeight, lz3,
+				uvx - uvcos, uvy - uvsin, 0,
+				-nwNormals[0], -nwNormals[1], -nwNormals[2],
+				texturedFaceIdx, true
+			);
+
+			vb.putStaticVertex(
+				lx2, neHeight, lz2,
+				uvx, uvy, 0,
+				-neNormals[0], -neNormals[1], -neNormals[2],
+				texturedFaceIdx, true
+			);
+		}
 
 		texturedFaceIdx = tb.putFace(
 			swColor, seColor, nwColor,
@@ -1078,22 +1129,45 @@ public class SceneUploader implements AutoCloseable {
 			lx0, swHeight, lz0,
 			uvx - uvcos + uvsin, uvy - uvsin - uvcos, 0,
 			swNormals[0], swNormals[1], swNormals[2],
-			texturedFaceIdx
+			texturedFaceIdx, false
 		);
 
 		vb.putStaticVertex(
 			lx1, seHeight, lz1,
 			uvx + uvsin, uvy - uvcos, 0,
 			seNormals[0], seNormals[1], seNormals[2],
-			texturedFaceIdx
+			texturedFaceIdx, false
 		);
 
 		vb.putStaticVertex(
 			lx3, nwHeight, lz3,
 			uvx - uvcos, uvy - uvsin, 0,
 			nwNormals[0], nwNormals[1], nwNormals[2],
-			texturedFaceIdx
+			texturedFaceIdx, false
 		);
+
+		if (isDoubleSided) {
+			vb.putStaticVertex(
+				lx3, nwHeight, lz3,
+				uvx - uvcos, uvy - uvsin, 0,
+				-nwNormals[0], -nwNormals[1], -nwNormals[2],
+				texturedFaceIdx, true
+			);
+
+			vb.putStaticVertex(
+				lx1, seHeight, lz1,
+				uvx + uvsin, uvy - uvcos, 0,
+				-seNormals[0], -seNormals[1], -seNormals[2],
+				texturedFaceIdx, true
+			);
+
+			vb.putStaticVertex(
+				lx0, swHeight, lz0,
+				uvx - uvcos + uvsin, uvy - uvsin - uvcos, 0,
+				-swNormals[0], -swNormals[1], -swNormals[2],
+				texturedFaceIdx, true
+			);
+		}
 
 		writeCache.release();
 	}
@@ -1225,15 +1299,18 @@ public class SceneUploader implements AutoCloseable {
 
 				GroundMaterial groundMaterial = null;
 
-				boolean useBlendedMaterialAndColor =
+				boolean allowBlending =
 					plugin.configGroundBlending &&
 					textureId == -1 &&
 					!(isOverlay && proceduralGenerator.useDefaultColor(tile, override));
+				boolean blendColors = plugin.configGroundBlendingColors && allowBlending;
+				boolean blendTextures = plugin.configGroundBlendingTextures && allowBlending;
+
 				if (override != TileOverride.NONE) {
 					groundMaterial = override.groundMaterial;
 					uvOrientation = override.uvOrientation;
 					uvScale = override.uvScale;
-					if (!useBlendedMaterialAndColor) {
+					if (!blendColors) {
 						colorA = override.modifyColor(colorA);
 						colorB = override.modifyColor(colorB);
 						colorC = override.modifyColor(colorC);
@@ -1243,33 +1320,34 @@ public class SceneUploader implements AutoCloseable {
 					groundMaterial = override.groundMaterial;
 				}
 
-				if (useBlendedMaterialAndColor) {
-					// get the vertices' colors and textures from hashmaps
+				if (blendColors) {
 					colorA = ctx.vertexTerrainColor.getOrDefault(vertexKeyA, colorA);
 					colorB = ctx.vertexTerrainColor.getOrDefault(vertexKeyB, colorB);
 					colorC = ctx.vertexTerrainColor.getOrDefault(vertexKeyC, colorC);
+				}
 
-					if (plugin.configGroundTextures) {
+				if (plugin.configGroundTextures) {
+					if (blendTextures) {
 						materialA = ctx.vertexTerrainTexture.getOrDefault(vertexKeyA, materialA);
 						materialB = ctx.vertexTerrainTexture.getOrDefault(vertexKeyB, materialB);
 						materialC = ctx.vertexTerrainTexture.getOrDefault(vertexKeyC, materialC);
+					} else if (groundMaterial != null) {
+						materialA = groundMaterial.getRandomMaterial(
+							worldPos[0] + (vertices[0][0] >> LOCAL_COORD_BITS),
+							worldPos[1] + (vertices[0][1] >> LOCAL_COORD_BITS),
+							worldPos[2]
+						);
+						materialB = groundMaterial.getRandomMaterial(
+							worldPos[0] + (vertices[1][0] >> LOCAL_COORD_BITS),
+							worldPos[1] + (vertices[1][1] >> LOCAL_COORD_BITS),
+							worldPos[2]
+						);
+						materialC = groundMaterial.getRandomMaterial(
+							worldPos[0] + (vertices[2][0] >> LOCAL_COORD_BITS),
+							worldPos[1] + (vertices[2][1] >> LOCAL_COORD_BITS),
+							worldPos[2]
+						);
 					}
-				} else if (plugin.configGroundTextures && groundMaterial != null) {
-					materialA = groundMaterial.getRandomMaterial(
-						worldPos[0] + (vertices[0][0] >> LOCAL_COORD_BITS),
-						worldPos[1] + (vertices[0][2] >> LOCAL_COORD_BITS),
-						worldPos[2]
-					);
-					materialB = groundMaterial.getRandomMaterial(
-						worldPos[0] + (vertices[1][0] >> LOCAL_COORD_BITS),
-						worldPos[1] + (vertices[1][2] >> LOCAL_COORD_BITS),
-						worldPos[2]
-					);
-					materialC = groundMaterial.getRandomMaterial(
-						worldPos[0] + (vertices[2][0] >> LOCAL_COORD_BITS),
-						worldPos[1] + (vertices[2][2] >> LOCAL_COORD_BITS),
-						worldPos[2]
-					);
 				}
 			} else if (onlyWaterSurface) {
 				// set colors for the shoreline to create a foam effect in the water shader
@@ -1369,22 +1447,46 @@ public class SceneUploader implements AutoCloseable {
 				lx0, ly0, lz0,
 				uvAx, uvAy, 0,
 				normalsA[0], normalsA[1], normalsA[2],
-				texturedFaceIdx
+				texturedFaceIdx, false
 			);
 
 			vb.putStaticVertex(
 				lx1, ly1, lz1,
 				uvBx, uvBy, 0,
 				normalsB[0], normalsB[1], normalsB[2],
-				texturedFaceIdx
+				texturedFaceIdx, false
 			);
 
 			vb.putStaticVertex(
 				lx2, ly2, lz2,
 				uvCx, uvCy, 0,
 				normalsC[0], normalsC[1], normalsC[2],
-				texturedFaceIdx
+				texturedFaceIdx, false
 			);
+
+			boolean isDoubleSided = !onlyWaterSurface && (tileZ != 0 || override.doubleSidedFaces);
+			if (isDoubleSided) {
+				vb.putStaticVertex(
+					lx2, ly2, lz2,
+					uvCx, uvCy, 0,
+					-normalsC[0], -normalsC[1], -normalsC[2],
+					texturedFaceIdx, true
+				);
+
+				vb.putStaticVertex(
+					lx1, ly1, lz1,
+					uvBx, uvBy, 0,
+					-normalsB[0], -normalsB[1], -normalsB[2],
+					texturedFaceIdx, true
+				);
+
+				vb.putStaticVertex(
+					lx0, ly0, lz0,
+					uvAx, uvAy, 0,
+					-normalsA[0], -normalsA[1], -normalsA[2],
+					texturedFaceIdx, true
+				);
+			}
 		}
 		writeCache.release();
 	}
@@ -1407,7 +1509,6 @@ public class SceneUploader implements AutoCloseable {
 			writeCache = new VertexWriteCache.Collection();
 		writeCache.setOutputBuffers(opaqueBuffer, alphaBuffer, textureBuffer);
 
-		final int[][][] tileHeights = ctx.scene.getTileHeights();
 		final int faceCount = model.getFaceCount();
 		final int vertexCount = model.getVerticesCount();
 
@@ -1437,6 +1538,9 @@ public class SceneUploader implements AutoCloseable {
 		final float modelHeight = model.getModelHeight();
 		final byte modelTransparency = model.getTransparency();
 
+		if (modelOverride.rotate != 0)
+			orientation = (int) (modelOverride.rotate * DEG_TO_JAU);
+
 		int orientSin = 0;
 		int orientCos = 0;
 		if (orientation != 0) {
@@ -1446,6 +1550,8 @@ public class SceneUploader implements AutoCloseable {
 		}
 
 		ensureVerticesAllocated(vertexCount);
+
+		y += modelOverride.heightOffset;
 
 		for (int v = 0, vertexOffset = 0; v < vertexCount; ++v) {
 			int vx = (int) vertexX[v];
@@ -1513,6 +1619,9 @@ public class SceneUploader implements AutoCloseable {
 			ModelOverride faceOverride = modelOverride;
 
 			int transparency = readFaceTransparency(modelTransparency, transparencies, face);
+			if (transparency == 255)
+				continue;
+
 			int textureId = isVanillaTextured ? faceTextures[face] : -1;
 			boolean isTextured = textureId != -1;
 			if (isTextured) {
@@ -1572,7 +1681,6 @@ public class SceneUploader implements AutoCloseable {
 					continue;
 
 				if (faceOverride.inheritTileColorType != InheritTileColorType.NONE) {
-					final Scene scene = ctx.scene;
 					SceneTileModel tileModel = tile.getSceneTileModel();
 					SceneTilePaint tilePaint = tile.getSceneTilePaint();
 
@@ -1733,22 +1841,45 @@ public class SceneUploader implements AutoCloseable {
 				vx1, vy1, vz1,
 				faceUVs[0], faceUVs[1], faceUVs[2],
 				modelNormals[0], modelNormals[1], modelNormals[2],
-				texturedFaceIdx
+				texturedFaceIdx, false
 			);
 
 			vb.putStaticVertex(
 				vx2, vy2, vz2,
 				faceUVs[4], faceUVs[5], faceUVs[6],
 				modelNormals[3], modelNormals[4], modelNormals[5],
-				texturedFaceIdx
+				texturedFaceIdx, false
 			);
 
 			vb.putStaticVertex(
 				vx3, vy3, vz3,
 				faceUVs[8], faceUVs[9], faceUVs[10],
 				modelNormals[6], modelNormals[7], modelNormals[8],
-				texturedFaceIdx
+				texturedFaceIdx, false
 			);
+
+			if (faceOverride.doubleSidedFaces || material.doubleSidedFaces) {
+				vb.putStaticVertex(
+					vx3, vy3, vz3,
+					faceUVs[8], faceUVs[9], faceUVs[10],
+					-modelNormals[6], -modelNormals[7], -modelNormals[8],
+					texturedFaceIdx, true
+				);
+
+				vb.putStaticVertex(
+					vx2, vy2, vz2,
+					faceUVs[4], faceUVs[5], faceUVs[6],
+					-modelNormals[3], -modelNormals[4], -modelNormals[5],
+					texturedFaceIdx, true
+				);
+
+				vb.putStaticVertex(
+					vx1, vy1, vz1,
+					faceUVs[0], faceUVs[1], faceUVs[2],
+					-modelNormals[0], -modelNormals[1], -modelNormals[2],
+					texturedFaceIdx, true
+				);
+			}
 			len += 3;
 		}
 		writeCache.release();
@@ -1774,11 +1905,11 @@ public class SceneUploader implements AutoCloseable {
 		final float[] verticesY = model.getVerticesY();
 		final float[] verticesZ = model.getVerticesZ();
 
-		final boolean[] visibility = PooledArrayType.BOOL.borrow(vertexCount);
+		final boolean[] visibility = isModelPartiallyVisible ? PooledArrayType.BOOL.borrow(vertexCount) : null;
 		final float[] modelProjected = PooledArrayType.FLOAT.borrow(vertexCount * 3);
 
-		if (isModelPartiallyVisible)
-			Arrays.fill(visibility, 0, vertexCount, true);
+		if (modelOverride.rotate != 0)
+			orientation = (int) (modelOverride.rotate * DEG_TO_JAU);
 
 		// Identity orient, will result in no rotation
 		float orientSinf = 0;
@@ -1791,6 +1922,8 @@ public class SceneUploader implements AutoCloseable {
 		}
 
 		ensureVerticesAllocated(vertexCount);
+
+		y += modelOverride.heightOffset;
 
 		boolean shouldSort = true;
 		boolean allVertsVisible = true;
@@ -1871,6 +2004,12 @@ public class SceneUploader implements AutoCloseable {
 		final int radius = model.getRadius();
 		final byte modelTransparency = model.getTransparency();
 
+		int cachedVanillaTexturedId = -1;
+		ModelOverride cachedVanillaTextureOverride = null;
+
+		int cachedAhsl = -1;
+		ModelOverride cachedAhslOverride = null;
+
 		faceOverrides.ensureCapacity(triangleCount);
 		faceMaterials.ensureCapacity(triangleCount);
 		faceUVTypes.ensureCapacity(triangleCount);
@@ -1900,7 +2039,12 @@ public class SceneUploader implements AutoCloseable {
 				} else {
 					material = materialManager.fromVanillaTexture(textureId);
 					if (modelOverride.materialOverrides != null) {
-						var override = modelOverride.materialOverrides.get(material);
+						final var override = cachedVanillaTexturedId == textureId ?
+							cachedVanillaTextureOverride :
+							modelOverride.materialOverrides.get(material);
+						cachedVanillaTexturedId = textureId;
+						cachedVanillaTextureOverride = override;
+
 						if (override != null) {
 							faceOverride = override;
 							material = faceOverride.textureMaterial;
@@ -1909,7 +2053,12 @@ public class SceneUploader implements AutoCloseable {
 				}
 			} else if (modelOverride.colorOverrides != null) {
 				final int ahsl = (0xFF - transparency) << 16 | model.getFaceColors1()[f];
-				final var override = modelOverride.testColorOverrides(ahsl);
+				final var override = cachedAhsl == ahsl ?
+					cachedAhslOverride :
+					modelOverride.testColorOverrides(ahsl);
+				cachedAhsl = ahsl;
+				cachedAhslOverride = override;
+
 				if (override != null) {
 					faceOverride = override;
 					material = faceOverride.baseMaterial;
@@ -1941,7 +2090,7 @@ public class SceneUploader implements AutoCloseable {
 			int offsetB = indices2[f];
 			int offsetC = indices3[f];
 
-			if (!allVertsVisible && !visibility[offsetA] && !visibility[offsetB] && !visibility[offsetC]) {
+			if (isModelPartiallyVisible && !allVertsVisible && !visibility[offsetA] && !visibility[offsetB] && !visibility[offsetC]) {
 				// TODO: If a triangle is large enough to encompass the entire screen, this will need an additional plane test
 				culledFaces.put(f);
 				continue;
@@ -2194,30 +2343,14 @@ public class SceneUploader implements AutoCloseable {
 	}
 
 	public void estimateZoneGapFillers(ZoneSceneContext ctx, Zone zone, int mzx, int mzz) {
-		if (ctx.sceneBase == null || ctx.currentArea != null && !ctx.currentArea.fillGaps)
-			return;
-
-		int sceneMin = -ctx.expandedMapLoadingChunks * CHUNK_SIZE;
-		int sceneMax = SCENE_SIZE + ctx.expandedMapLoadingChunks * CHUNK_SIZE;
-		Tile[][][] extendedTiles = ctx.scene.getExtendedTiles();
+		int basex = (mzx - (ctx.sceneOffset >> 3)) << 10;
+		int basez = (mzz - (ctx.sceneOffset >> 3)) << 10;
 
 		for (int xoff = 0; xoff < CHUNK_SIZE; ++xoff) {
 			for (int zoff = 0; zoff < CHUNK_SIZE; ++zoff) {
 				int tileExX = (mzx << 3) + xoff;
 				int tileExY = (mzz << 3) + zoff;
-				int faces = processGapTile(
-					ctx,
-					extendedTiles,
-					null,
-					tileExX,
-					tileExY,
-					sceneMin,
-					sceneMax,
-					null,
-					0,
-					0,
-					true
-				);
+				int faces = processGapTile(ctx, tileExX, tileExY, null, basex, basez, false);
 				if (faces > 0) {
 					zone.hasGapFiller = true;
 					zone.sizeO += faces;
@@ -2229,15 +2362,11 @@ public class SceneUploader implements AutoCloseable {
 
 	public void uploadZoneGapFillers(
 		ZoneSceneContext ctx,
-		Zone zone,
 		int mzx,
 		int mzz,
 		GpuIntBuffer vb,
 		GpuIntBuffer fb
 	) {
-		if (ctx.sceneBase == null || !zone.hasGapFiller || ctx.currentArea != null && !ctx.currentArea.fillGaps)
-			return;
-
 		assert vb != null && fb != null;
 		if (writeCache == null)
 			writeCache = new VertexWriteCache.Collection();
@@ -2245,35 +2374,16 @@ public class SceneUploader implements AutoCloseable {
 
 		int basex = (mzx - (ctx.sceneOffset >> 3)) << 10;
 		int basez = (mzz - (ctx.sceneOffset >> 3)) << 10;
-		int[][][] tileHeights = ctx.scene.getTileHeights();
 		Material blackMaterial = materialManager.getMaterial("BLACK");
 
-		int sceneMin = -ctx.expandedMapLoadingChunks * CHUNK_SIZE;
-		int sceneMax = SCENE_SIZE + ctx.expandedMapLoadingChunks * CHUNK_SIZE;
-		Tile[][][] extendedTiles = ctx.scene.getExtendedTiles();
-
-		int posBefore = vb.position();
 		for (int xoff = 0; xoff < CHUNK_SIZE; ++xoff) {
 			for (int zoff = 0; zoff < CHUNK_SIZE; ++zoff) {
 				int tileExX = (mzx << 3) + xoff;
 				int tileExY = (mzz << 3) + zoff;
-				processGapTile(
-					ctx,
-					extendedTiles,
-					tileHeights,
-					tileExX,
-					tileExY,
-					sceneMin,
-					sceneMax,
-					blackMaterial,
-					basex,
-					basez,
-					false
-				);
+				processGapTile(ctx, tileExX, tileExY, blackMaterial, basex, basez, true);
 			}
 		}
 		writeCache.release();
-		zone.hasGapFiller = vb.position() > posBefore;
 	}
 
 	/**
@@ -2281,28 +2391,28 @@ public class SceneUploader implements AutoCloseable {
 	 */
 	private int processGapTile(
 		ZoneSceneContext ctx,
-		Tile[][][] extendedTiles,
-		@Nullable int[][][] tileHeights,
 		int tileExX,
 		int tileExY,
-		int sceneMin,
-		int sceneMax,
 		@Nullable Material blackMaterial,
 		int basex,
 		int basez,
-		boolean isEstimate
+		boolean shouldUpload
 	) {
-		if (tileExX < 0 || tileExY < 0 || tileExX >= EXTENDED_SCENE_SIZE || tileExY >= EXTENDED_SCENE_SIZE)
-			return 0;
-
+		assert tileExX >= 0 && tileExY >= 0 && tileExX < EXTENDED_SCENE_SIZE && tileExY < EXTENDED_SCENE_SIZE;
 		assert ctx.sceneBase != null;
-		int tileX = tileExX - ctx.sceneOffset;
-		int tileY = tileExY - ctx.sceneOffset;
-		ctx.sceneToWorld(tileX, tileY, 0, worldPos);
-		if (ctx.currentArea != null && !ctx.currentArea.containsPoint(worldPos))
+
+		// Skip tiles along the scene boundary, which are always empty
+		if (tileExX == 0 || tileExX == EXTENDED_SCENE_SIZE - 1 ||
+			tileExY == 0 || tileExY == EXTENDED_SCENE_SIZE - 1)
 			return 0;
 
-		Tile tile = extendedTiles[0][tileExX][tileExY];
+		if (ctx.currentArea != null) {
+			ctx.extendedSceneToWorld(tileExX, tileExY, 0, worldPos);
+			if (!ctx.currentArea.containsPoint(worldPos))
+				return 0;
+		}
+
+		Tile tile = tiles[0][tileExX][tileExY];
 
 		SceneTilePaint paint;
 		SceneTileModel model = null;
@@ -2329,53 +2439,21 @@ public class SceneUploader implements AutoCloseable {
 			}
 		}
 
-		boolean shouldFill =
-			tileX > sceneMin &&
-			tileY > sceneMin &&
-			tileX < sceneMax - 1 &&
-			tileY < sceneMax - 1 &&
-			Area.OVERWORLD.containsPoint(worldPos);
-
-		if (shouldFill) {
-			int tileRegionID = HDUtils.worldToRegionID(worldPos);
-			int[] regions = ctx.scene.getMapRegions();
-
-			shouldFill = false;
-			for (int region : regions) {
-				if (region == tileRegionID) {
-					shouldFill = true;
-					break;
-				}
-			}
-
-			if (!shouldFill && ctx.expandedMapLoadingChunks > 0)
-				shouldFill = true;
-		}
-
-		if (!shouldFill)
-			return 0;
-
-		int faces = model != null ? model.getFaceX().length : 2;
-		if (!isEstimate) {
+		if (shouldUpload) {
 			assert tileHeights != null && blackMaterial != null;
 			if (model != null) {
-				uploadGapFillTileModel(tile, model, basex, basez);
+				uploadCustomTileModel(tile, model, blackMaterial, basex, basez);
 			} else {
-				uploadCustomTile(tileHeights, tileExX, tileExY, renderLevel, blackMaterial, tileX, tileY, basex, basez);
+				uploadCustomTilePaint(ctx, tileExX, tileExY, renderLevel, blackMaterial, basex, basez);
 			}
 		}
-		return faces;
+
+		return model == null ? 2 : model.getFaceX().length;
 	}
 
-	private void uploadGapFillTileModel(
-		Tile tile,
-		SceneTileModel model,
-		int basex,
-		int basez
-	) {
+	private void uploadCustomTileModel(Tile tile, SceneTileModel model, Material material, int basex, int basez) {
 		int tileZ = tile.getRenderLevel();
-		Material black = materialManager.getMaterial("BLACK");
-		int packedMaterial = black.packMaterialData(ModelOverride.NONE, UvType.GEOMETRY, false);
+		int packedMaterial = material.packMaterialData(ModelOverride.NONE, UvType.GEOMETRY, false);
 		int terrainData = HDUtils.packTerrainData(true, 0, WaterType.NONE, tileZ);
 
 		final int[] faceX = model.getFaceX();
@@ -2404,14 +2482,12 @@ public class SceneUploader implements AutoCloseable {
 		}
 	}
 
-	private void uploadCustomTile(
-		int[][][] tileHeights,
+	private void uploadCustomTilePaint(
+		SceneContext ctx,
 		int tileExX,
 		int tileExY,
 		int tileZ,
 		Material material,
-		int tileX,
-		int tileY,
 		int zoneBasex,
 		int zoneBasez
 	) {
@@ -2419,26 +2495,24 @@ public class SceneUploader implements AutoCloseable {
 		int seHeight = tileHeights[tileZ][tileExX + 1][tileExY];
 		int neHeight = tileHeights[tileZ][tileExX + 1][tileExY + 1];
 		int nwHeight = tileHeights[tileZ][tileExX][tileExY + 1];
-
 		int terrainData = HDUtils.packTerrainData(true, 0, WaterType.NONE, tileZ);
 		int packedMaterial = material.packMaterialData(ModelOverride.NONE, UvType.GEOMETRY, false);
 
-		int baseX = tileX * LOCAL_TILE_SIZE - zoneBasex;
-		int baseZ = tileY * LOCAL_TILE_SIZE - zoneBasez;
-
+		int x = (tileExX - ctx.sceneOffset) * LOCAL_TILE_SIZE - zoneBasex;
+		int z = (tileExY - ctx.sceneOffset) * LOCAL_TILE_SIZE - zoneBasez;
 		putTerrainTriangle(
 			0, 0, 0,
 			packedMaterial, terrainData,
-			baseX + LOCAL_TILE_SIZE, neHeight, baseZ + LOCAL_TILE_SIZE, 0, 0,
-			baseX, nwHeight, baseZ + LOCAL_TILE_SIZE, 1, 0,
-			baseX + LOCAL_TILE_SIZE, seHeight, baseZ, 0, 1
+			x + LOCAL_TILE_SIZE, neHeight, z + LOCAL_TILE_SIZE, 0, 0,
+			x, nwHeight, z + LOCAL_TILE_SIZE, 1, 0,
+			x + LOCAL_TILE_SIZE, seHeight, z, 0, 1
 		);
 		putTerrainTriangle(
 			0, 0, 0,
 			packedMaterial, terrainData,
-			baseX, swHeight, baseZ, 1, 1,
-			baseX + LOCAL_TILE_SIZE, seHeight, baseZ, 0, 1,
-			baseX, nwHeight, baseZ + LOCAL_TILE_SIZE, 1, 0
+			x, swHeight, z, 1, 1,
+			x + LOCAL_TILE_SIZE, seHeight, z, 0, 1,
+			x, nwHeight, z + LOCAL_TILE_SIZE, 1, 0
 		);
 	}
 
@@ -2459,9 +2533,9 @@ public class SceneUploader implements AutoCloseable {
 			packedMaterial, packedMaterial, packedMaterial,
 			terrainData, terrainData, terrainData
 		);
-		vb.putStaticVertex(x0, y0, z0, u0, v0, 0, 0, -1, 0, faceIdx);
-		vb.putStaticVertex(x1, y1, z1, u1, v1, 0, 0, -1, 0, faceIdx);
-		vb.putStaticVertex(x2, y2, z2, u2, v2, 0, 0, -1, 0, faceIdx);
+		vb.putStaticVertex(x0, y0, z0, u0, v0, 0, 0, -1, 0, faceIdx, false);
+		vb.putStaticVertex(x1, y1, z1, u1, v1, 0, 0, -1, 0, faceIdx, false);
+		vb.putStaticVertex(x2, y2, z2, u2, v2, 0, 0, -1, 0, faceIdx, false);
 	}
 
 	public static void calculateFaceNormalInt(
@@ -2668,16 +2742,22 @@ public class SceneUploader implements AutoCloseable {
 		}
 	}
 
-	private static int readFaceTransparency(byte modelTransparency, byte[] transparencies, int f) {
+	public static int readFaceTransparency(byte modelTransparency, byte[] transparencies, int f) {
 		// Based on https://github.com/runelite/runelite/commit/a88ac64d5a154020cdc21612fc0f1eb32aa8d0f8#diff-2495d11499767f573d041baf080ee6b50dddd325e37b34a402f4c23efc3c2324R464-R478
 		if (modelTransparency == -1)
 			return 255;
 
-		int t = modelTransparency & 255;
 		int faceTransparency = transparencies != null ? transparencies[f] & 0xFF : 0;
-		if (t > 0 && faceTransparency < 253) {
-			int a = (253 - faceTransparency) * t >> 8;
+		if (faceTransparency >= 253) {
+			// 253 & 254 are special faces like clickboxes which we don't want to render,
+			// so force them to be 255 so that they are completely skipped
+			return 255;
+		}
+
+		if (modelTransparency != 0) {
 			assert (faceTransparency & 255) == faceTransparency;
+			int t = modelTransparency & 255;
+			int a = (253 - faceTransparency) * t >> 8;
 			return faceTransparency + a;
 		}
 
