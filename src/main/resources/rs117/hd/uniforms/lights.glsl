@@ -11,11 +11,11 @@ struct PointLight {
 
 layout(std140) uniform UBOLights {
     PointLight PointLightArray[MAX_LIGHT_COUNT];
-};
+} uboLights;
 
 layout(std140) uniform UBOLightsCulling {
     vec4 PointLightPositionsArray[MAX_LIGHT_COUNT];
-};
+} uboLightsCulling;
 
 layout(std140) uniform UBOLightMasks {
     vec4 lightMaskData[MAX_LIGHT_COUNT]; // x = texture layer (-1 = none), y = scale
