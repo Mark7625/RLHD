@@ -42,6 +42,18 @@
           "bary2": 0.782
         }
       }
+    },
+    "44v84f-36b84e2571b9b8ae": {
+      "name": "Piece 3",
+      "meshKey": "44v84f-36b84e2571b9b8ae",
+      "triangles": {
+        "52": {
+          "light": "ABERRANT_SPECTRES",
+          "bary0": 0.395,
+          "bary1": 0.384,
+          "bary2": 0.221
+        }
+      }
     }
   }
 }

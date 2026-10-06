@@ -37,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 import java.util.function.Predicate;
-import javax.annotation.Nullable;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -54,7 +53,11 @@ import rs117.hd.HdPlugin;
 import rs117.hd.config.DynamicLights;
 import rs117.hd.data.ObjectType;
 import rs117.hd.opengl.uniforms.UBOLights;
-import rs117.hd.scene.model.ModelLightManager;\nimport rs117.hd.scene.daylight_cycle.SkyConfiguration;\nimport rs117.hd.scene.daylight_cycle.SkyState;\nimport rs117.hd.scene.daylight_cycle.SkyState.LightingSample;\nimport rs117.hd.scene.environments.Environment;
+import rs117.hd.scene.model.ModelLightManager;
+import rs117.hd.scene.daylight_cycle.SkyConfiguration;
+import rs117.hd.scene.daylight_cycle.SkyState;
+import rs117.hd.scene.daylight_cycle.SkyState.LightingSample;
+import rs117.hd.scene.environments.Environment;
 import rs117.hd.scene.lights.Alignment;
 import rs117.hd.scene.lights.Light;
 import rs117.hd.scene.lights.LightDefinition;
@@ -106,7 +109,13 @@ public class LightManager {
 	private ModelLightManager modelLightManager;
 
 	@Inject
-private LightMaskManager lightMaskManager;\nprivate SkyManager skyManager;\nprivate EnvironmentManager environmentManager;
+	private LightMaskManager lightMaskManager;
+
+	@Inject
+	private SkyManager skyManager;
+
+	@Inject
+	private EnvironmentManager environmentManager;
 	private final ArrayList<Light> WORLD_LIGHTS = new ArrayList<>();
 	private final Map<String, LightDefinition> LIGHTS_BY_DESCRIPTION = new LinkedHashMap<>();
 	private final ListMultimap<Integer, LightDefinition> NPC_LIGHTS = ArrayListMultimap.create();
@@ -142,7 +151,21 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 			LIGHTS_BY_DESCRIPTION.clear();
 			definitionArray = lights;
 
-for (int i = 0; i < lights.length; i++) {\n    LightDefinition def = lights[i];\n    try {\n        def.normalize();\n    } catch (RuntimeException ex) {\n        log.error("Ignoring invalid light at index {}: {}", i, ex.getMessage());\n        continue;\n    }\n\n    if (def.description != null && !LIGHTS_BY_DESCRIPTION.containsKey(def.description))\n        LIGHTS_BY_DESCRIPTION.put(def.description, def);\n\n    if (def.worldX != null && def.worldY != null) {\n        Light light = new Light(def);\n        light.worldLight = true;\n        light.worldPoint = new WorldPoint(def.worldX, def.worldY, def.plane);\n        light.persistent = true;\n        light.worldPos[0] = def.worldX;\n        light.worldPos[1] = def.worldY;\n        WORLD_LIGHTS.add(light);\n    }\n}
+			for (int i = 0; i < lights.length; i++) {
+				LightDefinition def = lights[i];
+				try {
+					def.normalize();
+				} catch (RuntimeException ex) {
+					log.error("Ignoring invalid light at index {}: {}", i, ex.getMessage());
+					continue;
+				}
+
+				if (def.description != null && !LIGHTS_BY_DESCRIPTION.containsKey(def.description))
+					LIGHTS_BY_DESCRIPTION.put(def.description, def);
+
+				if (def.worldX != null && def.worldY != null) {
+					Light light = new Light(def);
+					light.worldLight = true;
 					light.persistent = true;
 					light.worldPos[0] = def.worldX;
 					light.worldPos[1] = def.worldY;
@@ -262,8 +285,11 @@ for (int i = 0; i < lights.length; i++) {\n    LightDefinition def = lights[i];\
 				LIGHTS_BY_DESCRIPTION.put(lightDef.description, lightDef);
 			if (lightDef.worldX != null && lightDef.worldY != null) {
 				Light light = new Light(lightDef);
-				light.worldPoint = new WorldPoint(lightDef.worldX, lightDef.worldY, lightDef.plane);
+				light.worldLight = true;
 				light.persistent = true;
+				light.worldPos[0] = lightDef.worldX;
+				light.worldPos[1] = lightDef.worldY;
+				light.worldPos[2] = lightDef.plane;
 				WORLD_LIGHTS.add(light);
 			}
 			lightDef.npcIds.forEach(id -> NPC_LIGHTS.put(id, lightDef));

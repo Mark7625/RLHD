@@ -866,7 +866,8 @@ public class ZoneRenderer implements Renderer {
 	}
 
 	private void scenePass() {
-sceneProgram.use();\nlightMaskManager.bind();
+		sceneProgram.use();
+		lightMaskManager.bind();
 		frameTimer.begin(Timer.DRAW_SCENE);
 		renderState.framebuffer.set(GL_DRAW_FRAMEBUFFER, plugin.fboScene);
 		if (plugin.msaaSamples > 1) {

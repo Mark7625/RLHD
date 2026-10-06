@@ -177,7 +177,8 @@ public class HdPlugin extends Plugin {
 	public static final int TEXTURE_UNIT_TERRAIN_SHADOW_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 	public static final int TEXTURE_UNIT_TILE_HEIGHT_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 	public static final int TEXTURE_UNIT_TILED_LIGHTING_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
-public static final int TEXTURE_UNIT_LIGHT_MASKS = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;\npublic static final int TEXTURE_UNIT_NEBULA_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
+	public static final int TEXTURE_UNIT_LIGHT_MASKS = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
+	public static final int TEXTURE_UNIT_NEBULA_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 
 	public static int MAX_IMAGE_UNITS;
 	public static int IMAGE_UNIT_COUNT = 0;
@@ -277,7 +278,10 @@ public static final int TEXTURE_UNIT_LIGHT_MASKS = GL_TEXTURE0 + TEXTURE_UNIT_CO
 	private LightManager lightManager;
 
 	@Inject
-private LightMaskManager lightMaskManager;\nprivate SkyManager skyManager;
+	private LightMaskManager lightMaskManager;
+
+	@Inject
+	private SkyManager skyManager;
 
 	@Inject
 	private EnvironmentManager environmentManager;
@@ -752,7 +756,8 @@ private LightMaskManager lightMaskManager;\nprivate SkyManager skyManager;
 				tileOverrideManager.startUp();
 				modelOverrideManager.startUp();
 				lightManager.startUp();
-lightMaskManager.startUp();\nskyManager.startUp();
+				lightMaskManager.startUp();
+				skyManager.startUp();
 				environmentManager.startUp();
 				fishingSpotReplacer.startUp();
 				gammaCalibrationOverlay.initialize();
@@ -1007,7 +1012,8 @@ lightMaskManager.startUp();\nskyManager.startUp();
 			.addUniformBuffer(uboSky)
 			.addUniformBuffer(uboLights)
 			.addUniformBuffer(uboLightsCulling)
-.addUniformBuffer(uboLightMasks)\n.addUniformBuffer(uboUi)
+			.addUniformBuffer(uboLightMasks)
+			.addUniformBuffer(uboUi)
 			.addUniformBuffer(materialManager.uboMaterials)
 			.addUniformBuffer(waterTypeManager.uboWaterTypes);
 		renderer.addShaderIncludes(includes);

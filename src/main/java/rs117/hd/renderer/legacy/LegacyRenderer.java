@@ -109,7 +109,10 @@ public class LegacyRenderer implements Renderer {
 	private LightManager lightManager;
 
 	@Inject
-private LightMaskManager lightMaskManager;\nprivate SkyManager skyManager;
+	private LightMaskManager lightMaskManager;
+
+	@Inject
+	private SkyManager skyManager;
 
 	@Inject
 	private EnvironmentManager environmentManager;
@@ -1148,7 +1151,8 @@ private LightMaskManager lightMaskManager;\nprivate SkyManager skyManager;
 
 			plugin.uboGlobal.orthographicProjection.set(plugin.orthographicProjection ? 1 : 0);
 			plugin.uboGlobal.upload();
-sceneProgram.use();\nlightMaskManager.bind();
+			sceneProgram.use();
+			lightMaskManager.bind();
 
 			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboScene);
 			if (plugin.msaaSamples > 1) {

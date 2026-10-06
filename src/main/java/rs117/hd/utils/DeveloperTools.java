@@ -23,7 +23,8 @@ import rs117.hd.overlays.LightGizmoOverlay;
 import rs117.hd.overlays.ShadowMapOverlay;
 import rs117.hd.overlays.TileInfoOverlay;
 import rs117.hd.overlays.TiledLightingOverlay;
-import rs117.hd.scene.model.debug.ModelLightEditor;\nimport rs117.hd.scene.GamevalManager;
+import rs117.hd.scene.model.debug.ModelLightEditor;
+import rs117.hd.scene.GamevalManager;
 
 import static java.awt.event.InputEvent.CTRL_DOWN_MASK;
 import static java.awt.event.InputEvent.SHIFT_DOWN_MASK;

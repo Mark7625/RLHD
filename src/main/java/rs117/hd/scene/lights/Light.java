@@ -47,7 +47,10 @@ public class Light
 	public int plane;
 	public int prevPlane = -1;
 	public Alignment alignment;
-public final float[] origin = new float[3];\npublic final float[] offset = new float[3];\npublic final float[] pos = new float[3];\npublic final float[] direction = new float[3];
+	public final float[] origin = new float[3];
+	public final float[] offset = new float[3];
+	public final float[] pos = new float[3];
+	public final float[] direction = new float[3];
 	public int orientation;
 	public float distanceSquared;
 	public float daylightCycleStrengthScale = 1;
