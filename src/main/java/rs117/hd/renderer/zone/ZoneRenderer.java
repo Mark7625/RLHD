@@ -26,6 +26,7 @@ package rs117.hd.renderer.zone;
 
 import com.google.inject.Injector;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Set;
 import javax.inject.Inject;
@@ -127,6 +128,9 @@ public class ZoneRenderer implements Renderer {
 
 	@Inject
 	private SceneManager sceneManager;
+
+	@Inject
+	private BackdropZoneCache backdropZoneCache;
 
 	@Inject
 	private ModelStreamingManager modelStreamingManager;
@@ -718,6 +722,9 @@ public class ZoneRenderer implements Renderer {
 
 		sceneFboValid = true;
 
+		backdropZoneCache.processQueuedCaching();
+		drawBackdropZones();
+
 		// Upload world views before rendering
 		uboWorldViews.upload();
 
@@ -956,6 +963,137 @@ public class ZoneRenderer implements Renderer {
 			plugin.requestPluginStop();
 		}
 		return false;
+	}
+
+	/**
+	 * Draws cached, opaque-only zones which have fallen outside the live scene window, as a frozen backdrop,
+	 * to give the illusion of a much larger draw distance. See {@link BackdropZoneCache}.
+	 */
+	private void drawBackdropZones() {
+		if (!plugin.configBackdropCaching || !sceneManager.isTopLevelValid())
+			return;
+
+		WorldViewContext ctx = sceneManager.getRoot();
+		SceneContext sc = ctx.sceneContext;
+		if (sc == null || sc.sceneBase == null || sc.scene.isInstance())
+			return;
+
+		int radius = plugin.configBackdropCacheRadius;
+		if (radius <= 0)
+			return;
+
+		// The live window's true current size depends on expandedMapLoadingChunks, which can be smaller than the
+		// maximum the zone grid is allocated for - base the search on the actual current setting, so the backdrop
+		// always starts exactly `radius` chunks beyond however far the live game is currently loading, rather
+		// than beyond the theoretical maximum.
+		int vanillaChunks = Perspective.SCENE_SIZE >> 3;
+		int realPaddingChunks = sc.expandedMapLoadingChunks;
+		int liveMinX = (sc.sceneBase[0] >> 3) - realPaddingChunks;
+		int liveMinZ = (sc.sceneBase[1] >> 3) - realPaddingChunks;
+		int realWindowZones = vanillaChunks + 2 * realPaddingChunks;
+		int liveMaxX = liveMinX + realWindowZones - 1;
+		int liveMaxZ = liveMinZ + realWindowZones - 1;
+
+		int offsetChunks = sc.sceneOffset >> 3;
+		int minX = liveMinX - radius;
+		int maxX = liveMaxX + radius;
+		int minZ = liveMinZ - radius;
+		int maxZ = liveMaxZ + radius;
+
+		sceneCmd.Disable(GL_BLEND);
+
+		// Bucket candidates by how far beyond the live window edge they are (0..radius) instead of processing
+		// them in raster-scan order, so chunks closest to the player always get requested/drawn before farther
+		// ones - otherwise a far corner of the search area can finish loading and pop in while nearer ground
+		// that should logically appear first is still missing, which looks broken/disconnected.
+		if (backdropDistanceBuckets == null || backdropDistanceBuckets.length <= radius)
+			backdropDistanceBuckets = new ArrayList[radius + 1];
+		for (int d = 0; d <= radius; d++) {
+			if (backdropDistanceBuckets[d] == null)
+				backdropDistanceBuckets[d] = new ArrayList<>();
+			else
+				backdropDistanceBuckets[d].clear();
+		}
+
+		for (int chunkX = minX; chunkX <= maxX; chunkX++) {
+			for (int chunkZ = minZ; chunkZ <= maxZ; chunkZ++) {
+				int mx = chunkX - (sc.sceneBase[0] >> 3) + offsetChunks;
+				int mz = chunkZ - (sc.sceneBase[1] >> 3) + offsetChunks;
+
+				// Real scene data always takes priority: never draw a backdrop on top of a live zone, even if
+				// that zone happens to be empty - the live zone grid is the source of truth, not our bounding box.
+				if (mx >= 0 && mx < SceneManager.NUM_ZONES && mz >= 0 && mz < SceneManager.NUM_ZONES) {
+					Zone liveZone = ctx.zones[mx][mz];
+					if (liveZone != null && liveZone.initialized)
+						continue;
+				}
+
+				int dx = Math.max(0, Math.max(liveMinX - chunkX, chunkX - liveMaxX));
+				int dz = Math.max(0, Math.max(liveMinZ - chunkZ, chunkZ - liveMaxZ));
+				int dist = Math.max(dx, dz);
+
+				backdropDistanceBuckets[dist].add(((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL));
+			}
+		}
+
+		for (int d = 0; d <= radius; d++) {
+			int backdropLod = backdropLodTierForDistance(d, radius);
+			for (long packed : backdropDistanceBuckets[d]) {
+				int chunkX = (int) (packed >> 32);
+				int chunkZ = (int) packed;
+				int mx = chunkX - (sc.sceneBase[0] >> 3) + offsetChunks;
+				int mz = chunkZ - (sc.sceneBase[1] >> 3) + offsetChunks;
+
+				Zone zone = backdropZoneCache.get(chunkX, chunkZ);
+				if (zone == null || !zone.initialized || zone.sizeO == 0)
+					continue;
+
+				if (!isBackdropZoneVisible(zone, mx, mz, sc))
+					continue;
+
+				zone.setMetadata(ctx, sc, mx, mz, backdropLod);
+				zone.renderOpaqueLevel(sceneCmd, Zone.LEVEL_TERRAIN);
+				// Tier 3 (farthest band): terrain only, skip walls/objects/buildings entirely
+				if (backdropLod < 3)
+					zone.renderOpaque(sceneCmd, ctx, false);
+			}
+		}
+	}
+
+	private ArrayList<Long>[] backdropDistanceBuckets;
+
+	/**
+	 * Picks a progressively cheaper level of detail the further a cached backdrop chunk is beyond the live
+	 * window, split into quarters of the configured backdrop radius: 0 = full detail, 1 = solid colors for
+	 * objects/models, 2 = solid colors for everything including terrain, 3 = also a blocky, lower-detail mesh
+	 * and no objects/buildings at all (ground only). See the backdropLod handling in scene_vert.glsl/scene_frag.glsl.
+	 */
+	private static int backdropLodTierForDistance(int dist, int radius) {
+		float t = (float) dist / radius;
+		if (t < 0.25f)
+			return 0;
+		if (t < 0.5f)
+			return 1;
+		if (t < 0.75f)
+			return 2;
+		return 3;
+	}
+
+	private boolean isBackdropZoneVisible(Zone zone, int mx, int mz, SceneContext sc) {
+		int minX = (mx * CHUNK_SIZE - sc.sceneOffset) * LOCAL_TILE_SIZE;
+		int minZ = (mz * CHUNK_SIZE - sc.sceneOffset) * LOCAL_TILE_SIZE;
+		int maxX = minX + CHUNK_SIZE * LOCAL_TILE_SIZE;
+		int maxZ = minZ + CHUNK_SIZE * LOCAL_TILE_SIZE;
+
+		int minY = -3000, maxY = 3000;
+		if (zone.hasWater) {
+			maxY += ProceduralGenerator.MAX_DEPTH;
+			minY -= ProceduralGenerator.MAX_DEPTH;
+		}
+
+		final int PADDING = 4 * LOCAL_TILE_SIZE;
+		return sceneCamera.intersectsAABB(
+			minX - PADDING, minY, minZ - PADDING, maxX + PADDING, maxY, maxZ + PADDING);
 	}
 
 	@Override

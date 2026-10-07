@@ -39,6 +39,8 @@ layout (location = 0) in vec3 vPosition;
     layout (location = 3) in int vTextureFaceIdx;
     layout (location = 6) in int vWorldViewId;
     layout (location = 7) in ivec2 vSceneBase;
+    layout (location = 8) in int vIsBackdrop;
+    layout (location = 9) in int vBackdropLod;
 
     uniform isamplerBuffer textureFaces;
 #else
@@ -51,6 +53,8 @@ layout (location = 0) in vec3 vPosition;
 
 #if ZONE_RENDERER
     flat out int fWorldViewId;
+    flat out int fIsBackdrop;
+    flat out int fBackdropLod;
     flat out ivec3 fAlphaBiasHsl;
     flat out ivec3 fMaterialData;
     flat out ivec3 fTerrainData;
@@ -89,6 +93,8 @@ layout (location = 0) in vec3 vPosition;
             materialData = texelFetch(textureFaces, faceIdx + 1)[vertex];
         }
         fTerrainData = texelFetch(textureFaces, faceIdx + 2).xyz;
+        fIsBackdrop = vIsBackdrop;
+        fBackdropLod = vBackdropLod;
 
         vec3 sceneOffset = vec3(vSceneBase.x, 0, vSceneBase.y);
         vec3 worldNormal = vNormal.xyz;
@@ -108,6 +114,15 @@ layout (location = 0) in vec3 vPosition;
             ivec2 d = ivec2(abs(worldPosition.xz - cam) / TILE_SIZE);
             if (max(d.x, d.y) > int(uboGlobal.drawDistance / 8) * 8 + 3)
                 worldPosition.y -= waterDepth;
+        }
+
+        // Backdrop LOD tier 3: snap distant cached terrain to a coarse grid for a simplified, blocky look,
+        // trading a lower vertex/triangle count's worth of detail (which we can't actually reduce without
+        // re-meshing the cached geometry) for a cheaper-looking, less busy distant silhouette. Horizontal
+        // only, to avoid distorting water/object height relationships.
+        if (fBackdropLod >= 3) {
+            const float BLOCKY_SNAP_SIZE = 512.0; // 4 tiles
+            worldPosition.xz = round(worldPosition.xz / BLOCKY_SNAP_SIZE) * BLOCKY_SNAP_SIZE;
         }
 
         OUT.position = worldPosition;

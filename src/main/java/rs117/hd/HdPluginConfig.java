@@ -1458,6 +1458,48 @@ public interface HdPluginConfig extends Config
 		return DefaultBoolean.DEFAULT;
 	}
 
+	String KEY_BACKDROP_CACHING = "experimentalBackdropCaching";
+	@ConfigItem(
+		keyName = KEY_BACKDROP_CACHING,
+		name = "Cache distant terrain",
+		description =
+			"Remembers the terrain you've already loaded and redraws it as a distant backdrop once it falls<br>" +
+			"outside the normal draw/map loading distance, to give the illusion of being able to see further.<br>" +
+			"The backdrop is a frozen snapshot: it won't show moving objects, shadows, or later changes to the<br>" +
+			"area. Remembered terrain is saved to disk, so it persists between sessions.",
+		section = experimentalSettings
+	)
+	default boolean backdropCaching() {
+		return false;
+	}
+
+	String KEY_BACKDROP_CACHE_RADIUS = "experimentalBackdropCacheRadius";
+	@Range(max = 40)
+	@Units(" chunks")
+	@ConfigItem(
+		keyName = KEY_BACKDROP_CACHE_RADIUS,
+		name = "Backdrop radius",
+		description =
+			"How many chunks beyond your current Extended map loading setting the cached terrain backdrop should<br>" +
+			"be drawn. This always follows Extended map loading - e.g. if that's set to 2 chunks and this is set<br>" +
+			"to 15, the backdrop starts 15 chunks past wherever that 2-chunk boundary currently is.",
+		section = experimentalSettings
+	)
+	default int backdropCacheRadius() {
+		return 15;
+	}
+
+	String KEY_BACKDROP_DEBUG_OVERLAY = "experimentalBackdropDebugOverlay";
+	@ConfigItem(
+		keyName = KEY_BACKDROP_DEBUG_OVERLAY,
+		name = "Highlight backdrop terrain",
+		description = "Tints cached backdrop terrain so you can see exactly which parts of the scene are real vs. remembered.",
+		section = experimentalSettings
+	)
+	default boolean backdropDebugOverlay() {
+		return false;
+	}
+
 
 	/*====== Internal settings ======*/
 

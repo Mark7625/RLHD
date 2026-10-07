@@ -44,6 +44,8 @@ in int gMaterialData[3];
 in int gTerrainData[3];
 
 flat out int fWorldViewId;
+flat out int fIsBackdrop;
+flat out int fBackdropLod;
 flat out ivec3 fAlphaBiasHsl;
 flat out ivec3 fMaterialData;
 flat out ivec3 fTerrainData;
@@ -57,6 +59,8 @@ out FragmentData {
 
 void main() {
     fWorldViewId = -1;
+    fIsBackdrop = 0; // Backdrop zones only exist with the zone renderer
+    fBackdropLod = 0;
 
     // MacOS doesn't allow assigning these arrays directly.
     // One of the many wonders of Apple software...

@@ -440,6 +440,8 @@ public class HdPlugin extends Plugin {
 	public boolean configTiledLighting;
 	public boolean configTiledLightingImageLoadStore;
 	public boolean configOverrideSky;
+	public boolean configBackdropCaching;
+	public int configBackdropCacheRadius;
 	public int configDetailDrawDistance;
 	public int configExpandedMapLoadingChunks;
 	public float configNightBrightness;
@@ -967,6 +969,7 @@ public class HdPlugin extends Plugin {
 			.define("CHARACTER_DISPLACEMENT", configCharacterDisplacement)
 			.define("MAX_CHARACTER_POSITION_COUNT", max(1, UBOCompute.MAX_CHARACTER_POSITION_COUNT))
 			.define("WIREFRAME", config.wireframe())
+			.define("DEBUG_BACKDROP_OVERLAY", config.backdropDebugOverlay())
 			.define("WINDOWS_HDR_CORRECTION", config.windowsHdrCorrection())
 			.define("LEGACY_RENDERER", renderer instanceof LegacyRenderer)
 			.define("ZONE_RENDERER", renderer instanceof ZoneRenderer)
@@ -1779,6 +1782,8 @@ public class HdPlugin extends Plugin {
 		configTiledLighting = config.tiledLighting();
 		configTiledLightingImageLoadStore = config.tiledLightingImageLoadStore();
 		configOverrideSky = config.overrideSky();
+		configBackdropCaching = config.backdropCaching();
+		configBackdropCacheRadius = config.backdropCacheRadius();
 		configDetailDrawDistance = config.detailDrawDistance();
 		configConservativeShadowCulling = config.conservativeShadowCulling();
 		configUseFasterModelHashing = config.fasterModelHashing();
@@ -1940,6 +1945,7 @@ public class HdPlugin extends Plugin {
 							case KEY_WIND_DISPLACEMENT:
 							case KEY_CHARACTER_DISPLACEMENT:
 							case KEY_WIREFRAME:
+							case KEY_BACKDROP_DEBUG_OVERLAY:
 							case KEY_WINDOWS_HDR_CORRECTION:
 							case KEY_STARS:
 							case KEY_POINT_SPRITES:

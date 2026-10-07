@@ -57,6 +57,8 @@ uniform usampler2DArray tiledLightingArray;
 // general HD settings
 
 flat in int fWorldViewId;
+flat in int fIsBackdrop;
+flat in int fBackdropLod;
 flat in ivec3 fAlphaBiasHsl;
 flat in ivec3 fMaterialData;
 flat in ivec3 fTerrainData;
@@ -115,6 +117,16 @@ void main() {
     int colorMap1 = material1.colorMap;
     int colorMap2 = material2.colorMap;
     int colorMap3 = material3.colorMap;
+
+    // Backdrop LOD: progressively fall back to solid vertex colors instead of sampling textures, the further
+    // a cached backdrop zone is from the live draw distance. Tier 1 only simplifies objects/models, tier 2+
+    // also simplifies terrain. This reuses the shader's existing -1-means-no-texture fallback paths rather
+    // than adding new branches, so untextured materials behave exactly as they already do elsewhere.
+    if (fBackdropLod >= 1 && (fBackdropLod >= 2 || !isTerrain)) {
+        colorMap1 = colorMap2 = colorMap3 = -1;
+        material1.roughnessMap = material2.roughnessMap = material3.roughnessMap = -1;
+        material1.ambientOcclusionMap = material2.ambientOcclusionMap = material3.ambientOcclusionMap = -1;
+    }
 
     // only use one flowMap map
     int flowMap = material1.flowMap;
@@ -526,7 +538,9 @@ void main() {
         }
 
         // multiply the visibility of each fog
-        float fogAmount = calculateFogAmount(IN.position);
+        // Cached backdrop zones are drawn beyond the normal draw distance on purpose, so they shouldn't be
+        // faded out by distance/edge fog, which is based on the configured draw distance.
+        float fogAmount = fIsBackdrop != 0 ? 0.0 : calculateFogAmount(IN.position);
         float combinedFog = 1 - (1 - fogAmount) * (1 - groundFog);
 
         if (isWater) {
@@ -558,6 +572,11 @@ void main() {
 
     outputColor.rgb = applyColorAdjustments(outputColor.rgb);
     outputColor.rgb = applyOutputCorrection(outputColor.rgb);
+
+    #if DEBUG_BACKDROP_OVERLAY
+        if (fIsBackdrop != 0)
+            outputColor.rgb = mix(outputColor.rgb, vec3(1.0, 0.0, 1.0), 0.35);
+    #endif
 
     FragColor = outputColor;
 }

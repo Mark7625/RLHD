@@ -61,7 +61,9 @@ public class Zone implements Destructible {
 	// Metadata format
 	// worldViewIndex int int
 	// sceneOffset int vec2(x, y)
-	public static final int METADATA_SIZE = 12;
+	// isBackdrop int
+	// backdropLod int
+	public static final int METADATA_SIZE = 20;
 
 	public static int LEVEL_COUNT = MAX_Z;
 	public static final int LEVEL_TERRAIN = LEVEL_COUNT++;
@@ -92,6 +94,7 @@ public class Zone implements Destructible {
 	public boolean inSceneFrustum = true; // whether the zone is visible to the scene camera
 	public boolean inShadowFrustum; // whether the zone casts shadows into the visible scene
 	public boolean isFirstLoadingAttempt = true;
+	public boolean isBackdrop; // whether this zone is a cached backdrop, drawn outside the normal draw distance
 
 	public IntHashSet animatedDynamicObjectIds = new IntHashSet();
 
@@ -277,6 +280,16 @@ public class Zone implements Destructible {
 		glVertexAttribDivisor(7, 1);
 		glVertexAttribIPointer(7, 2, GL_INT, METADATA_SIZE, 4);
 
+		// Whether this zone is a cached backdrop, drawn outside the normal draw distance
+		glEnableVertexAttribArray(8);
+		glVertexAttribDivisor(8, 1);
+		glVertexAttribIPointer(8, 1, GL_INT, METADATA_SIZE, 12);
+
+		// Backdrop LOD tier (0 = full detail, higher = progressively simplified); meaningless unless isBackdrop
+		glEnableVertexAttribArray(9);
+		glVertexAttribDivisor(9, 1);
+		glVertexAttribIPointer(9, 1, GL_INT, METADATA_SIZE, 16);
+
 		checkGLErrors();
 
 		glBindVertexArray(0);
@@ -284,6 +297,10 @@ public class Zone implements Destructible {
 	}
 
 	public void setMetadata(WorldViewContext viewContext, SceneContext sceneContext, int mx, int mz) {
+		setMetadata(viewContext, sceneContext, mx, mz, 0);
+	}
+
+	public void setMetadata(WorldViewContext viewContext, SceneContext sceneContext, int mx, int mz, int backdropLod) {
 		if (vboM == null)
 			return;
 
@@ -291,10 +308,12 @@ public class Zone implements Destructible {
 		int baseZ = (mz - (sceneContext.sceneOffset >> 3)) << 10;
 
 		try (MemoryStack stack = MemoryStack.stackPush()) {
-			IntBuffer buf = stack.mallocInt(3)
+			IntBuffer buf = stack.mallocInt(5)
 				.put(viewContext.uboWorldViewStruct != null ? viewContext.uboWorldViewStruct.worldViewIdx + 1 : 0)
 				.put(baseX)
-				.put(baseZ);
+				.put(baseZ)
+				.put(isBackdrop ? 1 : 0)
+				.put(backdropLod);
 			buf.flip();
 			vboM.upload(buf);
 		}
