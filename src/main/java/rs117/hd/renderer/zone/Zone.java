@@ -96,6 +96,11 @@ public class Zone implements Destructible {
 	public boolean isFirstLoadingAttempt = true;
 	public boolean isBackdrop; // whether this zone is a cached backdrop, drawn outside the normal draw distance
 
+	// Static snapshot of point lights captured in this zone at caching time, for the login screen backdrop to
+	// draw - 8 floats per light: zone-local x, y, zone-local z, r, g, b, radius, strength. Null/unused by the
+	// normal live renderer, which has its own up-to-date per-frame light list instead.
+	public float[] lights;
+
 	public IntHashSet animatedDynamicObjectIds = new IntHashSet();
 
 	final StaticAlphaSortingJob alphaSortingJob = new StaticAlphaSortingJob();
@@ -215,6 +220,7 @@ public class Zone implements Destructible {
 		rids = null;
 		roofStart = null;
 		roofEnd = null;
+		lights = null;
 
 		// don't add permanent alphamodels to the cache as permanent alphamodels are always allocated
 		// to avoid having to synchronize the cache

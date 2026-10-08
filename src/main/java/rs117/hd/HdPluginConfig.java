@@ -1500,6 +1500,32 @@ public interface HdPluginConfig extends Config
 		return false;
 	}
 
+	String KEY_BACKDROP_LOGIN_SCREEN = "experimentalBackdropLoginScreen";
+	@ConfigItem(
+		keyName = KEY_BACKDROP_LOGIN_SCREEN,
+		name = "Backdrop login screen (WIP)",
+		description =
+			"Replaces the login screen background with a cached backdrop region. Work in progress - currently just<br>" +
+			"sets a solid test color as the login background.",
+		section = experimentalSettings
+	)
+	default boolean backdropLoginScreen() {
+		return false;
+	}
+
+	String KEY_BACKDROP_LOGIN_SCREEN_REGION = "experimentalBackdropLoginScreenRegion";
+	@ConfigItem(
+		keyName = KEY_BACKDROP_LOGIN_SCREEN_REGION,
+		name = "Login screen region (WIP)",
+		description =
+			"Which cached backdrop region (in \"regionX,regionZ\" form, e.g. 50,53) to show on the login screen.<br>" +
+			"Leave blank to auto-pick whichever cached region has the most data.",
+		section = experimentalSettings
+	)
+	default String backdropLoginScreenRegion() {
+		return "";
+	}
+
 
 	/*====== Internal settings ======*/
 

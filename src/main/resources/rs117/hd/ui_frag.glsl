@@ -28,6 +28,7 @@
 #include <uniforms/ui.glsl>
 
 uniform sampler2D uiTexture;
+uniform sampler2D backdropTexture;
 
 #include <scaling/bicubic.glsl>
 #include <utils/constants.glsl>
@@ -64,6 +65,11 @@ void main() {
     #else // NEAREST or LINEAR, which uses GL_TEXTURE_MIN_FILTER/GL_TEXTURE_MAG_FILTER to affect sampling
         c = texture(uiTexture, fUv);
     #endif
+
+    if (uboUi.backdropLoginScreenActive != 0 && distance(c.rgb, vec3(1.0, 0.0, 1.0)) < 0.05) {
+        FragColor = uboUi.backdropReady != 0 ? texture(backdropTexture, fUv) : vec4(0.04, 0.08, 0.14, 1.0);
+        return;
+    }
 
     c = alphaBlend(c, uboUi.alphaOverlay);
     c.rgb = colorBlindnessCompensation(c.rgb);

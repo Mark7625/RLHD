@@ -101,6 +101,7 @@ import rs117.hd.overlays.TiledLightingOverlay;
 import rs117.hd.overlays.Timer;
 import rs117.hd.renderer.Renderer;
 import rs117.hd.renderer.legacy.LegacyRenderer;
+import rs117.hd.renderer.zone.LoginScreenBackdropRenderer;
 import rs117.hd.renderer.zone.SceneManager;
 import rs117.hd.renderer.zone.ZoneRenderer;
 import rs117.hd.scene.AreaManager;
@@ -177,6 +178,7 @@ public class HdPlugin extends Plugin {
 	public static final int TEXTURE_UNIT_TILE_HEIGHT_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 	public static final int TEXTURE_UNIT_TILED_LIGHTING_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 	public static final int TEXTURE_UNIT_NEBULA_MAP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
+	public static final int TEXTURE_UNIT_LOGIN_BACKDROP = GL_TEXTURE0 + TEXTURE_UNIT_COUNT++;
 
 	public static int MAX_IMAGE_UNITS;
 	public static int IMAGE_UNIT_COUNT = 0;
@@ -284,6 +286,9 @@ public class HdPlugin extends Plugin {
 
 	@Inject
 	private WaterTypeManager waterTypeManager;
+
+	@Inject
+	private LoginScreenBackdropRenderer loginScreenBackdrop;
 
 	@Inject
 	private GroundMaterialManager groundMaterialManager;
@@ -442,6 +447,7 @@ public class HdPlugin extends Plugin {
 	public boolean configOverrideSky;
 	public boolean configBackdropCaching;
 	public int configBackdropCacheRadius;
+	public boolean configBackdropLoginScreen;
 	public int configDetailDrawDistance;
 	public int configExpandedMapLoadingChunks;
 	public float configNightBrightness;
@@ -750,6 +756,7 @@ public class HdPlugin extends Plugin {
 				skyManager.startUp();
 				environmentManager.startUp();
 				fishingSpotReplacer.startUp();
+				loginScreenBackdrop.startUp();
 				gammaCalibrationOverlay.initialize();
 				npcDisplacementCache.initialize();
 
@@ -764,6 +771,13 @@ public class HdPlugin extends Plugin {
 				checkGLErrors();
 
 				clientThread.invokeLater(this::displayUpdateMessage);
+
+				// The client typically reaches the login screen well before plugin startup finishes (which can
+				// take several seconds loading gamevals/areas/overrides/etc.), so the LOGIN_SCREEN game state
+				// transition that onGameStateChanged() listens for has usually already happened by the time our
+				// event listener is registered - check the current state directly here as a fallback.
+				if (configBackdropLoginScreen && client.getGameState() == GameState.LOGIN_SCREEN)
+					setLoginScreenBackdropKeyColor();
 
 				log.info("117 HD started successfully!");
 			} catch (Throwable err) {
@@ -804,6 +818,7 @@ public class HdPlugin extends Plugin {
 				destroySceneFbo();
 				destroyShadowMapFbo();
 				destroyTiledLightingFbo();
+				loginScreenBackdrop.destroy();
 
 				if (renderer != null) {
 					eventBus.unregister(renderer);
@@ -1662,11 +1677,29 @@ public class HdPlugin extends Plugin {
 
 		tiledLightingOverlay.render();
 
+		// Rendered to its own offscreen texture before the UI pass below, since it uses the scene shader program
+		// and clobbers plugin.uboGlobal and the bound framebuffer/viewport - both restored before returning, but
+		// uiProgram still needs to be (re-)bound afterwards.
+		boolean backdropActive = configBackdropLoginScreen && client.getGameState().getState() < GameState.LOADING.getState();
+		if (backdropActive) {
+			loginScreenBackdrop.requestBackdrop();
+			loginScreenBackdrop.renderFrame();
+			// Restore the alpha-write-disabled state set above, which renderFrame()'s own offscreen pass changes.
+			glColorMask(true, true, true, false);
+		}
+
 		uiProgram.use();
 		uboUi.sourceDimensions.set(uiResolution);
 		uboUi.targetDimensions.set(actualUiResolution);
 		uboUi.alphaOverlay.set(ColorUtils.srgba(overlayColor));
+		uboUi.backdropLoginScreenActive.set(backdropActive ? 1 : 0);
+		uboUi.backdropReady.set(backdropActive && loginScreenBackdrop.isReady() ? 1 : 0);
 		uboUi.upload();
+
+		if (backdropActive) {
+			glActiveTexture(TEXTURE_UNIT_LOGIN_BACKDROP);
+			glBindTexture(GL_TEXTURE_2D, loginScreenBackdrop.getTextureId());
+		}
 
 		// Set the sampling function used when stretching the UI.
 		// This is probably better done with sampler objects instead of texture parameters, but this is easier and likely more portable.
@@ -1748,6 +1781,27 @@ public class HdPlugin extends Plugin {
 		if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN) {
 			hasLoggedIn = false;
 			environmentManager.reset();
+
+			if (configBackdropLoginScreen)
+				setLoginScreenBackdropKeyColor();
+		}
+	}
+
+	// Pure magenta, extremely unlikely to occur naturally in a background image - used as the chroma key color
+	// that the UI compositing pass later detects and replaces with our own rendered content.
+	public static final int LOGIN_SCREEN_KEY_COLOR = 0xFFFF00FF;
+
+	private void setLoginScreenBackdropKeyColor() {
+		try {
+			int width = 1920, height = 1080;
+			int[] pixels = new int[width * height];
+			Arrays.fill(pixels, LOGIN_SCREEN_KEY_COLOR);
+			client.setLoginScreen(client.createSpritePixels(pixels, width, height));
+			// The vanilla fire animation is drawn over the login background by the client itself,
+			// which would otherwise sit on top of our chroma-keyed replacement content.
+			client.setShouldRenderLoginScreenFire(false);
+		} catch (Exception ex) {
+			log.warn("Failed to set backdrop login screen key color:", ex);
 		}
 	}
 
@@ -1784,6 +1838,7 @@ public class HdPlugin extends Plugin {
 		configOverrideSky = config.overrideSky();
 		configBackdropCaching = config.backdropCaching();
 		configBackdropCacheRadius = config.backdropCacheRadius();
+		configBackdropLoginScreen = config.backdropLoginScreen();
 		configDetailDrawDistance = config.detailDrawDistance();
 		configConservativeShadowCulling = config.conservativeShadowCulling();
 		configUseFasterModelHashing = config.fasterModelHashing();

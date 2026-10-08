@@ -145,7 +145,7 @@ public class ZoneRenderer implements Renderer {
 	private FrameTimer frameTimer;
 
 	@Inject
-	private SceneShaderProgram sceneProgram;
+	SceneShaderProgram sceneProgram;
 
 	@Inject
 	private SceneShaderProgram.GapFiller gapFillerProgram;

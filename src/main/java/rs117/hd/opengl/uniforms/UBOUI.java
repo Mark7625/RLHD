@@ -12,4 +12,6 @@ public class UBOUI extends UniformBuffer<GLBuffer> {
 	public Property sourceDimensions = addProperty(PropertyType.IVec2, "sourceDimensions");
 	public Property targetDimensions = addProperty(PropertyType.IVec2, "targetDimensions");
 	public Property alphaOverlay = addProperty(PropertyType.FVec4, "alphaOverlay");
+	public Property backdropLoginScreenActive = addProperty(PropertyType.Int, "backdropLoginScreenActive");
+	public Property backdropReady = addProperty(PropertyType.Int, "backdropReady");
 }

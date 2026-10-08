@@ -262,6 +262,24 @@ public class EnvironmentManager {
 			environment.varpCondition.test(varpVariableSupplier);
 	}
 
+	/**
+	 * Read-only lookup of whichever environment's area contains the given world point - the same area-matching
+	 * logic {@link #update} uses, but without touching any of its transition/fade state, so it's safe to call
+	 * from contexts with no live scene (e.g. the login screen), where there's nothing to transition between and
+	 * calling the stateful {@link #update} would risk leaving it in a state that glitches once a real scene
+	 * loads afterwards.
+	 */
+	public Environment findEnvironmentAt(int... worldPoint) {
+		for (Environment environment : environments) {
+			if (!environment.area.containsPoint(worldPoint))
+				continue;
+			if (!isConditionSatisfied(environment))
+				continue;
+			return environment;
+		}
+		return Environment.DEFAULT;
+	}
+
 	public void update(SceneContext sceneContext) {
 		assert client.isClientThread();
 

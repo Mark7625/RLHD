@@ -30,6 +30,7 @@ import net.runelite.client.callback.ClientThread;
 import org.lwjgl.BufferUtils;
 import rs117.hd.HdPlugin;
 import rs117.hd.scene.SceneContext;
+import rs117.hd.scene.lights.Light;
 import rs117.hd.utils.DestructibleHandler;
 import rs117.hd.utils.ResourcePath;
 import rs117.hd.utils.buffer.GLBuffer;
@@ -53,7 +54,10 @@ import static org.lwjgl.opengl.GL33C.*;
 public class BackdropZoneCache {
 	private static final ResourcePath CACHE_DIR = HdPlugin.PLUGIN_DIR.resolve("backdrop-cache");
 	private static final int FORMAT_MAGIC = 0x48444243; // "HDBC"
-	private static final int FORMAT_VERSION = 2; // v2: one gzip-compressed file per region, instead of per zone
+	private static final int FORMAT_VERSION = 3; // v3: added a per-zone static point light snapshot
+	private static final float[] EMPTY_FLOAT_ARRAY = new float[0];
+	// Matches CHUNK_WORLD_UNITS in LoginScreenBackdropRenderer - 8 tiles * 128 local units/tile.
+	private static final int CHUNK_WORLD_UNITS = 1024;
 	// A radius of just 8 chunks already produces close to 1000 candidate chunks in one search, and radius can be
 	// configured much higher - if the cache can't hold everything currently in demand, LRU eviction causes
 	// permanent visible gaps (not just flicker), since there's nowhere to keep the overflow resident.
@@ -97,6 +101,29 @@ public class BackdropZoneCache {
 	// requested for load this session, whether or not a file existed - prevents re-reading the same region file,
 	// or re-queuing a load for a region already known to have no data, every single frame it stays in range.
 	private final HashSet<Long> loadedRegions = new HashSet<>();
+
+	// Which specific chunk keys are already known to be persisted on disk, per region (keyed the same way as
+	// memCache/regionFile). Lazily populated the first time a region is touched by processQueuedCaching(), and
+	// kept up to date as new chunks are written - lets a region that was only partially walked on an earlier visit
+	// still pick up newly-explored chunks on a later visit, instead of the old region-file-exists() check treating
+	// "this region has a file at all" as "every chunk in it is already saved", which silently dropped any chunk
+	// beyond whatever was captured the first time the file was created.
+	private final Map<Long, HashSet<Long>> knownDiskChunksByRegion = new HashMap<>();
+
+	private HashSet<Long> getKnownDiskChunks(int regionX, int regionZ) {
+		long regionKey = key(regionX, regionZ);
+		return knownDiskChunksByRegion.computeIfAbsent(regionKey, k -> {
+			HashSet<Long> chunks = new HashSet<>();
+			ResourcePath file = regionFile(regionX, regionZ);
+			if (file.exists()) {
+				List<ZoneRecord> existing = readRegionFile(file);
+				if (existing != null)
+					for (ZoneRecord r : existing)
+						chunks.add(key(r.chunkX, r.chunkZ));
+			}
+			return chunks;
+		});
+	}
 
 	// All region file reads/writes are serialized through this, since a read-modify-write merge of a region file
 	// would otherwise race if two write batches or a write and a read ever touched the same region concurrently.
@@ -147,7 +174,7 @@ public class BackdropZoneCache {
 		memCache.put(key, zone);
 		cachedChunksThisSession.add(key);
 
-		cacheQueue.add(new PendingCache(chunkX, chunkZ, zone));
+		cacheQueue.add(new PendingCache(chunkX, chunkZ, zone, captureLights(oldSceneContext, chunkX, chunkZ)));
 		log.debug("Adopted backdrop zone for chunk ({}, {})", chunkX, chunkZ);
 		return true;
 	}
@@ -175,7 +202,49 @@ public class BackdropZoneCache {
 		if (!cachedChunksThisSession.add(key(chunkX, chunkZ)))
 			return;
 
-		cacheQueue.add(new PendingCache(chunkX, chunkZ, zone));
+		cacheQueue.add(new PendingCache(chunkX, chunkZ, zone, captureLights(sceneContext, chunkX, chunkZ)));
+	}
+
+	/**
+	 * Flat-packs whichever currently-active point lights fall within this chunk's 8x8 tile footprint - 8 floats
+	 * per light: zone-local x/y/z (matching the scale and origin convention of the zone's own vertex data),
+	 * r/g/b, radius, strength. Cheap CPU-side filtering only, done synchronously here (rather than deferred like
+	 * the GPU vertex/face readback below) since a scene's light list can change from frame to frame and this
+	 * needs to reflect the zone's lights at the moment it was actually adopted/seen, not whatever happens to
+	 * still be active several frames later when the GPU readback runs.
+	 */
+	private static float[] captureLights(SceneContext sceneContext, int chunkX, int chunkZ) {
+		if (sceneContext == null || sceneContext.lights.isEmpty())
+			return EMPTY_FLOAT_ARRAY;
+
+		float baseX = chunkX * CHUNK_WORLD_UNITS;
+		float baseZ = chunkZ * CHUNK_WORLD_UNITS;
+
+		List<Light> inZone = new ArrayList<>();
+		for (Light light : sceneContext.lights) {
+			if (!light.visible || light.strength <= 0 || light.radius <= 0)
+				continue;
+			int lightChunkX = Math.floorDiv((int) light.pos[0], CHUNK_WORLD_UNITS);
+			int lightChunkZ = Math.floorDiv((int) light.pos[2], CHUNK_WORLD_UNITS);
+			if (lightChunkX == chunkX && lightChunkZ == chunkZ)
+				inZone.add(light);
+		}
+		if (inZone.isEmpty())
+			return EMPTY_FLOAT_ARRAY;
+
+		float[] data = new float[inZone.size() * 8];
+		int i = 0;
+		for (Light light : inZone) {
+			data[i++] = light.pos[0] - baseX;
+			data[i++] = light.pos[1];
+			data[i++] = light.pos[2] - baseZ;
+			data[i++] = light.color[0];
+			data[i++] = light.color[1];
+			data[i++] = light.color[2];
+			data[i++] = light.radius;
+			data[i++] = light.strength;
+		}
+		return data;
 	}
 
 	private static final int CACHE_QUEUE_BATCH_SIZE = 4;
@@ -201,18 +270,22 @@ public class BackdropZoneCache {
 			if (!zone.initialized || zone.uploadJob != null || zone.dirty || zone.rebuild || zone.vboO == null)
 				continue;
 
-			// If a file already exists for this chunk's region at all, don't bother reading it back and
-			// rewriting it - outdated is fine, the goal here is just to avoid redundant GPU readback/disk I/O
-			// for ground we've already cached in a previous session. This is a cheap existence check only (not
-			// a full read to confirm this exact chunk is inside it), so it can run synchronously here.
-			if (regionFile(Math.floorDiv(p.chunkX, 8), Math.floorDiv(p.chunkZ, 8)).exists())
+			// If this exact chunk is already known to be saved (from a previous session, or an earlier write
+			// this session), don't bother reading it back and rewriting it - outdated is fine, the goal here is
+			// just to avoid redundant GPU readback/disk I/O for ground already cached. Checked per-chunk, not
+			// per-region file, so a region that was only partially walked before can still pick up new chunks.
+			int regionX = Math.floorDiv(p.chunkX, 8), regionZ = Math.floorDiv(p.chunkZ, 8);
+			HashSet<Long> knownChunks = getKnownDiskChunks(regionX, regionZ);
+			long chunkKey = key(p.chunkX, p.chunkZ);
+			if (knownChunks.contains(chunkKey))
 				continue;
 
 			int vertexCount = vertexCount(zone);
 			if (vertexCount == 0)
 				continue;
 
-			queueWrite(buildRecord(p.chunkX, p.chunkZ, zone, vertexCount));
+			knownChunks.add(chunkKey);
+			queueWrite(buildRecord(p.chunkX, p.chunkZ, zone, vertexCount, p.lightData));
 		}
 	}
 
@@ -234,7 +307,7 @@ public class BackdropZoneCache {
 		return Math.max(0, Math.min(vertexCount, maxVertices));
 	}
 
-	private ZoneRecord buildRecord(int chunkX, int chunkZ, Zone zone, int vertexCount) {
+	private ZoneRecord buildRecord(int chunkX, int chunkZ, Zone zone, int vertexCount, float[] lightData) {
 		byte[] vertexBytes = readBufferBytes(zone.vboO.id, vertexCount * Zone.VERT_SIZE);
 		int faceBytesLen = zone.tboF != null
 			? (int) Math.min((long) zone.sizeF * Zone.TEXTURE_SIZE, zone.tboF.size)
@@ -252,6 +325,7 @@ public class BackdropZoneCache {
 		r.roofEnd = copy2D(zone.roofEnd);
 		r.hasWater = zone.hasWater;
 		r.onlyWater = zone.onlyWater;
+		r.lightData = lightData != null ? lightData : EMPTY_FLOAT_ARRAY;
 		return r;
 	}
 
@@ -400,8 +474,94 @@ public class BackdropZoneCache {
 
 		clientThread.invoke(() -> {
 			for (ZoneRecord r : records)
-				finishLoad(r);
+				finishLoad(r, true);
 		});
+	}
+
+	/**
+	 * Scans the on-disk cache (off the client thread) for any region file at all, and hands its coordinates to
+	 * the callback on the client thread - or {@code (Integer.MIN_VALUE, Integer.MIN_VALUE)} if nothing is cached
+	 * yet. Used by the login screen backdrop, which just wants to show whatever the player has already explored
+	 * rather than any particular place.
+	 */
+	public void findRegionForLoginScreen(java.util.function.BiConsumer<Integer, Integer> callback) {
+		GenericJob.build("BackdropZoneCache::findLoginScreenRegion", task -> {
+			File[] files = CACHE_DIR.toFile().listFiles((d, name) -> name.startsWith("r_") && name.endsWith(".bin"));
+			int[] found = null;
+			long bestSize = -1;
+			if (files != null) {
+				// Prefer the most fleshed-out region (by file size, a cheap proxy for how much of it was
+				// actually explored) over an arbitrary one, since a thinly-cached region can look like little
+				// more than a narrow strip of terrain.
+				for (File f : files) {
+					if (f.length() <= bestSize)
+						continue;
+					String[] parts = f.getName().substring(2, f.getName().length() - 4).split("_");
+					if (parts.length != 2)
+						continue;
+					try {
+						found = new int[] { Integer.parseInt(parts[0]), Integer.parseInt(parts[1]) };
+						bestSize = f.length();
+					} catch (NumberFormatException ignored) {
+					}
+				}
+			}
+			int[] result = found;
+			clientThread.invoke(() -> callback.accept(
+				result == null ? Integer.MIN_VALUE : result[0],
+				result == null ? Integer.MIN_VALUE : result[1]
+			));
+		}).queue(false);
+	}
+
+	/**
+	 * Scans the on-disk cache (off the client thread) for every region file that exists at all, and hands the
+	 * full list of (regionX, regionZ) pairs to the callback on the client thread - or an empty list if nothing
+	 * is cached yet. Used by the login screen backdrop's "load everything explored" mode, as an alternative to
+	 * {@link #findRegionForLoginScreen}'s single-region-block mode.
+	 */
+	public void findAllCachedRegions(java.util.function.Consumer<List<int[]>> callback) {
+		GenericJob.build("BackdropZoneCache::findAllCachedRegions", task -> {
+			File[] files = CACHE_DIR.toFile().listFiles((d, name) -> name.startsWith("r_") && name.endsWith(".bin"));
+			List<int[]> found = new ArrayList<>();
+			if (files != null) {
+				for (File f : files) {
+					String[] parts = f.getName().substring(2, f.getName().length() - 4).split("_");
+					if (parts.length != 2)
+						continue;
+					try {
+						found.add(new int[] { Integer.parseInt(parts[0]), Integer.parseInt(parts[1]) });
+					} catch (NumberFormatException ignored) {
+					}
+				}
+			}
+			clientThread.invoke(() -> callback.accept(found));
+		}).queue(false);
+	}
+
+	/**
+	 * Loads a region directly from disk for the login screen backdrop, bypassing the
+	 * {@link rs117.hd.HdPluginConfig#backdropCaching()} gate that the normal gameplay loading path ({@link #get})
+	 * is subject to - the login screen may be shown with caching otherwise disabled, using whatever was cached in
+	 * a previous session.
+	 */
+	public void loadRegionForLoginScreen(int regionX, int regionZ, Runnable onComplete) {
+		ResourcePath file = regionFile(regionX, regionZ);
+		GenericJob.build("BackdropZoneCache::loadLoginScreenRegion", task -> {
+			List<ZoneRecord> records = null;
+			if (file.exists()) {
+				synchronized (regionFileLock) {
+					records = readRegionFile(file);
+				}
+			}
+			List<ZoneRecord> finalRecords = records;
+			clientThread.invoke(() -> {
+				if (finalRecords != null)
+					for (ZoneRecord r : finalRecords)
+						finishLoad(r, false);
+				onComplete.run();
+			});
+		}).queue(false);
 	}
 
 	private List<ZoneRecord> readRegionFile(ResourcePath file) {
@@ -425,7 +585,7 @@ public class BackdropZoneCache {
 		}
 	}
 
-	private void finishLoad(ZoneRecord r) {
+	private void finishLoad(ZoneRecord r, boolean requireCachingEnabled) {
 		long key = key(r.chunkX, r.chunkZ);
 		if (r.vertexBytes.length == 0 || r.faceBytes.length == 0)
 			return;
@@ -434,7 +594,7 @@ public class BackdropZoneCache {
 		// don't bother reading it back and rewriting it just because it's now stale; outdated is fine.
 		cachedChunksThisSession.add(key);
 
-		if (!plugin.configBackdropCaching || memCache.containsKey(key))
+		if ((requireCachingEnabled && !plugin.configBackdropCaching) || memCache.containsKey(key))
 			return;
 
 		Zone zone = injector.getInstance(Zone.class);
@@ -463,6 +623,7 @@ public class BackdropZoneCache {
 		zone.roofEnd = r.roofEnd;
 		zone.hasWater = r.hasWater;
 		zone.onlyWater = r.onlyWater;
+		zone.lights = r.lightData;
 		zone.isBackdrop = true;
 		zone.initialized = true;
 
@@ -478,6 +639,7 @@ public class BackdropZoneCache {
 		cachedChunksThisSession.clear();
 		loadedRegions.clear();
 		cacheQueue.clear();
+		knownDiskChunksByRegion.clear();
 	}
 
 	private static byte[] readBufferBytes(int bufferId, int numBytes) {
@@ -548,6 +710,7 @@ public class BackdropZoneCache {
 		out.write(r.vertexBytes);
 		out.writeInt(r.faceBytes.length);
 		out.write(r.faceBytes);
+		writeFloatArray(out, r.lightData);
 	}
 
 	// Sanity caps for anything read back from a region file. A single zone's geometry should never remotely
@@ -578,6 +741,7 @@ public class BackdropZoneCache {
 		int faceLen = readSaneLength(in.readInt(), MAX_RECORD_BYTES);
 		r.faceBytes = new byte[faceLen];
 		in.readFully(r.faceBytes);
+		r.lightData = readFloatArray(in);
 		return r;
 	}
 
@@ -605,6 +769,20 @@ public class BackdropZoneCache {
 		return arr;
 	}
 
+	private static void writeFloatArray(DataOutputStream out, float[] arr) throws IOException {
+		out.writeInt(arr.length);
+		for (float v : arr)
+			out.writeFloat(v);
+	}
+
+	private static float[] readFloatArray(DataInputStream in) throws IOException {
+		int len = readSaneLength(in.readInt(), MAX_RECORD_INTS);
+		float[] arr = new float[len];
+		for (int i = 0; i < len; i++)
+			arr[i] = in.readFloat();
+		return arr;
+	}
+
 	private static final class ZoneRecord {
 		int chunkX, chunkZ;
 		byte[] vertexBytes;
@@ -615,16 +793,19 @@ public class BackdropZoneCache {
 		int[][] roofEnd;
 		boolean hasWater;
 		boolean onlyWater;
+		float[] lightData = EMPTY_FLOAT_ARRAY;
 	}
 
 	private static final class PendingCache {
 		final int chunkX, chunkZ;
 		final Zone zone;
+		final float[] lightData;
 
-		PendingCache(int chunkX, int chunkZ, Zone zone) {
+		PendingCache(int chunkX, int chunkZ, Zone zone, float[] lightData) {
 			this.chunkX = chunkX;
 			this.chunkZ = chunkZ;
 			this.zone = zone;
+			this.lightData = lightData;
 		}
 	}
 }
