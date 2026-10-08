@@ -91,9 +91,6 @@ public class SceneManager {
 	@Inject
 	private FrameTimer frameTimer;
 
-	@Inject
-	private BackdropZoneCache backdropZoneCache;
-
 	private UBOWorldViews uboWorldViews;
 
 	@Getter
@@ -149,8 +146,6 @@ public class SceneManager {
 	public void destroy() {
 		eventBus.unregister(this);
 
-		backdropZoneCache.clear();
-
 		root.free();
 		for (int i = 0; i < subs.length; i++) {
 			if (subs[i] != null)
@@ -187,9 +182,6 @@ public class SceneManager {
 
 	public void update() {
 		assert client.isClientThread();
-
-		if (!plugin.configBackdropCaching)
-			backdropZoneCache.clear();
 
 		frameTimer.begin(Timer.UPDATE_AREA_HIDING);
 		updateAreaHiding();
@@ -464,28 +456,6 @@ public class SceneManager {
 			nextZones = new Zone[NUM_ZONES][NUM_ZONES];
 			nextSceneContext = new ZoneSceneContext(client, worldView, scene, plugin.configExpandedMapLoadingChunks, root.sceneContext);
 
-			if (nextSceneContext.sceneBase != null && !scene.isInstance() && plugin.configBackdropCacheRadius > 0) {
-				// Base this on the actual current expandedMapLoadingChunks, not the maximum the zone grid is
-				// allocated for, so the backdrop always starts exactly `radius` chunks beyond however far the
-				// live game is currently set to load, matching ZoneRenderer#drawBackdropZones.
-				int vanillaChunks = SCENE_SIZE >> 3;
-				int realPaddingChunks = nextSceneContext.expandedMapLoadingChunks;
-				int liveMinX = (nextSceneContext.sceneBase[0] >> 3) - realPaddingChunks;
-				int liveMinZ = (nextSceneContext.sceneBase[1] >> 3) - realPaddingChunks;
-				int realWindowZones = vanillaChunks + 2 * realPaddingChunks;
-				int radius = plugin.configBackdropCacheRadius;
-				int prefetchMinX = liveMinX - radius;
-				int prefetchMaxX = liveMinX + realWindowZones - 1 + radius;
-				int prefetchMinZ = liveMinZ - radius;
-				int prefetchMaxZ = liveMinZ + realWindowZones - 1 + radius;
-
-				// loadScene() runs on the background "Map Loader" thread, not the client thread - BackdropZoneCache's
-				// internal state is only ever safe to touch from the client thread, so this must be deferred rather
-				// than called directly here. Only plain ints are captured, not nextSceneContext itself, since that
-				// field could be reassigned by another loadScene() call before this runs.
-				clientThread.invoke(() -> backdropZoneCache.prefetchArea(prefetchMinX, prefetchMaxX, prefetchMinZ, prefetchMaxZ));
-			}
-
 			WorldViewContext ctx = root;
 			Scene prev = client.getTopLevelWorldView().getScene();
 
@@ -740,19 +710,15 @@ public class SceneManager {
 				Zone nextZone = nextZones[x][z];
 
 				assert !preZone.cull || preZone != nextZone : "Zone which is marked for culling was reused!";
-				if (preZone.cull && !backdropZoneCache.offer(ctx.sceneContext, x, z, preZone))
+				if (preZone.cull)
 					DestructibleHandler.queueDestruction(preZone);
 
 				nextZone.setMetadata(ctx, nextSceneContext, x, z);
 				if (preZone.rebuild)
 					nextZone.rebuild = true;
 				nextSceneContext.animatedDynamicObjectIds.addAll(nextZone.animatedDynamicObjectIds);
-
-				backdropZoneCache.cacheLiveZone(nextSceneContext, x, z, nextZone);
 			}
 		}
-
-		backdropZoneCache.flushPendingWrites();
 
 		ctx.zones = nextZones;
 		root.sceneContext = nextSceneContext;

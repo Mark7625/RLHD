@@ -102,6 +102,7 @@ import rs117.hd.overlays.Timer;
 import rs117.hd.renderer.Renderer;
 import rs117.hd.renderer.legacy.LegacyRenderer;
 import rs117.hd.renderer.zone.LoginScreenBackdropRenderer;
+import rs117.hd.renderer.zone.PanoramaCapture;
 import rs117.hd.renderer.zone.SceneManager;
 import rs117.hd.renderer.zone.ZoneRenderer;
 import rs117.hd.scene.AreaManager;
@@ -291,6 +292,9 @@ public class HdPlugin extends Plugin {
 	private LoginScreenBackdropRenderer loginScreenBackdrop;
 
 	@Inject
+	private PanoramaCapture panoramaCapture;
+
+	@Inject
 	private GroundMaterialManager groundMaterialManager;
 
 	@Inject
@@ -445,8 +449,6 @@ public class HdPlugin extends Plugin {
 	public boolean configTiledLighting;
 	public boolean configTiledLightingImageLoadStore;
 	public boolean configOverrideSky;
-	public boolean configBackdropCaching;
-	public int configBackdropCacheRadius;
 	public boolean configBackdropLoginScreen;
 	public int configDetailDrawDistance;
 	public int configExpandedMapLoadingChunks;
@@ -757,6 +759,7 @@ public class HdPlugin extends Plugin {
 				environmentManager.startUp();
 				fishingSpotReplacer.startUp();
 				loginScreenBackdrop.startUp();
+				panoramaCapture.startUp();
 				gammaCalibrationOverlay.initialize();
 				npcDisplacementCache.initialize();
 
@@ -819,6 +822,7 @@ public class HdPlugin extends Plugin {
 				destroyShadowMapFbo();
 				destroyTiledLightingFbo();
 				loginScreenBackdrop.destroy();
+				panoramaCapture.destroy();
 
 				if (renderer != null) {
 					eventBus.unregister(renderer);
@@ -984,7 +988,6 @@ public class HdPlugin extends Plugin {
 			.define("CHARACTER_DISPLACEMENT", configCharacterDisplacement)
 			.define("MAX_CHARACTER_POSITION_COUNT", max(1, UBOCompute.MAX_CHARACTER_POSITION_COUNT))
 			.define("WIREFRAME", config.wireframe())
-			.define("DEBUG_BACKDROP_OVERLAY", config.backdropDebugOverlay())
 			.define("WINDOWS_HDR_CORRECTION", config.windowsHdrCorrection())
 			.define("LEGACY_RENDERER", renderer instanceof LegacyRenderer)
 			.define("ZONE_RENDERER", renderer instanceof ZoneRenderer)
@@ -1032,6 +1035,7 @@ public class HdPlugin extends Plugin {
 
 		renderer.initializeShaders(includes);
 		uiProgram.compile(includes);
+		loginScreenBackdrop.initializeShaders(includes);
 
 		if (configDynamicLights != DynamicLights.NONE && configTiledLighting) {
 			if (!AMD_GPU && configTiledLightingImageLoadStore &&
@@ -1093,6 +1097,7 @@ public class HdPlugin extends Plugin {
 	private void destroyShaders() {
 		renderer.destroyShaders();
 		uiProgram.destroy();
+		loginScreenBackdrop.destroyShaders();
 
 		tiledLightingImageStoreProgram.destroy();
 		for (var program : tiledLightingShaderPrograms)
@@ -1659,6 +1664,11 @@ public class HdPlugin extends Plugin {
 		pbo.unbind();
 	}
 
+	// Set by PanoramaCapture for the duration of a capture, so the UI (chat, inventory, minimap, etc.) doesn't
+	// end up baked into the captured faces - independent of developerTools.isHideUiEnabled(), since that's gated
+	// to development builds only and this needs to work for every user.
+	public boolean hideUiForCapture;
+
 	public void drawUi(int overlayColor) {
 		if (uiResolution == null || developerTools.isHideUiEnabled() && hasLoggedIn)
 			return;
@@ -1694,6 +1704,7 @@ public class HdPlugin extends Plugin {
 		uboUi.alphaOverlay.set(ColorUtils.srgba(overlayColor));
 		uboUi.backdropLoginScreenActive.set(backdropActive ? 1 : 0);
 		uboUi.backdropReady.set(backdropActive && loginScreenBackdrop.isReady() ? 1 : 0);
+		uboUi.hideUi.set(hideUiForCapture && hasLoggedIn ? 1 : 0);
 		uboUi.upload();
 
 		if (backdropActive) {
@@ -1836,8 +1847,6 @@ public class HdPlugin extends Plugin {
 		configTiledLighting = config.tiledLighting();
 		configTiledLightingImageLoadStore = config.tiledLightingImageLoadStore();
 		configOverrideSky = config.overrideSky();
-		configBackdropCaching = config.backdropCaching();
-		configBackdropCacheRadius = config.backdropCacheRadius();
 		configBackdropLoginScreen = config.backdropLoginScreen();
 		configDetailDrawDistance = config.detailDrawDistance();
 		configConservativeShadowCulling = config.conservativeShadowCulling();
@@ -2000,7 +2009,6 @@ public class HdPlugin extends Plugin {
 							case KEY_WIND_DISPLACEMENT:
 							case KEY_CHARACTER_DISPLACEMENT:
 							case KEY_WIREFRAME:
-							case KEY_BACKDROP_DEBUG_OVERLAY:
 							case KEY_WINDOWS_HDR_CORRECTION:
 							case KEY_STARS:
 							case KEY_POINT_SPRITES:

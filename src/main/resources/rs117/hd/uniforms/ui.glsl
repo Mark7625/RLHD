@@ -6,6 +6,7 @@ layout(std140) uniform UBOUI {
     vec4 alphaOverlay;
     int backdropLoginScreenActive;
     int backdropReady;
+    int hideUi;
 } uboUi;
 
 #include UI_SCALING_MODE

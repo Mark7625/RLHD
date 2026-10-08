@@ -55,6 +55,17 @@ vec4 alphaBlend(vec4 src, vec4 dst) {
 }
 
 void main() {
+    // Used by PanoramaCapture to hide the UI while still rendering the game world underneath - FragColor must
+    // stay fully transparent here (not just skip this whole shader pass) since the 3D scene was already blitted
+    // into this same framebuffer before this pass runs, and alpha blending (GL_ONE, GL_ONE_MINUS_SRC_ALPHA) is
+    // what lets it show through transparent UI pixels. Skipping the pass entirely left the scene blit as the
+    // only write to the framebuffer that frame, which should have been enough, but produced a black capture in
+    // practice - going through the normal blended path here is the version actually verified to work.
+    if (uboUi.hideUi != 0) {
+        FragColor = vec4(0.0);
+        return;
+    }
+
     vec4 c;
     #if UI_SCALING_MODE == UI_SCALING_MODE_MITCHELL || UI_SCALING_MODE == UI_SCALING_MODE_CATROM
         c = textureCubic(uiTexture, fUv);

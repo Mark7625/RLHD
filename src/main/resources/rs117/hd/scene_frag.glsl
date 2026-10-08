@@ -573,10 +573,5 @@ void main() {
     outputColor.rgb = applyColorAdjustments(outputColor.rgb);
     outputColor.rgb = applyOutputCorrection(outputColor.rgb);
 
-    #if DEBUG_BACKDROP_OVERLAY
-        if (fIsBackdrop != 0)
-            outputColor.rgb = mix(outputColor.rgb, vec3(1.0, 0.0, 1.0), 0.35);
-    #endif
-
     FragColor = outputColor;
 }

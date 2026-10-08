@@ -14,4 +14,5 @@ public class UBOUI extends UniformBuffer<GLBuffer> {
 	public Property alphaOverlay = addProperty(PropertyType.FVec4, "alphaOverlay");
 	public Property backdropLoginScreenActive = addProperty(PropertyType.Int, "backdropLoginScreenActive");
 	public Property backdropReady = addProperty(PropertyType.Int, "backdropReady");
+	public Property hideUi = addProperty(PropertyType.Int, "hideUi");
 }
