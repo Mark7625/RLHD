@@ -30,6 +30,7 @@ layout(std140) uniform UBOSky {
     float starVisibility;
     float nebulaVisibility;
     float auroraVisibility;
+    float rainbowVisibility;
 
     float moonSizeMult;
 

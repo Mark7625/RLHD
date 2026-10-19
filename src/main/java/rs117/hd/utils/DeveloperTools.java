@@ -24,6 +24,7 @@ import rs117.hd.overlays.ShadowMapOverlay;
 import rs117.hd.overlays.TileInfoOverlay;
 import rs117.hd.overlays.TiledLightingOverlay;
 import rs117.hd.scene.GamevalManager;
+import rs117.hd.scene.SkyManager;
 
 import static java.awt.event.InputEvent.CTRL_DOWN_MASK;
 import static java.awt.event.InputEvent.SHIFT_DOWN_MASK;
@@ -171,6 +172,13 @@ public class DeveloperTools implements KeyListener {
 			case "tiledlights":
 			case "tiledlighting":
 				tiledLightingOverlay.setActive(tiledLightingOverlayEnabled = !tiledLightingOverlayEnabled);
+				break;
+			case "rainbow":
+				SkyManager.DEBUG_FORCE_RAINBOW = !SkyManager.DEBUG_FORCE_RAINBOW;
+				postMessage(
+					"Rainbow preview " + (SkyManager.DEBUG_FORCE_RAINBOW ? "ON" : "OFF") +
+					". Look roughly 180° away from the sun, low on the horizon."
+				);
 				break;
 			case "keybinds":
 			case "keybindings":

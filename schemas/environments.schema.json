@@ -462,6 +462,12 @@
                 "minimum": 0,
                 "maximum": 1
               },
+              "rainbowVisibility": {
+                "type": "number",
+                "description": "Rainbow brightness multiplier (0 to 1), before sky fog. Defaults to 1. Rainbows appear only during rainbow events, and only while the sun is up but not too high in the sky.",
+                "minimum": 0,
+                "maximum": 1
+              },
               "moonSizeMult": {
                 "type": "number",
                 "description": "Moon size multiplier for this area. Scales the disk, glow and star-occlusion mask. Defaults to 1.",

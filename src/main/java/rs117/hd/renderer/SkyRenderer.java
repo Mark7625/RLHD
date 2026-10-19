@@ -454,6 +454,7 @@ public class SkyRenderer {
 		ubo.starVisibility.set(configuration.starVisibility);
 		ubo.nebulaVisibility.set(configuration.nebulaVisibility);
 		ubo.auroraVisibility.set(state.auroraStrength * configuration.auroraVisibility);
+		ubo.rainbowVisibility.set(state.rainbowStrength * configuration.rainbowVisibility);
 		ubo.upload();
 	}
 

@@ -37,6 +37,7 @@ public class UBOSky extends UniformBuffer<GLBuffer> {
 	public Property starVisibility = addProperty(PropertyType.Float, "starVisibility");
 	public Property nebulaVisibility = addProperty(PropertyType.Float, "nebulaVisibility");
 	public Property auroraVisibility = addProperty(PropertyType.Float, "auroraVisibility");
+	public Property rainbowVisibility = addProperty(PropertyType.Float, "rainbowVisibility");
 
 	public Property moonSizeMult = addProperty(PropertyType.Float, "moonSizeMult");
 	public Property starHorizonHeight = addProperty(PropertyType.Float, "starHorizonHeight");

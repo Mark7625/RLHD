@@ -102,6 +102,7 @@ public class SkyManager {
 	private float[] interruptedPole;
 	private float interruptedRotation;
 	private float interruptedAurora;
+	private float interruptedRainbow;
 
 	private final ResolvedEndpoint resolvedFrom = new ResolvedEndpoint();
 	private final ResolvedEndpoint resolvedTo = new ResolvedEndpoint();
@@ -231,6 +232,7 @@ public class SkyManager {
 			state.utcMillis = frameUtcMillis;
 			copyTo(state.shadowAngles, environmentManager.getCurrentEnvironment().getShadowAngles());
 			state.auroraStrength = 0;
+			state.rainbowStrength = 0;
 			return;
 		}
 
@@ -256,6 +258,7 @@ public class SkyManager {
 				interruptedPole = copy(state.celestialPole);
 				interruptedRotation = state.celestialRotation;
 				interruptedAurora = state.auroraStrength;
+				interruptedRainbow = state.rainbowStrength;
 			}
 		}
 		resolveSkyState(
@@ -328,12 +331,14 @@ public class SkyManager {
 		anglesToSkyDirection(out.celestialPole, out.latLon[0] * DEG_TO_RAD, 0);
 		out.celestialRotation = (utcMillis % DAY_MS) / (float) DAY_MS * TWO_PI;
 		resolveAuroraStrength(out);
+		resolveRainbowStrength(out);
 		if (interrupted) {
 			SkyState target = new SkyState();
 			resolveSkyState(target, to, to, 1, allowsCycle, fallbackShadowAngles);
 			interpolateDirection(out.celestialPole, interruptedPole, target.celestialPole, t);
 			out.celestialRotation = interruptedRotation + angleDiff(target.celestialRotation, interruptedRotation) * t;
 			out.auroraStrength = mix(interruptedAurora, target.auroraStrength, t);
+			out.rainbowStrength = mix(interruptedRainbow, target.rainbowStrength, t);
 		}
 	}
 
@@ -617,6 +622,64 @@ public class SkyManager {
 
 			float onset = clamp((float) random.nextGaussian() * 1.2f, -6, 6);
 			float duration = clamp(80 + (float) random.nextGaussian() * 40, 10, 180) / 60;
+			float elapsed = (float) ((elapsedDays - eventDay) * 24) - onset;
+			if (elapsed < 0 || elapsed >= duration)
+				continue;
+
+			float fade = duration * fadeFraction;
+			float eventStrength =
+				smoothstep(0, fade, elapsed) *
+				(1 - smoothstep(duration - fade, duration, elapsed));
+			strength += (1 - strength) * eventStrength;
+		}
+		return strength;
+	}
+
+	// Toggled by the "::117hd rainbow" developer command to preview the effect outside its random window.
+	public static boolean DEBUG_FORCE_RAINBOW;
+
+	private void resolveRainbowStrength(SkyState state) {
+		if (!config.enableRainbows()) {
+			state.rainbowStrength = 0;
+			return;
+		}
+
+		// Previewing via "::117hd rainbow" should always show the bow, regardless of the
+		// current sun altitude (which, on fixed sky presets, follows the real astronomical
+		// sun rather than the preset's displayed angle, and may not satisfy the gates below).
+		if (DEBUG_FORCE_RAINBOW) {
+			state.rainbowStrength = state.cycleActive ? 1 : 0;
+			return;
+		}
+
+		double elapsedDays;
+		float sunAltitude = state.sunAngles[0];
+		elapsedDays = state.utcMillis / (double) DAY_MS + state.latLon[1] / 360;
+		if (configCycle.fixedSkyPreset != null)
+			sunAltitude = AstronomyUtils.getSunAltitude(state.utcMillis, state.latLon);
+		// Rainbows need the sun up but not too high, since the ~42° bow sinks below the horizon past that altitude.
+		float daylight = smoothstep(-2 * DEG_TO_RAD, 6 * DEG_TO_RAD, sunAltitude);
+		float lowSun = 1 - smoothstep(38 * DEG_TO_RAD, 46 * DEG_TO_RAD, sunAltitude);
+		float eventStrength = getRainbowEventStrength(elapsedDays);
+		state.rainbowStrength = state.cycleActive ? eventStrength * daylight * lowSun : 0;
+	}
+
+	// Distinguishes this event's hash stream from the aurora's so the two don't always coincide.
+	private static final long RAINBOW_SALT = 0x5241494EL; // "RAIN"
+
+	private float getRainbowEventStrength(double elapsedDays) {
+		// Rainbows are far more frequent and much shorter-lived than auroras.
+		final float chance = 1 / 2.f;
+		final float fadeFraction = .25f;
+		long day = (long) Math.floor(elapsedDays);
+		float strength = 0;
+		for (long eventDay = day - 1; eventDay <= day + 1; eventDay++) {
+			random.setSeed(Util.murmurHash3(SEED ^ RAINBOW_SALT ^ eventDay));
+			if (random.nextFloat() >= chance)
+				continue;
+
+			float onset = clamp((float) random.nextGaussian() * 1.2f, -6, 6);
+			float duration = clamp(8 + (float) random.nextGaussian() * 4, 2, 20) / 60;
 			float elapsed = (float) ((elapsedDays - eventDay) * 24) - onset;
 			if (elapsed < 0 || elapsed >= duration)
 				continue;

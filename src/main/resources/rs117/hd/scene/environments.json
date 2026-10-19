@@ -98,6 +98,7 @@
       "nightHorizonStrength": 1,
       "starVisibility": 0.019,
       "auroraVisibility": 0.019,
+      "rainbowVisibility": 0,
       "skyFogHorizonAltitude": 90,
       "skyFogColor": "#251f1d"
     }
@@ -122,6 +123,7 @@
       "nightHorizonStrength": 1,
       "starVisibility": 0.215,
       "auroraVisibility": 0.215,
+      "rainbowVisibility": 0,
       "skyFogHorizonAltitude": 90,
       "skyFogColor": "#49454a"
     }
@@ -149,6 +151,7 @@
       "nightHorizonStrength": 1,
       "starVisibility": 0.144,
       "auroraVisibility": 0.144,
+      "rainbowVisibility": 0,
       "skyFogHorizonAltitude": 90,
       "skyFogColor": "#302c2f"
     }

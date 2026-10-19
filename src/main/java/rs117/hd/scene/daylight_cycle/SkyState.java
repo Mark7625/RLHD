@@ -28,6 +28,7 @@ public final class SkyState {
 	public float moonAltitudeDegrees;
 	public float moonVisibility;
 	public float auroraStrength;
+	public float rainbowStrength;
 
 	public static class GradientSample {
 		public final float[] zenith = new float[3];

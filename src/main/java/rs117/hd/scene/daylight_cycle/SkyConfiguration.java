@@ -73,6 +73,7 @@ public class SkyConfiguration {
 	public float starVisibility = 1;
 	public float nebulaVisibility = 1;
 	public float auroraVisibility = 1;
+	public float rainbowVisibility = 1;
 	public float moonSizeMult = 1;
 	public float starHorizonHeight = 1;
 	private float sunStrength = 1;
@@ -208,6 +209,7 @@ public class SkyConfiguration {
 		starVisibility = mix(from.starVisibility, to.starVisibility, t);
 		nebulaVisibility = mix(from.nebulaVisibility, to.nebulaVisibility, t);
 		auroraVisibility = mix(from.auroraVisibility, to.auroraVisibility, t);
+		rainbowVisibility = mix(from.rainbowVisibility, to.rainbowVisibility, t);
 		moonSizeMult = mix(from.moonSizeMult, to.moonSizeMult, t);
 		starHorizonHeight = mix(from.starHorizonHeight, to.starHorizonHeight, t);
 		return this;

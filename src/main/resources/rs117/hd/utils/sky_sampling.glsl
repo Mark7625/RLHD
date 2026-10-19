@@ -6,6 +6,7 @@
 #include <utils/misc.glsl>
 #include <utils/sky.glsl>
 #include <utils/aurora.glsl>
+#include <utils/rainbow.glsl>
 #include <utils/tone_mapping.glsl>
 #include <utils/moon.glsl>
 
@@ -396,6 +397,10 @@ SkySample sampleSky(
     float auroraStrength = nightFactor * uboSky.auroraVisibility * auroraContrast;
     if (auroraStrength > 0.001)
         atmosphericForeground += proceduralAurora(viewDir, uboGlobal.elapsedTime) * auroraStrength;
+
+    float rainbowStrength = uboSky.rainbowVisibility;
+    if (rainbowStrength > 0.001)
+        atmosphericForeground += proceduralRainbow(viewDir, sunDir) * rainbowStrength;
 
     skyColor = applySkyFog(skyColor, fogTransmittance);
     skyColor += moonHalo * diskFogTransmittance;

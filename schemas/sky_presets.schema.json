@@ -163,6 +163,11 @@
         "minimum": 0,
         "maximum": 1
       },
+      "rainbowVisibility": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
       "moonSizeMult": {
         "type": "number",
         "minimum": 0

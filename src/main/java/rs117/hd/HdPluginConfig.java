@@ -705,6 +705,18 @@ public interface HdPluginConfig extends Config
 		return true;
 	}
 
+	String KEY_RAINBOWS = "rainbows";
+	@ConfigItem(
+		keyName = KEY_RAINBOWS,
+		name = "Rainbows",
+		description = "Show rare rainbows during the day.",
+		position = 4,
+		section = daylightCycleSettings
+	)
+	default boolean enableRainbows() {
+		return true;
+	}
+
 	String KEY_MOON_BEHAVIOR = "moonBehavior";
 	@ConfigItem(
 		keyName = KEY_MOON_BEHAVIOR,
@@ -715,7 +727,7 @@ public interface HdPluginConfig extends Config
 			"'Realistic orbit' makes the moon orbit naturally, independent of the sun.<br>" +
 			"'Mirror the sun' keeps the moon opposite the sun.<br>" +
 			"'Static' keeps the moon at a fixed point in the sky.",
-		position = 4,
+		position = 5,
 		section = daylightCycleSettings
 	)
 	default MoonBehavior moonBehavior() {
@@ -730,7 +742,7 @@ public interface HdPluginConfig extends Config
 			"Controls the portion of the moon which is lit by the sun.<br>" +
 			"'Dynamic' lights up the moon based on its position relative to the sun.<br>" +
 			"All other options lock the moon in a particular lunar phase.",
-		position = 5,
+		position = 6,
 		section = daylightCycleSettings
 	)
 	default MoonPhase moonPhase() {
@@ -742,7 +754,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_REPLACE_VANILLA_SKYBOXES,
 		name = "Replace vanilla skyboxes",
 		description = "Replace the game's built-in skybox models with 117 HD's own implementation.",
-		position = 6,
+		position = 7,
 		section = daylightCycleSettings
 	)
 	default boolean replaceVanillaSkyboxes() {
@@ -756,7 +768,7 @@ public interface HdPluginConfig extends Config
 		keyName = KEY_CUSTOM_CYCLE_DURATION,
 		name = "Custom cycle duration",
 		description = "Configures how long each Custom day & night cycle lasts.",
-		position = 7,
+		position = 8,
 		section = daylightCycleSettings
 	)
 	default int customCycleDurationMinutes() {
@@ -775,7 +787,7 @@ public interface HdPluginConfig extends Config
 			"For southern latitudes, use negative values. For more precise timing, you can provide<br>" +
 			"coordinates including decimals in the in-game chat with: <b>::117hd latlon &lt;latitude&gt; &lt;longitude&gt;</b><br>" +
 			"To return to using the values specified in the config panel, type: <b>::117hd latlon reset</b>",
-		position = 8,
+		position = 9,
 		section = daylightCycleSettings
 	)
 	default int latitudeDegrees() {
@@ -794,7 +806,7 @@ public interface HdPluginConfig extends Config
 			"For western longitudes, use negative values. For more precise timing, you can provide<br>" +
 			"coordinates including decimals in the in-game chat with: <b>::117hd latlon &lt;latitude&gt; &lt;longitude&gt;</b><br>" +
 			"To return to using the values specified in the config panel, type: <b>::117hd latlon reset</b>",
-		position = 9,
+		position = 10,
 		section = daylightCycleSettings
 	)
 	default int longitudeDegrees() {

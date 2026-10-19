@@ -199,6 +199,7 @@
     "skyFogDensity": 0,
     "starHorizonHeight": 0,
     "auroraVisibility": 0,
+    "rainbowVisibility": 0,
     "profile": {
       "zenith": [
         {
@@ -239,6 +240,7 @@
     "skyFogDensity": 0.1,
     "skyVisibility": 0.85,
     "starVisibility": 0.71,
-    "auroraVisibility": 0
+    "auroraVisibility": 0,
+    "rainbowVisibility": 0
   }
 ]
