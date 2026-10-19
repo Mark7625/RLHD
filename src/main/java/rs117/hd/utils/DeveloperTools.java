@@ -193,6 +193,10 @@ public class DeveloperTools implements KeyListener {
 			case "latlon":
 				handleLatLonCommand(args);
 				break;
+			case "constellations":
+			case "constellationeditor":
+				ConstellationEditor.open(plugin.getGson());
+				break;
 		}
 
 		// Other commands are gated behind RuneLite's --developer-mode

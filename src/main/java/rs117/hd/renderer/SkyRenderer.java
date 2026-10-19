@@ -9,6 +9,7 @@ import org.lwjgl.opengl.*;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.config.StarMode;
+import rs117.hd.opengl.shader.ConstellationShaderProgram;
 import rs117.hd.opengl.shader.ShaderException;
 import rs117.hd.opengl.shader.ShaderIncludes;
 import rs117.hd.opengl.shader.SkyShaderProgram;
@@ -63,6 +64,9 @@ public class SkyRenderer {
 
 	@Inject
 	private StarShaderProgram starProgram;
+
+	@Inject
+	private ConstellationShaderProgram constellationProgram;
 
 	private final CommandBuffer commandBuffer = new CommandBuffer("Sky");
 	private final RenderState localRenderState = new RenderState();
@@ -140,6 +144,7 @@ public class SkyRenderer {
 		skyProgram.compile(includes);
 		starField.initializeShaders(includes);
 		starProgram.compile(includes);
+		constellationProgram.compile(includes);
 		starField.resetStarfield();
 		commandBuffer.reset();
 	}
@@ -148,12 +153,16 @@ public class SkyRenderer {
 		skyProgram.destroy();
 		starField.destroyShaders();
 		starProgram.destroy();
+		constellationProgram.destroy();
 	}
 
 	public void processConfigChanges(Set<String> keys) {
-		if (keys.contains(KEY_NEBULAE))
+		if (keys.contains(KEY_NEBULAE) ||
+			keys.contains(KEY_CONSTELLATIONS) ||
+			keys.contains(KEY_CONSTELLATION_PROMINENCE) ||
+			keys.contains(KEY_CONSTELLATION_DEBUG_SHOW_ALL))
 			starField.resetStarfield();
-		if (keys.contains(KEY_STARS))
+		if (keys.contains(KEY_STARS) || keys.contains(KEY_CONSTELLATION_LINES))
 			commandBuffer.reset();
 	}
 
@@ -270,6 +279,19 @@ public class SkyRenderer {
 				if (!GL_CAPS.forwardCompatible)
 					commandBuffer.Disable(GL20.GL_POINT_SPRITE);
 				commandBuffer.Disable(GL_PROGRAM_POINT_SIZE);
+			}
+
+			if (config.constellationLines() &&
+				constellationProgram.isValid() &&
+				starField.getVaoConstellationEdges() != 0 &&
+				starField.constellationEdgeCount > 0) {
+				commandBuffer.SetShader(constellationProgram);
+				commandBuffer.Enable(GL_BLEND);
+				commandBuffer.BlendFunc(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
+				commandBuffer.BindVertexArray(starField.getVaoConstellationEdges());
+				commandBuffer.DrawArraysInstanced(GL_TRIANGLES, 0, 6, starField.constellationEdgeCount);
+				commandBuffer.BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+				commandBuffer.Disable(GL_BLEND);
 			}
 		}
 

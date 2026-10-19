@@ -34,6 +34,7 @@ import net.runelite.client.config.Units;
 import rs117.hd.config.AntiAliasingMode;
 import rs117.hd.config.ColorBlindMode;
 import rs117.hd.config.ColorFilter;
+import rs117.hd.config.ConstellationMode;
 import rs117.hd.config.Contrast;
 import rs117.hd.config.CpuUsageLimit;
 import rs117.hd.config.DaylightCycle;
@@ -799,6 +800,60 @@ public interface HdPluginConfig extends Config
 	)
 	default int longitudeDegrees() {
 		return round(DEFAULT_LATLON[1]);
+	}
+
+	String KEY_CONSTELLATIONS = "constellations";
+	@ConfigItem(
+		keyName = KEY_CONSTELLATIONS,
+		name = "Constellations",
+		description =
+			"Draws a random constellation among the stars, independent of the Stars setting above.<br>" +
+			"'Off' draws no constellation.<br>" +
+			"'Realistic' picks from the night sky's real constellations.<br>" +
+			"'Fun' picks from those plus whimsical custom shapes, like elemental runes.",
+		position = 10,
+		section = daylightCycleSettings
+	)
+	default ConstellationMode constellationMode() {
+		return ConstellationMode.REALISTIC;
+	}
+
+	String KEY_CONSTELLATION_LINES = "constellationLines";
+	@ConfigItem(
+		keyName = KEY_CONSTELLATION_LINES,
+		name = "Constellation lines",
+		description = "Draw lines connecting a constellation's stars, to make its shape easier to recognize.",
+		position = 11,
+		section = daylightCycleSettings
+	)
+	default boolean constellationLines() {
+		return true;
+	}
+
+	String KEY_CONSTELLATION_PROMINENCE = "constellationProminence";
+	@Range(min = 100, max = 400)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+		keyName = KEY_CONSTELLATION_PROMINENCE,
+		name = "Constellation star prominence",
+		description = "How much brighter and larger a constellation's marker stars appear compared to ordinary stars.",
+		position = 12,
+		section = daylightCycleSettings
+	)
+	default int constellationProminence() {
+		return 175;
+	}
+
+	String KEY_CONSTELLATION_DEBUG_SHOW_ALL = "constellationDebugShowAll";
+	@ConfigItem(
+		keyName = KEY_CONSTELLATION_DEBUG_SHOW_ALL,
+		name = "Debug: show all constellations",
+		description = "Draws every constellation available to the current mode at once, scattered across the sky, for previewing shapes.",
+		position = 13,
+		section = daylightCycleSettings
+	)
+	default boolean constellationDebugShowAll() {
+		return false;
 	}
 
 

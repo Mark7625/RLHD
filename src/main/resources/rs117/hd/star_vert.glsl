@@ -9,11 +9,12 @@
 #include <utils/sky_fog.glsl>
 #include <utils/celestial_projection.glsl>
 
-layout(location = 0) in vec3 aStarDir;     // field-space unit direction
-layout(location = 1) in float aStarSize;   // relative size
-layout(location = 2) in float aStarBright; // base brightness
-layout(location = 3) in vec3 aStarColor;   // linear sRGB tint
+layout(location = 0) in vec3 aStarDir;         // field-space unit direction
+layout(location = 1) in float aStarSize;       // relative size
+layout(location = 2) in float aStarBright;     // base brightness
+layout(location = 3) in vec3 aStarColor;       // linear sRGB tint
 layout(location = 4) in float aStarRotationSpeed;
+layout(location = 5) in float aMarkerBoost;    // 0 for ordinary stars; > 0 for constellation markers
 
 out vec3 vColor;
 out float vBrightness;
@@ -153,6 +154,11 @@ void main() {
     float actualScreenSize = sizePixels / max(renderScale, 1e-6);
     vBrightness *= min(1.0, (screenSize / actualScreenSize) * (screenSize / actualScreenSize));
     vBrightness *= skyFogTransmittance(upAmount);
+
+    // Applied after the regular brightness clamp above, so constellation markers can
+    // shine brighter than an ordinary star's brightness is capped to. Size is left
+    // alone, so markers still read as ordinary-looking stars, just more prominent ones.
+    vBrightness *= 1.0 + aMarkerBoost;
 
     #if POINT_SPRITES
         gl_PointSize = visibility > 0.001 ? sizePixels : 0.0;
