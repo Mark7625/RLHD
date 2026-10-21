@@ -142,6 +142,10 @@ public class DeveloperTools implements KeyListener {
 		hideUiEnabled = false;
 	}
 
+	public void updateConfig() {
+		frameTimerOverlay.reset();
+	}
+
 	@Subscribe
 	public void onCommandExecuted(CommandExecuted commandExecuted) {
 		if (!commandExecuted.getCommand().equalsIgnoreCase("117hd"))

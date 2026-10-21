@@ -76,6 +76,7 @@ import org.lwjgl.opengl.*;
 import org.lwjgl.system.Callback;
 import org.lwjgl.system.Configuration;
 import rs117.hd.config.ColorFilter;
+import rs117.hd.config.DefaultBoolean;
 import rs117.hd.config.DefaultSkyColor;
 import rs117.hd.config.DynamicLights;
 import rs117.hd.config.GroundBlending;
@@ -348,7 +349,9 @@ public class HdPlugin extends Plugin {
 	public static boolean SKIP_GL_ERROR_CHECKS;
 	public static GLCapabilities GL_CAPS;
 	public static boolean AMD_GPU;
+	public static boolean OLD_AMD_GPU;
 	public static boolean INTEL_GPU;
+	public static boolean OLD_INTEL_GPU;
 	public static boolean NVIDIA_GPU;
 	public static boolean APPLE;
 	public static boolean APPLE_ARM;
@@ -430,6 +433,9 @@ public class HdPlugin extends Plugin {
 	public boolean configLegacyTzHaarReskin;
 	public boolean configProjectileLights;
 	public boolean configNpcLights;
+	public boolean configPetLights;
+	public boolean configSpotanimLights;
+	public boolean configObjectLights;
 	public boolean configHideFakeShadows;
 	public boolean configLegacyGreyColors;
 	public boolean configModelBatching;
@@ -439,8 +445,8 @@ public class HdPlugin extends Plugin {
 	public boolean configRoofShadows;
 	public boolean configTerrainShadows;
 	public boolean configConservativeShadowCulling;
-	public boolean configUseFasterModelHashing;
 	public boolean configZoneStreaming;
+	public boolean configSimpleBoatSilhouettes;
 	public boolean configPowerSaving;
 	public boolean configUnlitFaceColors;
 	public boolean configUndoVanillaShading;
@@ -451,6 +457,8 @@ public class HdPlugin extends Plugin {
 	public boolean configTiledLighting;
 	public boolean configTiledLightingImageLoadStore;
 	public boolean configOverrideSky;
+	public boolean configReduceGlareIntensity;
+	public boolean configFrameSynchronization;
 	public int configDetailDrawDistance;
 	public int configExpandedMapLoadingChunks;
 	public float configNightBrightness;
@@ -473,6 +481,7 @@ public class HdPlugin extends Plugin {
 
 	@Getter
 	private boolean isPluginStopPending;
+	private Throwable pluginStopReason;
 	@Getter
 	private boolean isActive;
 	private boolean lwjglInitialized;
@@ -609,7 +618,9 @@ public class HdPlugin extends Plugin {
 				APPLE = osType == OSType.MacOS;
 				APPLE_ARM = APPLE && osArch.equals("aarch64");
 				AMD_GPU = glRenderer.contains("AMD") || glRenderer.contains("Radeon") || glVendor.contains("ATI");
+				OLD_AMD_GPU = glRenderer.equals("Radeon RX 580 Series");
 				INTEL_GPU = glRenderer.contains("Intel");
+				OLD_INTEL_GPU = glRenderer.equals("Intel(R) UHD Graphics");
 				NVIDIA_GPU = glRenderer.toLowerCase().contains("nvidia");
 
 				SUPPORTS_INDIRECT_DRAW =
@@ -860,11 +871,39 @@ public class HdPlugin extends Plugin {
 		});
 	}
 
-	public void requestPluginStop() {
+	public void requestPluginStop(String message) {
+		requestPluginStop(message, new Throwable());
+	}
+
+	public void requestPluginStop(String message, Throwable reason) {
 		if (isPluginStopPending)
 			return;
-		log.debug("Requesting plugin to stop when safe");
 		isPluginStopPending = true;
+		pluginStopReason = new RuntimeException(message, reason);
+		log.error("Scheduling plugin stop due to:", pluginStopReason);
+	}
+
+	private boolean handleShutdownRequest() {
+		if (!isPluginStopPending)
+			return false;
+
+		try {
+			log.debug("Stopping plugin...");
+			stopPlugin();
+
+			Throwable ex = pluginStopReason;
+			if (ex != null) {
+				clientThread.invoke((Runnable) () -> {
+					log.debug("Reporting exception to RuneLite");
+					throw new RuntimeException("117 HD shutdown", ex);
+				});
+			}
+
+			return true;
+		} finally {
+			isPluginStopPending = false;
+			pluginStopReason = null;
+		}
 	}
 
 	public void stopPlugin() {
@@ -954,6 +993,7 @@ public class HdPlugin extends Plugin {
 			.define("APPLY_COLOR_FILTER", configColorFilter != ColorFilter.NONE)
 			.define("MATERIAL_COUNT", MaterialManager.MATERIALS.length)
 			.define("WATER_TYPE_COUNT", waterTypeManager.uboWaterTypes.getCount())
+			.define("WATER_SPECULAR_REFLECTIONS", config.waterSpecularReflections())
 			.define("DYNAMIC_LIGHTS", configDynamicLights != DynamicLights.NONE)
 			.define("TILED_LIGHTING", configTiledLighting)
 			.define("TILED_LIGHTING_LAYER_COUNT", configDynamicLights.getTiledLightingLayers())
@@ -981,6 +1021,9 @@ public class HdPlugin extends Plugin {
 			.define("MAX_CHARACTER_POSITION_COUNT", max(1, UBOCompute.MAX_CHARACTER_POSITION_COUNT))
 			.define("WIREFRAME", config.wireframe())
 			.define("WINDOWS_HDR_CORRECTION", config.windowsHdrCorrection())
+			.define("LEGACY_BOAT_SILHOUETTES", config.legacyBoatSilhouettes())
+			.define("REDUCE_GLARE_INTENSITY", configReduceGlareIntensity)
+			.define("CENTROID_QUALIFIER", config.centroidQualifier().get(!OLD_AMD_GPU))
 			.define("LEGACY_RENDERER", renderer instanceof LegacyRenderer)
 			.define("ZONE_RENDERER", renderer instanceof ZoneRenderer)
 			.define("MAX_SIMULTANEOUS_WORLD_VIEWS", 0)
@@ -1057,7 +1100,7 @@ public class HdPlugin extends Plugin {
 					log.warn("Disabling TILED_LIGHTING_LAYERED due to:", ex);
 					// If both tiled lighting implementations fail, fall back to the old lighting, and warn about it
 					if (!Props.DEVELOPMENT) {
-						config.tiledLighting(false);
+						config.tiledLighting(DefaultBoolean.OFF);
 						PopupUtils.displayPopupMessage(
 							client, "117 HD Error",
 							"Tiled lighting has been automatically disabled, since it failed to compile on your GPU.<br>" +
@@ -1521,7 +1564,7 @@ public class HdPlugin extends Plugin {
 			glActiveTexture(TEXTURE_UNIT_TERRAIN_SHADOW_MAP);
 			glBindTexture(GL_TEXTURE_2D, texTerrainShadowMap);
 
-			terrainShadowMapResolution = shadowMapResolution / 2;
+			terrainShadowMapResolution = shadowMapResolution;
 			glTexImage2D(
 				GL_TEXTURE_2D,
 				0,
@@ -1790,6 +1833,9 @@ public class HdPlugin extends Plugin {
 		configLegacyTzHaarReskin = config.legacyTzHaarReskin();
 		configProjectileLights = config.projectileLights();
 		configNpcLights = config.npcLights();
+		configPetLights = config.petLights();
+		configSpotanimLights = config.spotanimLights();
+		configObjectLights = config.objectLights();
 		configVanillaShadowMode = config.vanillaShadowMode();
 		configHideFakeShadows = configVanillaShadowMode != VanillaShadowMode.SHOW;
 		configLegacyGreyColors = config.legacyGreyColors();
@@ -1797,13 +1843,13 @@ public class HdPlugin extends Plugin {
 		configModelCaching = config.modelCaching();
 		configDefaultSkyColor = config.defaultSkyColor();
 		configDynamicLights = config.dynamicLights();
-		configTiledLighting = config.tiledLighting();
-		configTiledLightingImageLoadStore = config.tiledLightingImageLoadStore();
+		configTiledLighting = config.tiledLighting().get(!OLD_INTEL_GPU);
+		configTiledLightingImageLoadStore = config.imageLoadStore().get(true);
 		configOverrideSky = config.overrideSky();
 		configDetailDrawDistance = config.detailDrawDistance();
 		configConservativeShadowCulling = config.conservativeShadowCulling();
-		configUseFasterModelHashing = config.fasterModelHashing();
 		configZoneStreaming = config.zoneStreaming();
+		configSimpleBoatSilhouettes = config.simpleBoatSilhouettes();
 		configPowerSaving = config.powerSaving();
 		configShadingMode = config.shadingMode();
 		configUnlitFaceColors = configShadingMode.unlitFaceColors;
@@ -1815,6 +1861,8 @@ public class HdPlugin extends Plugin {
 		configSeasonalTheme = config.seasonalTheme();
 		configSeasonalHemisphere = config.seasonalHemisphere();
 		configSeasonalFoliage = config.seasonalFoliage();
+		configReduceGlareIntensity = config.glareIntensity() < 100;
+		configFrameSynchronization = config.frameSynchronization().get(true);
 
 		var newColorFilter = config.colorFilter();
 		if (newColorFilter != configColorFilter) {
@@ -1865,7 +1913,8 @@ public class HdPlugin extends Plugin {
 			}
 		}
 
-		skyManager.updateConfig(config);
+		skyManager.updateConfig();
+		developerTools.updateConfig();
 	}
 
 	@Subscribe
@@ -1894,6 +1943,8 @@ public class HdPlugin extends Plugin {
 				// Synchronize with scene loading
 				// TODO: Move this synchronization into LegacyRenderer
 				synchronized (this) {
+					boolean previousReduceGlareIntensity = configReduceGlareIntensity;
+
 					updateCachedConfigs();
 
 					log.debug("Processing {} pending config changes: {}", pendingConfigChanges.size(), pendingConfigChanges);
@@ -1951,9 +2002,9 @@ public class HdPlugin extends Plugin {
 								break;
 							case KEY_COLOR_BLINDNESS:
 							case KEY_MACOS_INTEL_WORKAROUND:
-							case KEY_DYNAMIC_LIGHTS:
+							case KEY_LIGHTS:
 							case KEY_TILED_LIGHTING:
-							case KEY_TILED_LIGHTING_IMAGE_STORE:
+							case KEY_IMAGE_LOAD_STORE:
 							case KEY_NORMAL_MAPPING:
 							case KEY_PARALLAX_OCCLUSION_MAPPING:
 							case KEY_UI_SCALING_MODE:
@@ -1965,7 +2016,13 @@ public class HdPlugin extends Plugin {
 							case KEY_STARS:
 							case KEY_POINT_SPRITES:
 							case KEY_NEBULAE:
+							case KEY_LEGACY_BOAT_SILHOUETTES:
+							case KEY_WATER_SPECULAR_REFLECTIONS:
+							case KEY_CENTROID_QUALIFIER:
 								recompilePrograms = true;
+								break;
+							case KEY_GLARE_INTENSITY:
+								recompilePrograms |= configReduceGlareIntensity != previousReduceGlareIntensity;
 								break;
 							case KEY_ANTI_ALIASING_MODE:
 							case KEY_SCENE_RESOLUTION_SCALE:
@@ -1979,7 +2036,7 @@ public class HdPlugin extends Plugin {
 								recompilePrograms = true;
 								recreateShadowMapFbo = true;
 								break;
-							case KEY_ATMOSPHERIC_LIGHTING:
+							case KEY_LEGACY_DISABLE_ENVIRONMENTAL_LIGHTING:
 							case KEY_POH_THEME_ENVIRONMENTS:
 							case KEY_LEGACY_TOB_ENVIRONMENT:
 								reloadEnvironments = true;
@@ -2055,7 +2112,7 @@ public class HdPlugin extends Plugin {
 					}
 
 					if (reloadEnvironments) {
-						if (pendingConfigChanges.contains(KEY_ATMOSPHERIC_LIGHTING)) {
+						if (pendingConfigChanges.contains(KEY_LEGACY_DISABLE_ENVIRONMENTAL_LIGHTING)) {
 							environmentManager.reload();
 						} else {
 							environmentManager.reloadAndSmoothlyTransition();
@@ -2129,16 +2186,10 @@ public class HdPlugin extends Plugin {
 
 	@Subscribe(priority = -1) // Run after the low detail plugin
 	public void onBeforeRender(BeforeRender beforeRender) {
-		SKIP_GL_ERROR_CHECKS = !log.isDebugEnabled() || developerTools.isFrameTimingsOverlayEnabled();
-
-		frame = (frame + 1) & Integer.MAX_VALUE;
-
-		if (isPluginStopPending) {
-			log.debug("Shutdown has been requested, stopping plugin");
-			isPluginStopPending = false;
-			stopPlugin();
+		if (handleShutdownRequest())
 			return;
-		}
+
+		SKIP_GL_ERROR_CHECKS = !log.isDebugEnabled() || developerTools.isFrameTimingsOverlayEnabled();
 
 		if (lastFrameTimeMillis > 0) {
 			deltaTimeMs = System.currentTimeMillis() - lastFrameTimeMillis;
