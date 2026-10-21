@@ -33,6 +33,7 @@ import net.runelite.api.Scene;
 import net.runelite.api.Tile;
 import net.runelite.api.TileObject;
 import net.runelite.api.WallObject;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
@@ -739,7 +740,8 @@ public class ModelLightManager {
 			light.modelOffsetY = profile.getOffsetY();
 			light.modelOffsetZ = profile.getOffsetZ();
 			anchorOffsetToTriangle(light, snapshot, v0, v1, v2, anchor);
-			sceneContext.lights.add(light);
+			light.sceneContext = sceneContext.scene.getWorldViewId() == WorldView.TOPLEVEL ? null : sceneContext;
+			lightManager.getLights().add(light);
 			lights.add(light);
 		}
 
@@ -768,7 +770,8 @@ public class ModelLightManager {
 			light.modelOffsetZ = profile.getOffsetZ();
 			anchorOffsetToFace(light, snapshot, piece, globalVertex);
 			anchorFaceForConeDirection(light, snapshot, piece, globalVertex);
-			sceneContext.lights.add(light);
+			light.sceneContext = sceneContext.scene.getWorldViewId() == WorldView.TOPLEVEL ? null : sceneContext;
+			lightManager.getLights().add(light);
 			lights.add(light);
 		}
 	}
