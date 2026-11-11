@@ -26,6 +26,7 @@
 package rs117.hd.scene;
 
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ListMultimap;
 import com.google.gson.Gson;
 import java.io.IOException;
@@ -36,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.Set;
 import java.util.function.Predicate;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -46,6 +48,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.*;
 import net.runelite.api.events.*;
+import net.runelite.api.gameval.NpcID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.callback.RenderCallbackManager;
 import net.runelite.client.eventbus.EventBus;
@@ -88,6 +91,26 @@ public class LightManager {
 		.getFile("rlhd.lights-path", () -> path(LightManager.class, "lights.json"));
 
 	private static final float ANIMATION_STOP_FADE_OUT_DURATION = 0.2f;
+	private static final Set<Integer> THRALL_IDS = ImmutableSet.of(
+		NpcID.ARCEUUS_THRALL_GHOST_LESSER,
+		NpcID.ARCEUUS_THRALL_SKELETON_LESSER,
+		NpcID.ARCEUUS_THRALL_ZOMBIE_LESSER,
+		NpcID.ARCEUUS_THRALL_GHOST_SUPERIOR,
+		NpcID.ARCEUUS_THRALL_SKELETON_SUPERIOR,
+		NpcID.ARCEUUS_THRALL_ZOMBIE_SUPERIOR,
+		NpcID.ARCEUUS_THRALL_GHOST_GREATER,
+		NpcID.ARCEUUS_THRALL_SKELETON_GREATER,
+		NpcID.ARCEUUS_THRALL_ZOMBIE_GREATER,
+		NpcID.THRALL_IMP_MAGIC_LESSER,
+		NpcID.THRALL_IMP_RANGED_LESSER,
+		NpcID.THRALL_IMP_MELEE_LESSER,
+		NpcID.THRALL_IMP_MAGIC_SUPERIOR,
+		NpcID.THRALL_IMP_RANGED_SUPERIOR,
+		NpcID.THRALL_IMP_MELEE_SUPERIOR,
+		NpcID.THRALL_IMP_MAGIC_GREATER,
+		NpcID.THRALL_IMP_RANGED_GREATER,
+		NpcID.THRALL_IMP_MELEE_GREATER
+	);
 
 	@Inject
 	private Client client;
@@ -451,7 +474,7 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 						if (anim != null)
 							animationId = anim.getId();
 					}
-					parentExists = light.def.animationIds.contains(animationId);
+					parentExists = light.def.matchesAnimation(animationId, animationId != -1);
 				}
 			} else if (light.projectile != null) {
 				light.origin[0] = (int) light.projectile.getX();
@@ -462,12 +485,11 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 					light.markedForRemoval = true;
 				} else {
 					if (light.animationSpecific) {
-						if (light.def.waitForAnimation && gameCycle < light.projectile.getStartCycle()) {
-							parentExists = false;
-						} else if (!light.def.animationIds.isEmpty()) {
-							var animation = light.projectile.getAnimation();
-							parentExists = animation != null && light.def.animationIds.contains(animation.getId());
-						}
+						var animation = light.projectile.getAnimation();
+						parentExists = light.def.matchesAnimation(
+							animation == null ? -1 : animation.getId(),
+							gameCycle >= light.projectile.getStartCycle()
+						);
 					}
 					light.orientation = light.projectile.getOrientation();
 				}
@@ -478,12 +500,11 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 				if (light.graphicsObject.finished()) {
 					light.markedForRemoval = true;
 				} else if (light.animationSpecific) {
-					if (light.def.waitForAnimation && gameCycle < light.graphicsObject.getStartCycle()) {
-						parentExists = false;
-					} else if (!light.def.animationIds.isEmpty()) {
-						var animation = light.graphicsObject.getAnimation();
-						parentExists = animation != null && light.def.animationIds.contains(animation.getId());
-					}
+					var animation = light.graphicsObject.getAnimation();
+					parentExists = light.def.matchesAnimation(
+						animation == null ? -1 : animation.getId(),
+						gameCycle >= light.graphicsObject.getStartCycle()
+					);
 				}
 			} else if (light.actor != null && !light.markedForRemoval) {
 				if (light.actor instanceof NPC && light.actor != vw.npcs().byIndex(((NPC) light.actor).getIndex()) ||
@@ -516,7 +537,8 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 								}
 							}
 						} else {
-							parentExists = light.def.animationIds.contains(light.actor.getAnimation());
+							int animationId = light.actor.getAnimation();
+							parentExists = light.def.matchesAnimation(animationId, animationId != -1);
 						}
 					}
 
@@ -891,11 +913,20 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 		if (!renderCallbackManager.addEntity(renderable, false))
 			return true;
 
-		boolean hideSomeNpcLights = !plugin.configNpcLights || !plugin.configPetLights;
+		boolean hideSomeNpcLights = !plugin.configNpcLights || !plugin.configPetLights || !plugin.configThrallLights;
 		if (hideSomeNpcLights && renderable instanceof NPC) {
-			if (!plugin.configNpcLights && !plugin.configPetLights)
+			if (!plugin.configNpcLights && !plugin.configPetLights && !plugin.configThrallLights)
 				return true;
-			return ((NPC) renderable).getComposition().isFollower() != plugin.configPetLights;
+
+			boolean isThrall = THRALL_IDS.contains(((NPC) renderable).getId());
+			if (isThrall)
+				return !plugin.configThrallLights;
+
+			boolean isPet = ((NPC) renderable).getComposition().isFollower();
+			if (isPet)
+				return !plugin.configPetLights;
+
+			return !plugin.configNpcLights;
 		}
 
 		if (renderable instanceof Projectile)
@@ -958,8 +989,17 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 	}
 
 	public void unloadWorldViewLights(SceneContext source) {
+		if (plugin.enableFreezeFrame) {
+			int removedVisibleLights = 0;
+			for (int i = 0; i < numVisibleLights; i++)
+				if (lights.get(i).sceneContext == source)
+					removedVisibleLights++;
+			numVisibleLights -= removedVisibleLights;
+		} else {
+			numVisibleLights = 0;
+		}
+
 		lights.removeIf(light -> light.sceneContext == source);
-		numVisibleLights = 0;
 	}
 
 	public void clearSceneLights() {
@@ -980,7 +1020,8 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 		}
 		for (Player player : view.players())
 			addSpotanimLights(player, source);
-		numVisibleLights = 0;
+		if (!plugin.enableFreezeFrame)
+			numVisibleLights = 0;
 	}
 
 	private void removeLightIf(Predicate<Light> predicate) {
@@ -1037,8 +1078,19 @@ private LightDefinition[] definitionArray = new LightDefinition[0];
 	private void addNpcLights(NPC npc, @Nullable SceneContext ctx) {
 		if (ctx == null)
 			return;
-		if (!npc.getWorldView().isTopLevel())
+		if (!npc.getWorldView().isTopLevel()) {
+			if (plugin.enableFreezeFrame) {
+				int removedVisibleLights = 0;
+				for (int i = 0; i < numVisibleLights; i++) {
+					Light light = lights.get(i);
+					if (light.actor == npc && light.markedForRemoval)
+						removedVisibleLights++;
+				}
+				numVisibleLights -= removedVisibleLights;
+			}
+
 			lights.removeIf(light -> light.actor == npc && light.markedForRemoval);
+		}
 
 		int uuid = ModelHash.packUuid(ModelHash.TYPE_NPC, npc.getId());
 		int[] worldPos = ctx.localToWorld(npc.getLocalLocation(), npc.getWorldView().getPlane());
