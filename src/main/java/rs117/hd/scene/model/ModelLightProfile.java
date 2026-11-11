@@ -14,6 +14,7 @@ import rs117.hd.utils.GsonUtils;
 public class ModelLightProfile {
 	private String name;
 	private String meshKey;
+	private int expectedFaceCount;
 	private boolean enabled = true;
 	private Map<Integer, TriangleAnchor> triangles = new LinkedHashMap<>();
 	private Map<Integer, String> vertices = new LinkedHashMap<>();
@@ -71,6 +72,7 @@ public class ModelLightProfile {
 	public ModelLightProfile copy() {
 		ModelLightProfile c = new ModelLightProfile(name);
 		c.meshKey = meshKey;
+		c.expectedFaceCount = expectedFaceCount;
 		c.enabled = enabled;
 		c.vertices = new LinkedHashMap<>(vertices);
 		c.triangles = new LinkedHashMap<>();

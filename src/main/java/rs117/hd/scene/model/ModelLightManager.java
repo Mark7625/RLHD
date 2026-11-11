@@ -2,7 +2,6 @@ package rs117.hd.scene.model;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -81,6 +80,9 @@ public class ModelLightManager {
 	private ModelLightStore store;
 
 	@Inject
+	private PlayerEquipmentParts equipmentParts;
+
+	@Inject
 	private EventBus eventBus;
 
 	@Inject
@@ -89,6 +91,7 @@ public class ModelLightManager {
 	private final List<PlayerState> playerStates = new ArrayList<>();
 	private final Map<TileObject, ObjectLightState> objectLightStates = new HashMap<>();
 	private final Map<NPC, NpcLightState> npcLightStates = new HashMap<>();
+	private final Set<Integer> profiledEquipmentIds = new HashSet<>();
 	private final Set<Integer> profiledObjectIds = new HashSet<>();
 	private final Set<Integer> profiledNpcIds = new HashSet<>();
 	private final Map<ObjectMeshKey, ModelSnapshot> staticObjectSnapshots = new HashMap<>();
@@ -155,6 +158,7 @@ public class ModelLightManager {
 		playerStates.clear();
 		objectLightStates.clear();
 		npcLightStates.clear();
+		profiledEquipmentIds.clear();
 		profiledObjectIds.clear();
 		profiledNpcIds.clear();
 	}
@@ -184,6 +188,7 @@ public class ModelLightManager {
 			var cachedPlayers = client.getTopLevelWorldView().players();
 			if (state.player != cachedPlayers.byIndex(state.player.getId()))
 				continue;
+			resolvePlayer(state, sceneContext);
 			updateVertexPositions(state.player, state.lights);
 		}
 
@@ -215,10 +220,8 @@ public class ModelLightManager {
 		Player player = client.getLocalPlayer();
 		if (player == null)
 			return null;
-		Model model = player.getModel();
-		if (model == null)
-			return null;
-		return new ViewerCapture(ModelSnapshot.capture(model), true);
+		ModelSnapshot snapshot = equipmentParts.capture(player);
+		return snapshot == null ? null : new ViewerCapture(snapshot, true);
 	}
 
 	@Nullable
@@ -227,27 +230,15 @@ public class ModelLightManager {
 		return player == null ? null : player.getPlayerComposition();
 	}
 
-	public Set<Integer> getWornItemIds(@Nullable PlayerComposition composition) {
-		if (composition == null)
-			return Set.of();
-		Set<Integer> ids = new HashSet<>();
-		for (int id : composition.getEquipmentIds()) {
-			if (id != -1)
-				ids.add(id);
-		}
-		return ids;
-	}
-
 	private void invalidateAllActors() {
-		rebuildProfiledIds();
-		for (PlayerState state : playerStates)
-			state.invalidate();
-		for (ObjectLightState state : objectLightStates.values())
-			state.invalidate();
-		for (NpcLightState state : npcLightStates.values())
-			state.invalidate();
-
 		clientThread.invokeLater(() -> {
+			rebuildProfiledIds();
+			for (PlayerState state : playerStates)
+				state.invalidate();
+			for (ObjectLightState state : objectLightStates.values())
+				state.invalidate();
+			for (NpcLightState state : npcLightStates.values())
+				state.invalidate();
 			var sceneContext = plugin.getSceneContext();
 			if (sceneContext == null)
 				return;
@@ -280,11 +271,14 @@ public class ModelLightManager {
 	}
 
 	private void rebuildProfiledIds() {
+		profiledEquipmentIds.clear();
 		profiledObjectIds.clear();
 		profiledNpcIds.clear();
 		for (ModelLightProfile profile : store.snapshotAll().values()) {
 			if (!profile.isEnabled())
 				continue;
+			if (!profile.isNpcProfile() && !profile.isObjectProfile())
+				profiledEquipmentIds.addAll(profile.getItemIds());
 			profiledObjectIds.addAll(profile.getObjectIds());
 			profiledNpcIds.addAll(profile.getNpcIds());
 		}
@@ -301,50 +295,52 @@ public class ModelLightManager {
 	private void resolvePlayer(PlayerState state, SceneContext sceneContext) {
 		Player player = state.player;
 		PlayerComposition composition = player.getPlayerComposition();
-		if (composition == null) {
+		if (composition == null || composition.getTransformedNpcId() != -1 || profiledEquipmentIds.isEmpty()) {
 			removeModelLights(sceneContext, state);
-			state.equipmentIds = null;
+			state.invalidate();
 			return;
 		}
 
-		int[] equipmentIds = composition.getEquipmentIds();
+		int[] equipment = composition.getEquipmentIds();
 		int revision = store.getRevision();
-		if (Arrays.equals(equipmentIds, state.equipmentIds) && revision == state.revision)
+		int animation = player.getAnimation();
+		int gender = composition.getGender();
+		int cycle = client.getGameCycle();
+		if (Arrays.equals(equipment, state.equipmentIds) && revision == state.revision &&
+			animation == state.animation && gender == state.gender &&
+			(state.retryCycle == 0 || cycle < state.retryCycle))
 			return;
 
-		Model model = player.getModel();
-		if (model == null) {
-			removeModelLights(sceneContext, state);
-			state.equipmentIds = null;
+		state.equipmentIds = equipment.clone();
+		state.revision = revision;
+		state.animation = animation;
+		state.gender = gender;
+		state.retryCycle = 0;
+		removeModelLights(sceneContext, state);
+
+		int[] effective = equipmentParts.effectiveEquipment(player);
+		if (effective == null) {
+			state.retryCycle = cycle + 30;
 			return;
 		}
+		if (Arrays.stream(effective).noneMatch(id -> profiledEquipmentIds.contains(id - PlayerComposition.ITEM_OFFSET)))
+			return;
 
-		state.equipmentIds = equipmentIds.clone();
-		state.revision = revision;
-
-		removeModelLights(sceneContext, state);
-		state.lights.clear();
-
-		Set<Integer> wornItemIds = getWornItemIds(composition);
-		Map<String, ModelLightProfile> profiles = store.snapshotAll();
-		ModelSnapshot snapshot = ModelSnapshot.capture(model);
-		try {
-			for (ModelSnapshot.Piece piece : snapshot.getPieces()) {
-				for (Map.Entry<String, ModelLightProfile> entry : profiles.entrySet()) {
-					ModelLightProfile profile = entry.getValue();
-					if (!piece.getMeshKey().equals(profile.getMeshKey())
-						|| profile.isNpcProfile()
-						|| profile.isObjectProfile()
-						|| !profile.isEnabled()
-						|| (!profile.getItemIds().isEmpty() && Collections.disjoint(profile.getItemIds(), wornItemIds))
-						|| (profile.getVertices().isEmpty() && profile.getTriangles().isEmpty()))
-						continue;
-
-					spawnPieceLights(sceneContext, player, null, profile, entry.getKey(), snapshot, piece, state.lights);
-				}
+		try (var snapshot = equipmentParts.capture(player, effective, gender)) {
+			if (snapshot == null) {
+				state.retryCycle = cycle + 30;
+				return;
 			}
-		} finally {
-			snapshot.release();
+			for (ModelSnapshot.Piece piece : snapshot.getPieces()) {
+				String key = store.findProfileKey(piece.getMeshKey(), Set.of(piece.getItemId()));
+				if (key == null)
+					continue;
+				ModelLightProfile profile = store.get(key);
+				if (profile == null || !profile.isEnabled() ||
+					profile.getExpectedFaceCount() != piece.getFaces().length)
+					continue;
+				spawnPieceLights(sceneContext, player, null, profile, key, snapshot, piece, state.lights);
+			}
 		}
 	}
 
@@ -887,6 +883,8 @@ public class ModelLightManager {
 	}
 
 	private void updateVertexPositions(Actor actor, List<Light> lights) {
+		if (lights.isEmpty())
+			return;
 		Model model = actor.getModel();
 		if (model == null)
 			return;
@@ -1329,6 +1327,9 @@ public class ModelLightManager {
 	private static final class PlayerState {
 		final Player player;
 		int[] equipmentIds;
+		int animation;
+		int gender;
+		int retryCycle;
 		int revision = -1;
 		final List<Light> lights = new ArrayList<>();
 
@@ -1338,6 +1339,7 @@ public class ModelLightManager {
 
 		void invalidate() {
 			equipmentIds = null;
+			retryCycle = 0;
 			revision = -1;
 		}
 	}

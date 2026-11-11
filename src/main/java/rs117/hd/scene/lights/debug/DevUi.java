@@ -26,7 +26,6 @@ import net.runelite.client.ui.ColorScheme;
 public final class DevUi {
 	public static final int LABEL_WIDTH = 108;
 	public static final int FIELD_HEIGHT = 30;
-	public static final int LEFT_WIDTH = 440;
 	public static final float BODY_FONT_SIZE = 13f;
 	public static final float SEGMENT_FONT_SIZE = 13f;
 

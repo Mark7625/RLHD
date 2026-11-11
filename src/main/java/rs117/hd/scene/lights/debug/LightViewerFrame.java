@@ -3,14 +3,15 @@ package rs117.hd.scene.lights.debug;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Container;
+import java.awt.Font;
 import java.awt.CardLayout;
 import java.awt.Dimension;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -27,8 +28,8 @@ import javax.swing.JColorChooser;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
+import javax.swing.ImageIcon;
 import javax.swing.JLabel;
-import javax.swing.JLayeredPane;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -137,21 +138,34 @@ public class LightViewerFrame extends JFrame {
 	private static class Row {
 		final int pieceIndex;
 		final int sightingId;
+		final List<Integer> equipmentParts;
+
+		Row(List<Integer> equipmentParts) {
+			this(equipmentParts.get(0), -1, equipmentParts);
+		}
 
 		Row(int pieceIndex) {
 			this(pieceIndex, -1);
 		}
 
 		Row(int pieceIndex, int sightingId) {
+			this(pieceIndex, sightingId, List.of());
+		}
+
+		private Row(int pieceIndex, int sightingId, List<Integer> equipmentParts) {
 			this.pieceIndex = pieceIndex;
 			this.sightingId = sightingId;
+			this.equipmentParts = equipmentParts;
+		}
+
+		boolean containsPart(int index) {
+			return pieceIndex == index || equipmentParts.contains(index);
 		}
 	}
 
 	private final Callbacks callbacks;
 	private final ViewportPanel viewport;
-	private final JPanel viewportToolbar;
-	private final JLayeredPane viewportLayer = new JLayeredPane();
+
 
 	private final DefaultListModel<String> rowListModel = new DefaultListModel<>();
 	private final JList<String> rowList;
@@ -159,17 +173,23 @@ public class LightViewerFrame extends JFrame {
 
 	private final JComboBox<String> modeSelector = new JComboBox<>(
 		new String[] { "Player", "World objects", "NPCs", "Graphics" });
-	private final JTextField idField = new JTextField();
+	private final JTextField idField = new JTextField(7);
 	private final JPanel loadPanel = new JPanel(new BorderLayout(4, 0));
 
 	private final JButton placementNavBtn = new JButton("Placement");
 	private final JButton definitionsNavBtn = new JButton("Definitions");
+	private final JButton particlesNavBtn = new JButton("Particles");
+	private final JToggleButton vertexPickButton = new JToggleButton("Vert");
+	private final ParticlePropertiesPanel particlesPanel;
+	private boolean editingParticles;
 	private final CardLayout cardLayout = new CardLayout();
 	private final JPanel cards = new JPanel(cardLayout);
 
 	private final JComboBox<String> lightBrushCombo = new JComboBox<>();
 	private final JLabel editorHint = new JLabel();
 	private final JTextField pieceNameField = new JTextField();
+	private final JComboBox<String> partSelector = new JComboBox<>();
+	private JComponent partSelectorRow;
 	private final JTextField itemIdsField = new JTextField();
 	private final JSpinner offsetXSpinner = new JSpinner(new SpinnerNumberModel(0.0, -256.0, 256.0, 0.5));
 	private final JSpinner offsetYSpinner = new JSpinner(new SpinnerNumberModel(0.0, -256.0, 256.0, 0.5));
@@ -248,21 +268,28 @@ public class LightViewerFrame extends JFrame {
 	private String selectedDefinitionId;
 
 	public LightViewerFrame(Callbacks callbacks) {
-		super("Lights dev");
+		super("117 HD Model Workspace");
+		setIconImage(icon("box").getImage());
 		setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
 		this.callbacks = callbacks;
 
 		viewport = new ViewportPanel(
-			(pick, action) -> callbacks.pickClicked(pick, action),
-			(indices, add, target) -> callbacks.boxSelected(indices, add, target)
+			this::pickModel,
+			(indices, add, target) -> {
+				if (!editingParticles)
+					callbacks.boxSelected(indices, add, target);
+			}
 		);
+		particlesPanel = new ParticlePropertiesPanel(viewport);
+		viewport.setShowGrid(true);
 		viewport.setOnHoverChanged(this::updateHoverHint);
-		viewportToolbar = buildViewportToolbar();
 
 		rowList = new JList<>(rowListModel);
 		rowList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		rowList.setFixedCellHeight(28);
 		DevUi.styleList(rowList);
+		ImageIcon rootIcon = icon("list-tree");
+		ImageIcon modelIcon = icon("box");
 		rowList.setCellRenderer(new DefaultListCellRenderer() {
 			@Override
 			public Component getListCellRendererComponent(
@@ -270,7 +297,13 @@ public class LightViewerFrame extends JFrame {
 			) {
 				super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
 				DevUi.applyListRendererFont(this);
-				setBorder(BorderFactory.createEmptyBorder(2, 10, 2, 8));
+				setBorder(BorderFactory.createEmptyBorder(2, index == 0 ? 10 : 20, 2, 8));
+				setIcon(index == 0 ? rootIcon : modelIcon);
+				setIconTextGap(7);
+				if (isSelected) {
+					setBackground(new Color(75, 62, 52));
+					setForeground(new Color(255, 209, 162));
+				}
 				return this;
 			}
 		});
@@ -285,30 +318,38 @@ public class LightViewerFrame extends JFrame {
 				applyInSceneCaptureRow(row.sightingId);
 				return;
 			}
-			if (row.pieceIndex == appliedPieceIndex)
-				return;
-			appliedPieceIndex = row.pieceIndex;
-			viewport.setPieceFilter(row.pieceIndex);
-			loadPieceSettings();
-			refreshMarkers();
-			updateHint();
+			applyPieceRow(row, appliedPieceIndex);
 		});
 
 		buildUi();
+		applyWorkspaceFonts(getContentPane());
 		addWindowListener(new WindowAdapter() {
 			@Override
 			public void windowClosed(WindowEvent e) {
+				particlesPanel.setActive(false);
 				releaseSnapshot();
 			}
 		});
 	}
 
+	private void pickModel(ViewportPanel.Pick pick, ViewportPanel.PickAction action) {
+		if (editingParticles)
+			particlesPanel.pick(snapshot, appliedPieceIndex, pick, action);
+		else
+			callbacks.pickClicked(pick, action);
+	}
+
+	private static ImageIcon icon(String name) {
+		var url = LightViewerFrame.class.getResource("icons/" + name + ".png");
+		return url == null ? new ImageIcon() : new ImageIcon(url);
+	}
+
 	private void buildUi() {
-		JButton refresh = new JButton("Refresh");
+		JButton refresh = new JButton("Refresh", icon("refresh-cw"));
 		refresh.setToolTipText("Recapture the target (~3s animation recording for players)");
 		refresh.addActionListener(e -> callbacks.refreshSnapshot());
 
-		JButton pose = new JButton("Pose");
+		JButton pose = new JButton("Pose", icon("person-standing"));
 		pose.setToolTipText("NPC only: pose cache mesh at every frame of an animation ID");
 		pose.addActionListener(e -> {
 			String input = javax.swing.JOptionPane.showInputDialog(this, "Animation ID:");
@@ -321,11 +362,11 @@ public class LightViewerFrame extends JFrame {
 			} catch (NumberFormatException ignored) {}
 		});
 
-		JButton saveModels = new JButton("Save placement");
+		JButton saveModels = new JButton("Save placement", icon("save"));
 		saveModels.setToolTipText("Write model_lights.json");
 		saveModels.addActionListener(e -> callbacks.saveModelLights());
 
-		JButton saveDefs = new JButton("Save lights");
+		JButton saveDefs = new JButton("Save lights", icon("save"));
 		saveDefs.setToolTipText("Write lights.json");
 		saveDefs.addActionListener(e -> callbacks.saveLightDefinitions());
 
@@ -354,35 +395,54 @@ public class LightViewerFrame extends JFrame {
 		loadPanel.add(idField, BorderLayout.CENTER);
 		loadPanel.add(loadBtn, BorderLayout.EAST);
 
-		JPanel actionRow = new JPanel(new java.awt.GridLayout(1, 4, 6, 0));
-		actionRow.setOpaque(false);
-		actionRow.add(refresh);
-		actionRow.add(pose);
-		actionRow.add(saveModels);
-		actionRow.add(saveDefs);
-
-		JPanel top = new JPanel();
-		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
+		JPanel top = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 5));
 		DevUi.themePanel(top);
+		JLabel workspaceTitle = DevUi.titleLabel("117 HD  /  Model Workspace");
+		workspaceTitle.setIcon(icon("box"));
+		workspaceTitle.setIconTextGap(8);
+		top.add(workspaceTitle);
+		top.add(Box.createHorizontalStrut(10));
 		top.add(modeSelector);
-		top.add(Box.createVerticalStrut(6));
-		top.add(actionRow);
-		top.add(Box.createVerticalStrut(6));
 		top.add(loadPanel);
+		updateLoadPanel();
+		top.add(refresh);
+		top.add(pose);
+		top.add(saveModels);
+		top.add(saveDefs);
 
+		placementNavBtn.setText("Lights");
+		placementNavBtn.setIcon(icon("lightbulb"));
+		definitionsNavBtn.setIcon(icon("sliders-horizontal"));
+		particlesNavBtn.setIcon(icon("sparkles"));
 		placementNavBtn.addActionListener(e -> showCard("placement"));
 		definitionsNavBtn.addActionListener(e -> showCard("definitions"));
+		particlesNavBtn.addActionListener(e -> showCard("particles"));
+		cards.add(buildPlacementPanel(), "placement");
+		cards.add(buildDefinitionsPanel(), "definitions");
+		cards.add(DevUi.scroll(particlesPanel), "particles");
 		showCard("placement");
 
-		cards.add(buildPlacementPanel(top), "placement");
-		cards.add(buildDefinitionsPanel(), "definitions");
+		JPanel outliner = new JPanel(new BorderLayout(0, 0));
+		DevUi.themePanel(outliner);
+		outliner.add(panelHeader("Outliner", "list-tree"), BorderLayout.NORTH);
+		var listScroll = new JScrollPane(rowList);
+		listScroll.setBorder(BorderFactory.createEmptyBorder());
+		outliner.add(listScroll, BorderLayout.CENTER);
+		outliner.setMinimumSize(new Dimension(190, 0));
 
-		JPanel leftRoot = new JPanel(new BorderLayout(0, 4));
-		DevUi.themePanel(leftRoot);
-		leftRoot.setBorder(BorderFactory.createEmptyBorder(8, 10, 10, 8));
-		leftRoot.add(DevUi.segmentBar(placementNavBtn, definitionsNavBtn), BorderLayout.NORTH);
-		leftRoot.add(cards, BorderLayout.CENTER);
-		leftRoot.setPreferredSize(new Dimension(DevUi.LEFT_WIDTH, 0));
+		JPanel properties = new JPanel(new BorderLayout());
+		DevUi.themePanel(properties);
+		JPanel propertiesHeader = new JPanel(new BorderLayout());
+		DevUi.themePanel(propertiesHeader);
+		propertiesHeader.add(panelHeader("Properties", "sliders-horizontal"), BorderLayout.NORTH);
+		JPanel propertyTabs = new JPanel(new BorderLayout());
+		DevUi.themePanel(propertyTabs);
+		propertyTabs.add(DevUi.segmentBar(placementNavBtn, definitionsNavBtn, particlesNavBtn), BorderLayout.NORTH);
+		propertyTabs.add(partSelectorRow, BorderLayout.CENTER);
+		propertiesHeader.add(propertyTabs, BorderLayout.CENTER);
+		properties.add(propertiesHeader, BorderLayout.NORTH);
+		properties.add(cards, BorderLayout.CENTER);
+		properties.setMinimumSize(new Dimension(300, 0));
 
 		scrubSlider.addChangeListener(e -> applyScrub());
 		scrubPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
@@ -390,44 +450,60 @@ public class LightViewerFrame extends JFrame {
 		scrubPanel.add(scrubLabel, BorderLayout.EAST);
 		scrubPanel.setVisible(false);
 
-		viewportLayer.setLayout(null);
-		viewportLayer.add(viewport, JLayeredPane.DEFAULT_LAYER);
-		viewportLayer.add(viewportToolbar, JLayeredPane.PALETTE_LAYER);
-		viewportLayer.addComponentListener(new ComponentAdapter() {
-			@Override
-			public void componentResized(ComponentEvent e) {
-				layoutViewportOverlay();
-			}
-		});
+		JPanel canvas = new JPanel(new BorderLayout());
+		DevUi.themePanel(canvas);
+		var canvasHeader = new JPanel(new BorderLayout());
+		DevUi.themePanel(canvasHeader);
+		canvasHeader.add(panelHeader("3D Viewport", "box"), BorderLayout.NORTH);
+		var toolbarScroll = new JScrollPane(buildViewportToolbar(),
+			ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER, ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+		toolbarScroll.setBorder(BorderFactory.createEmptyBorder());
+		canvasHeader.add(toolbarScroll, BorderLayout.CENTER);
+		canvas.add(canvasHeader, BorderLayout.NORTH);
+		canvas.add(viewport, BorderLayout.CENTER);
+		canvas.add(scrubPanel, BorderLayout.SOUTH);
+		canvas.setMinimumSize(new Dimension(360, 0));
 
-		JPanel right = new JPanel(new BorderLayout());
-		right.add(viewportLayer, BorderLayout.CENTER);
-		right.add(scrubPanel, BorderLayout.SOUTH);
+		JSplitPane center = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, canvas, properties);
+		center.setResizeWeight(1);
+		center.setContinuousLayout(true);
+		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, outliner, center);
+		split.setResizeWeight(0);
+		split.setContinuousLayout(true);
 
-		JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftRoot, right);
-		split.setDividerLocation(DevUi.LEFT_WIDTH);
-		DevUi.themeFrame(split);
-		setContentPane(split);
-		setSize(1190, 780);
+		JPanel workspace = new JPanel(new BorderLayout());
+		DevUi.themePanel(workspace);
+		workspace.add(top, BorderLayout.NORTH);
+		workspace.add(split, BorderLayout.CENTER);
+		setContentPane(workspace);
+		setMinimumSize(new Dimension(940, 620));
+		setSize(1470, 870);
+		split.setDividerLocation(255);
+		center.setDividerLocation(815);
 		setLocationRelativeTo(null);
-		addComponentListener(new ComponentAdapter() {
-			@Override
-			public void componentShown(ComponentEvent e) {
-				layoutViewportOverlay();
-			}
-		});
+
 	}
 
-	private JPanel buildPlacementPanel(JPanel top) {
-		JPanel panel = new JPanel(new BorderLayout(0, 6));
-		DevUi.themePanel(panel);
-		panel.add(top, BorderLayout.NORTH);
+	private static void applyWorkspaceFonts(Component component) {
+		Font font = component.getFont();
+		if (font != null)
+			component.setFont(new Font(Font.SANS_SERIF, font.getStyle(), Math.max(12, font.getSize())));
+		if (component instanceof Container)
+			for (Component child : ((Container) component).getComponents())
+				applyWorkspaceFonts(child);
+	}
 
-		JScrollPane listScroll = new JScrollPane(rowList);
-		listScroll.setBorder(BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR));
-		listScroll.getViewport().setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		listScroll.setPreferredSize(new Dimension(0, 160));
+	private static JLabel panelHeader(String text, String iconName) {
+		JLabel header = DevUi.titleLabel(text);
+		header.setIcon(icon(iconName));
+		header.setIconTextGap(8);
+		header.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+		header.setOpaque(true);
+		header.setBackground(new Color(38, 39, 43));
+		return header;
+	}
 
+	private JComponent buildPlacementPanel() {
 		DevUi.styleCombo(lightBrushCombo);
 		lightBrushCombo.addActionListener(e -> {
 			if (populating)
@@ -436,6 +512,21 @@ public class LightViewerFrame extends JFrame {
 			if (desc != null && !desc.isEmpty())
 				callbacks.onLightBrushChanged(desc);
 		});
+
+		DevUi.styleCombo(partSelector);
+		partSelector.addActionListener(e -> {
+			if (populating)
+				return;
+			int rowIndex = rowList.getSelectedIndex();
+			int partIndex = partSelector.getSelectedIndex();
+			if (rowIndex < 0 || rowIndex >= rows.size())
+				return;
+			var parts = rows.get(rowIndex).equipmentParts;
+			if (partIndex >= 0 && partIndex < parts.size())
+				applyPiece(parts.get(partIndex));
+		});
+		partSelectorRow = DevUi.formRow("Model part", partSelector);
+		partSelectorRow.setVisible(false);
 
 		DevUi.sizeField(pieceNameField);
 		DevUi.sizeField(itemIdsField);
@@ -503,12 +594,7 @@ public class LightViewerFrame extends JFrame {
 			DevUi.vectorRow("Offset", offsetXSpinner, offsetYSpinner, offsetZSpinner)).root);
 		editorBody.add(DevUi.section("Selected anchor", true, null, anchorPanel).root);
 
-		JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, DevUi.scroll(editorBody));
-		split.setResizeWeight(0.38);
-		split.setDividerLocation(180);
-		split.setContinuousLayout(true);
-		panel.add(split, BorderLayout.CENTER);
-		return panel;
+		return DevUi.scroll(editorBody);
 	}
 
 	private JPanel buildDefinitionsPanel() {
@@ -652,7 +738,11 @@ public class LightViewerFrame extends JFrame {
 		JToggleButton placeBtn = new JToggleButton("Place", true);
 		JToggleButton deleteBtn = new JToggleButton("Remove");
 		JToggleButton faceBtn = new JToggleButton("Face", true);
-		JToggleButton vertBtn = new JToggleButton("Vert");
+		JToggleButton vertBtn = vertexPickButton;
+		setToolIcon(placeBtn, "mouse-pointer-2", "Place anchor (P)");
+		setToolIcon(deleteBtn, "eraser", "Remove anchor (X)");
+		setToolIcon(faceBtn, "triangle", "Pick faces (T)");
+		setToolIcon(vertBtn, "dot", "Pick vertices (V)");
 
 		DevUi.styleSegmentButton(placeBtn, true);
 		DevUi.styleSegmentButton(deleteBtn, false);
@@ -686,16 +776,21 @@ public class LightViewerFrame extends JFrame {
 
 		JButton topBtn = new JButton("Top");
 		JButton sideBtn = new JButton("Side");
-		JButton behindBtn = new JButton("Behind");
+		JButton behindBtn = new JButton("Front");
 		JButton colorsBtn = new JButton("Colors");
 		JButton wireBtn = new JButton("Wire");
 		JButton dotsBtn = new JButton("Dots");
+		JToggleButton gridBtn = new JToggleButton(icon("grid"), true);
+		gridBtn.setToolTipText("Toggle viewport grid");
+		gridBtn.getAccessibleContext().setAccessibleName("Viewport grid");
+		DevUi.compactButton(gridBtn);
+		gridBtn.addActionListener(e -> viewport.setShowGrid(gridBtn.isSelected()));
 		topBtn.addActionListener(e -> viewport.setViewTop());
 		sideBtn.addActionListener(e -> viewport.setViewRight());
 		behindBtn.addActionListener(e -> viewport.setViewFront());
-		colorsBtn.setToolTipText("Filled face colours from the model (C)");
-		wireBtn.setToolTipText("Triangle wireframe (W)");
-		dotsBtn.setToolTipText("Vertex dots (D)");
+		setToolIcon(colorsBtn, "palette", "Model face colors (C)");
+		setToolIcon(wireBtn, "layers", "Triangle wireframe (W)");
+		setToolIcon(dotsBtn, "grip", "Vertex dots (D)");
 		colorsBtn.addActionListener(e -> toggleViewportFaceColors(colorsBtn));
 		wireBtn.addActionListener(e -> toggleViewportWireframe(wireBtn));
 		dotsBtn.addActionListener(e -> toggleViewportVertices(dotsBtn));
@@ -709,8 +804,8 @@ public class LightViewerFrame extends JFrame {
 		bar.setOpaque(true);
 		bar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		bar.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createLineBorder(ColorScheme.MEDIUM_GRAY_COLOR, 2),
-			BorderFactory.createEmptyBorder(6, 8, 6, 8)));
+			BorderFactory.createMatteBorder(0, 0, 1, 0, ColorScheme.MEDIUM_GRAY_COLOR),
+			BorderFactory.createEmptyBorder(3, 8, 2, 8)));
 
 		JPanel modes = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
 		modes.setOpaque(false);
@@ -725,8 +820,16 @@ public class LightViewerFrame extends JFrame {
 		modes.add(colorsBtn);
 		modes.add(wireBtn);
 		modes.add(dotsBtn);
+		modes.add(gridBtn);
 		bar.add(modes, BorderLayout.CENTER);
 		return bar;
+	}
+
+	private static void setToolIcon(javax.swing.AbstractButton button, String iconName, String label) {
+		button.setIcon(icon(iconName));
+		button.setText(null);
+		button.setToolTipText(label);
+		button.getAccessibleContext().setAccessibleName(label);
 	}
 
 	private void toggleViewportFaceColors(JButton button) {
@@ -744,23 +847,16 @@ public class LightViewerFrame extends JFrame {
 		DevUi.styleSegmentButton(button, viewport.isShowVertices());
 	}
 
-	private void layoutViewportOverlay() {
-		if (viewportLayer == null)
-			return;
-		Dimension size = viewportLayer.getSize();
-		if (size.width <= 0 || size.height <= 0)
-			return;
-		viewport.setBounds(0, 0, size.width, size.height);
-		Dimension toolbar = viewportToolbar.getPreferredSize();
-		int w = Math.min(toolbar.width, size.width - 16);
-		viewportToolbar.setBounds(8, 8, w, toolbar.height);
-	}
-
 	private void showCard(String name) {
 		cardLayout.show(cards, name);
-		boolean placement = "placement".equals(name);
-		DevUi.styleSegmentButton(placementNavBtn, placement);
-		DevUi.styleSegmentButton(definitionsNavBtn, !placement);
+		editingParticles = "particles".equals(name);
+		DevUi.styleSegmentButton(placementNavBtn, "placement".equals(name));
+		DevUi.styleSegmentButton(definitionsNavBtn, "definitions".equals(name));
+		DevUi.styleSegmentButton(particlesNavBtn, editingParticles);
+		vertexPickButton.setEnabled(!editingParticles);
+		viewport.setFacePickingOnly(editingParticles);
+		particlesPanel.setActive(editingParticles);
+		refreshMarkers();
 	}
 
 	private void updateLoadPanel() {
@@ -971,9 +1067,11 @@ public class LightViewerFrame extends JFrame {
 
 	public void setSnapshot(@Nullable ModelSnapshot snapshot, @Nullable String targetRootLabel) {
 		clearRecording();
+		selectAnchor(null);
 		releaseSnapshot();
 		this.snapshot = snapshot;
 		this.targetRootLabel = targetRootLabel;
+		particlesPanel.select(null);
 		if (snapshot != null)
 			viewport.setSnapshot(snapshot);
 		else
@@ -1038,8 +1136,8 @@ public class LightViewerFrame extends JFrame {
 	}
 
 	public void refreshMarkers() {
-		viewport.setSelectedFaces(callbacks.litFaces(appliedPieceIndex));
-		viewport.setSelectedVertices(callbacks.litVertices(appliedPieceIndex));
+		viewport.setSelectedFaces(editingParticles ? Set.of() : callbacks.litFaces(appliedPieceIndex));
+		viewport.setSelectedVertices(editingParticles ? Set.of() : callbacks.litVertices(appliedPieceIndex));
 		viewport.repaint();
 	}
 
@@ -1060,7 +1158,8 @@ public class LightViewerFrame extends JFrame {
 
 	public void rebuildPieceListRow(int pieceIndex) {
 		for (int i = 0; i < rows.size(); i++) {
-			if (rows.get(i).pieceIndex == pieceIndex) {
+			Row row = rows.get(i);
+			if (row.equipmentParts.isEmpty() && row.pieceIndex == pieceIndex) {
 				rowListModel.set(i, callbacks.getPieceListLabel(pieceIndex));
 				break;
 			}
@@ -1090,12 +1189,27 @@ public class LightViewerFrame extends JFrame {
 		} else if (snapshot != null) {
 			String root = targetRootLabel != null ? targetRootLabel : "Player";
 			addRow(root + " (" + snapshot.getVertexCount() + "v)", new Row(-1));
-			for (int i = 0; i < snapshot.getPieces().size(); i++)
-				addRow(callbacks.getPieceListLabel(i), new Row(i));
+			if (selectedMode == 0) {
+				var groups = new LinkedHashMap<Integer, List<Integer>>();
+				for (int i = 0; i < snapshot.getPieces().size(); i++) {
+					int itemId = snapshot.getPieces().get(i).getItemId();
+					if (itemId >= 0)
+						groups.computeIfAbsent(itemId, key -> new ArrayList<>()).add(i);
+				}
+				for (var entry : groups.entrySet()) {
+					List<Integer> parts = entry.getValue();
+					var first = snapshot.getPieces().get(parts.get(0));
+					String label = first.getLabel() + " (" + parts.size() + (parts.size() == 1 ? " part)" : " parts)");
+					addRow(label, new Row(parts));
+				}
+			} else {
+				for (int i = 0; i < snapshot.getPieces().size(); i++)
+					addRow(callbacks.getPieceListLabel(i), new Row(i));
+			}
 		}
 
 		for (int i = 0; i < rows.size(); i++) {
-			if (rows.get(i).pieceIndex == keepPiece) {
+			if (rows.get(i).containsPart(keepPiece)) {
 				selectRow = i;
 				break;
 			}
@@ -1110,27 +1224,57 @@ public class LightViewerFrame extends JFrame {
 
 	private void finishListRebuild(int selectRow) {
 		rebuildingRows = false;
-		if (rows.isEmpty())
+		if (rows.isEmpty()) {
+			applyPieceRow(new Row(-1), -1);
 			return;
-		Row target = rows.get(Math.max(0, Math.min(selectRow, rows.size() - 1)));
-		if (target.sightingId < 0) {
-			appliedPieceIndex = target.pieceIndex;
-			viewport.setPieceFilter(target.pieceIndex);
-			rebuildingRows = true;
-			rowList.setSelectedIndex(Math.max(0, Math.min(selectRow, rows.size() - 1)));
-			rebuildingRows = false;
-			refreshMarkers();
-			updateHint();
-			loadPieceSettings();
-		} else {
-			rowList.setSelectedIndex(Math.max(0, Math.min(selectRow, rows.size() - 1)));
 		}
+		int index = Math.max(0, Math.min(selectRow, rows.size() - 1));
+		Row target = rows.get(index);
+		if (target.sightingId < 0) {
+			rebuildingRows = true;
+			rowList.setSelectedIndex(index);
+			rebuildingRows = false;
+			applyPieceRow(target, appliedPieceIndex);
+		} else {
+			partSelectorRow.setVisible(false);
+			rowList.setSelectedIndex(index);
+		}
+	}
+
+	private void applyPieceRow(Row row, int preferredPiece) {
+		int part = row.equipmentParts.indexOf(preferredPiece);
+		if (part < 0)
+			part = 0;
+		populating = true;
+		partSelector.removeAllItems();
+		for (int index : row.equipmentParts) {
+			var piece = snapshot.getPieces().get(index);
+			partSelector.addItem("Model " + piece.getModelId() + " (" + piece.getFaces().length + " faces)");
+		}
+		if (!row.equipmentParts.isEmpty())
+			partSelector.setSelectedIndex(part);
+		partSelectorRow.setVisible(!row.equipmentParts.isEmpty());
+		partSelector.setEnabled(row.equipmentParts.size() > 1);
+		populating = false;
+		applyPiece(row.equipmentParts.isEmpty() ? row.pieceIndex : row.equipmentParts.get(part));
+	}
+
+	private void applyPiece(int index) {
+		if (appliedPieceIndex != index)
+			selectAnchor(null);
+		appliedPieceIndex = index;
+		viewport.setPieceFilter(index);
+		particlesPanel.select(snapshot != null && index >= 0 ? snapshot.getPieces().get(index) : null);
+		loadPieceSettings();
+		refreshMarkers();
+		updateHint();
 	}
 
 	private void loadPieceSettings() {
 		boolean show = appliedPieceIndex >= 0 && snapshot != null;
 		pieceNameField.setEnabled(show);
 		itemIdsField.setEnabled(show);
+		itemIdsField.setEditable(false);
 		offsetXSpinner.setEnabled(show);
 		offsetYSpinner.setEnabled(show);
 		offsetZSpinner.setEnabled(show);
@@ -1167,9 +1311,9 @@ public class LightViewerFrame extends JFrame {
 
 	private void updateHint() {
 		if (appliedPieceIndex >= 0) {
-			String pick = viewport.getPickTarget() == ViewportPanel.PickTarget.FACE ? "triangles" : "vertices";
-			String mode = viewport.getEditMode() == ViewportPanel.EditMode.DELETE ? "Remove" : "Place";
-			editorHint.setText(mode + " mode — pick a light definition, then click " + pick);
+			String pick = viewport.getPickTarget() == ViewportPanel.PickTarget.FACE ? "face" : "vertex";
+			editorHint.setText(viewport.getEditMode() == ViewportPanel.EditMode.DELETE ?
+				"Click an anchor to remove it." : "Choose a light and click a " + pick + ".");
 		} else if (selectedMode > 0) {
 			editorHint.setText("Select a sighting and Load, or type an ID");
 		} else if (snapshot != null) {

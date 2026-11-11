@@ -171,8 +171,11 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 			if (frame == null)
 				return;
 			frame.setLoading(false);
-			if (result == null && captureMode > 0) {
-				frame.showHint("Could not capture mesh — try Refresh, then Load again");
+			if (result == null) {
+				viewerSnapshot = null;
+				pieceProfileKeys.clear();
+				frame.setSnapshot(null, null);
+				frame.showHint("Could not verify the model parts. Try Refresh once the model loads.");
 				return;
 			}
 			viewerSnapshot = result != null ? result.snapshot : null;
@@ -580,11 +583,21 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 		ModelLightProfile profile = profileForPiece(pieceIndex);
 		if (profile != null && profile.getName() != null && !profile.getName().isEmpty())
 			return profile.getName();
+		if (viewerSnapshot != null && pieceIndex >= 0 && pieceIndex < viewerSnapshot.getPieces().size()) {
+			String label = viewerSnapshot.getPieces().get(pieceIndex).getLabel();
+			if (label != null)
+				return label;
+		}
 		return "Piece " + (pieceIndex + 1);
 	}
 
 	@Override
 	public String getPieceItemIdsText(int pieceIndex) {
+		if (viewerSnapshot != null && pieceIndex >= 0 && pieceIndex < viewerSnapshot.getPieces().size()) {
+			int itemId = viewerSnapshot.getPieces().get(pieceIndex).getItemId();
+			if (itemId >= 0)
+				return Integer.toString(itemId);
+		}
 		ModelLightProfile profile = profileForPiece(pieceIndex);
 		if (profile == null || profile.getItemIds().isEmpty())
 			return "";
@@ -623,27 +636,14 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 			}
 			store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
 		} else {
-			Set<Integer> itemIds = parseItemIds(itemIdsText);
-			@Nullable String existingKey = store.findProfileKey(piece.getMeshKey(), itemIds);
-			if (existingKey != null) {
-				profileKey = existingKey;
-				store.setItemIds(profileKey, itemIds);
-				store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
-			} else {
-				@Nullable String currentKey = pieceProfileKeys.get(pieceIndex);
-				ModelLightProfile current = currentKey != null ? store.get(currentKey) : null;
-				if (current != null
-					&& piece.getMeshKey().equals(current.getMeshKey())
-					&& isEquipmentProfile(current)) {
-					profileKey = currentKey;
-					store.setItemIds(profileKey, itemIds);
-					store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
-				} else {
-					profileKey = store.ensureProfileFor(piece.getMeshKey(), defaultName, itemIds);
-					if (!trimmedName.isEmpty())
-						store.rename(profileKey, trimmedName);
-				}
+			if (piece.getItemId() < 0)
+				return;
+			profileKey = store.ensureEquipmentProfile(piece, getPieceName(pieceIndex));
+			if (profileKey == null) {
+				frame.showHint("The equipment part's face count changed. Delete its old profile before re-anchoring.");
+				return;
 			}
+			store.rename(profileKey, trimmedName.isEmpty() ? null : trimmedName);
 		}
 
 		pieceProfileKeys.put(pieceIndex, profileKey);
@@ -675,6 +675,12 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 
 		ModelSnapshot.Piece piece = viewerSnapshot.getPieces().get(pieceIndex);
 		String name = getPieceName(pieceIndex);
+		if (piece.getItemId() >= 0) {
+			int[] faces = piece.getFaces();
+			String partLabel = piece.getLabel().equals(name) ? name : name + " | " + piece.getLabel();
+			return partLabel + " | item " + piece.getItemId() + " | model " + piece.getModelId() +
+				" | faces " + faces[0] + "–" + faces[faces.length - 1];
+		}
 		String itemSuffix = formatItemSuffix(profileForPiece(pieceIndex));
 		return name + " (" + piece.getVertices().length + "v, " + piece.getFaces().length + "f)" + itemSuffix;
 	}
@@ -836,8 +842,12 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 			return store.ensureProfileForObject(piece.getMeshKey(), fallback, viewerObjectId);
 		if (captureMode == 2 && viewerNpcId >= 0)
 			return store.ensureProfileForNpc(piece.getMeshKey(), fallback, viewerNpcId);
-		Set<Integer> itemIds = frame != null ? parseItemIds(frame.getItemIdsFieldText()) : Set.of();
-		return store.ensureProfileFor(piece.getMeshKey(), fallback, itemIds);
+		if (piece.getItemId() < 0)
+			return null;
+		String key = store.ensureEquipmentProfile(piece, piece.getLabel());
+		if (key == null && frame != null)
+			frame.showHint("The equipment part's face count changed. Delete its old profile before re-anchoring.");
+		return key;
 	}
 
 	@Nullable
@@ -860,7 +870,8 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 			ModelLightProfile cachedProfile = store.get(cached);
 			if (cachedProfile != null
 				&& piece.getMeshKey().equals(cachedProfile.getMeshKey())
-				&& matchesCaptureTarget(cachedProfile))
+				&& matchesCaptureTarget(cachedProfile)
+				&& (piece.getItemId() < 0 || cachedProfile.getExpectedFaceCount() == piece.getFaces().length))
 				return cached;
 		}
 
@@ -888,26 +899,12 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 				pieceProfileKeys.put(pieceIndex, exact);
 				return exact;
 			}
-		} else {
-			Set<Integer> itemIds = frame != null && frame.getAppliedPieceIndex() == pieceIndex
-				? parseItemIds(frame.getItemIdsFieldText())
-				: Set.of();
-
-			@Nullable String exact = store.findProfileKey(piece.getMeshKey(), itemIds);
-			if (exact != null) {
-				ModelLightProfile profile = store.get(exact);
-				if (profile != null && isEquipmentProfile(profile)) {
-					pieceProfileKeys.put(pieceIndex, exact);
-					return exact;
-				}
-			}
-
-			for (Map.Entry<String, ModelLightProfile> entry : store.snapshotAll().entrySet()) {
-				ModelLightProfile profile = entry.getValue();
-				if (!isEquipmentProfile(profile) || !piece.getMeshKey().equals(profile.getMeshKey()))
-					continue;
-				pieceProfileKeys.put(pieceIndex, entry.getKey());
-				return entry.getKey();
+		} else if (piece.getItemId() >= 0) {
+			String key = store.findProfileKey(piece.getMeshKey(), Set.of(piece.getItemId()));
+			ModelLightProfile profile = key == null ? null : store.get(key);
+			if (profile != null && profile.getExpectedFaceCount() == piece.getFaces().length) {
+				pieceProfileKeys.put(pieceIndex, key);
+				return key;
 			}
 		}
 		return null;
@@ -921,22 +918,6 @@ public class ModelLightEditor implements LightViewerFrame.Callbacks {
 		return isEquipmentProfile(profile);
 	}
 
-	private static Set<Integer> parseItemIds(@Nullable String text) {
-		if (text == null || text.trim().isEmpty())
-			return Set.of();
-		Set<Integer> ids = new HashSet<>();
-		for (String part : text.split(",")) {
-			String trimmed = part.trim();
-			if (trimmed.isEmpty())
-				continue;
-			try {
-				ids.add(Integer.parseInt(trimmed));
-			} catch (NumberFormatException ignored) {}
-		}
-		return ids;
-	}
-
-	@Nullable
 	private static String formatItemSuffix(@Nullable ModelLightProfile profile) {
 		if (profile == null || profile.getItemIds().isEmpty())
 			return "";

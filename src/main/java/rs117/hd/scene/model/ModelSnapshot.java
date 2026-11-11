@@ -12,7 +12,7 @@ import net.runelite.api.Model;
 import rs117.hd.utils.collections.PooledArrayType;
 
 @Getter
-public class ModelSnapshot {
+public class ModelSnapshot implements AutoCloseable {
 	private final int vertexCount;
 	private final int faceCount;
 	private float[] verticesX;
@@ -37,8 +37,18 @@ public class ModelSnapshot {
 		private final int[] sortedToLocal;
 		private final int[] sortedFaces;
 		private final int[] sortedToLocalFace;
+		private final int itemId;
+		private final int modelId;
+		private final String label;
 
 		Piece(String meshKey, int[] faces, int[] vertices) {
+			this(meshKey, faces, vertices, -1, -1, null);
+		}
+
+		Piece(String meshKey, int[] faces, int[] vertices, int itemId, int modelId, String label) {
+			this.itemId = itemId;
+			this.modelId = modelId;
+			this.label = label;
 			this.meshKey = meshKey;
 			this.faces = faces;
 			this.vertices = vertices;
@@ -70,6 +80,10 @@ public class ModelSnapshot {
 	}
 
 	public static ModelSnapshot capture(Model model) {
+		return capture(model, null);
+	}
+
+	static ModelSnapshot capture(Model model, @Nullable List<PlayerEquipmentParts.Part> parts) {
 		int vertexCount = model.getVerticesCount();
 		int faceCount = model.getFaceCount();
 		return new ModelSnapshot(
@@ -83,7 +97,8 @@ public class ModelSnapshot {
 			PooledArrayType.INT.cache(model.getFaceIndices3(), 0, faceCount),
 			cacheFaceColors(model.getFaceColors1(), faceCount),
 			cacheFaceColors(model.getFaceColors2(), faceCount),
-			cacheFaceColors(model.getFaceColors3(), faceCount)
+			cacheFaceColors(model.getFaceColors3(), faceCount),
+			parts
 		);
 	}
 
@@ -107,7 +122,8 @@ public class ModelSnapshot {
 		int[] faceIndices3,
 		int[] faceColors1,
 		int[] faceColors2,
-		int[] faceColors3
+		int[] faceColors3,
+		@Nullable List<PlayerEquipmentParts.Part> parts
 	) {
 		this.vertexCount = vertexCount;
 		this.faceCount = faceCount;
@@ -121,10 +137,38 @@ public class ModelSnapshot {
 		this.faceColors2 = faceColors2;
 		this.faceColors3 = faceColors3;
 		this.vertexToPiece = new int[vertexCount];
-		this.pieces = decompose();
+		this.pieces = parts == null ? decompose() : equipmentPieces(parts);
+	}
+
+	private List<Piece> equipmentPieces(List<PlayerEquipmentParts.Part> parts) {
+		Arrays.fill(vertexToPiece, -1);
+		var pieces = new ArrayList<Piece>(parts.size());
+		for (var part : parts) {
+			var vertices = new java.util.LinkedHashSet<Integer>();
+			int[] faces = new int[part.faceCount];
+			for (int i = 0; i < faces.length; i++) {
+				int face = part.firstFace + i;
+				faces[i] = face;
+				vertices.add(faceIndices1[face]);
+				vertices.add(faceIndices2[face]);
+				vertices.add(faceIndices3[face]);
+			}
+			int[] indices = vertices.stream().mapToInt(Integer::intValue).toArray();
+			for (int vertex : indices)
+				if (vertexToPiece[vertex] == -1)
+					vertexToPiece[vertex] = pieces.size();
+			String key = "item:" + part.itemId + ":model:" + part.modelId;
+			pieces.add(new Piece(key, faces, indices, part.itemId, part.modelId, part.label));
+		}
+		return pieces;
 	}
 
 	/** Returns pooled mesh arrays to {@link PooledArrayType}; safe to call more than once. */
+	@Override
+	public void close() {
+		release();
+	}
+
 	public void release() {
 		if (released)
 			return;

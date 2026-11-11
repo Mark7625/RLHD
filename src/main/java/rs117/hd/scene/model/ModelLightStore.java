@@ -112,6 +112,8 @@ public class ModelLightStore {
 				profile.setNpcIds(new HashSet<>());
 			if (profile.getObjectIds() == null)
 				profile.setObjectIds(new HashSet<>());
+			if (!profile.isNpcProfile() && !profile.isObjectProfile() && !profile.getMeshKey().startsWith("item:"))
+				return;
 			normalizeVertices(profile);
 			normalizeTriangles(profile);
 			profiles.put(key, profile);
@@ -329,6 +331,22 @@ public class ModelLightStore {
 		ModelLightProfile profile = new ModelLightProfile(name);
 		profile.setMeshKey(meshKey);
 		profile.setItemIds(new HashSet<>(ids));
+		profiles.put(key, profile);
+		notifyChanged();
+		return key;
+	}
+
+	public synchronized String ensureEquipmentProfile(ModelSnapshot.Piece piece, String defaultName) {
+		Set<Integer> ids = Set.of(piece.getItemId());
+		String existing = findProfileKey(piece.getMeshKey(), ids);
+		if (existing != null)
+			return profiles.get(existing).getExpectedFaceCount() == piece.getFaces().length ? existing : null;
+
+		String key = freeKey(piece.getMeshKey());
+		ModelLightProfile profile = new ModelLightProfile(defaultName);
+		profile.setMeshKey(piece.getMeshKey());
+		profile.setItemIds(new HashSet<>(ids));
+		profile.setExpectedFaceCount(piece.getFaces().length);
 		profiles.put(key, profile);
 		notifyChanged();
 		return key;

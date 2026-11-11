@@ -102,9 +102,14 @@ public class ViewportPanel extends JPanel {
 	private Consumer<PickTarget> onPickTargetChanged;
 
 	private ModelSnapshot snapshot;
+	@Nullable
+	private ParticleEmitter particlePreview;
+	private int particleFace = -1;
+	private long particlePreviewStart;
 	private int pieceFilter = -1;
 	private EditMode editMode = EditMode.PLACE;
 	private PickTarget pickTarget = PickTarget.FACE;
+	private boolean facePickingOnly;
 	private boolean shaded = true;
 	private boolean showFaceColors = false;
 	private boolean showWireframe = true;
@@ -377,8 +382,14 @@ public class ViewportPanel extends JPanel {
 		return pickTarget;
 	}
 
+	public void setFacePickingOnly(boolean facePickingOnly) {
+		this.facePickingOnly = facePickingOnly;
+		if (facePickingOnly)
+			setPickTarget(PickTarget.FACE);
+	}
+
 	public void setPickTarget(PickTarget pickTarget) {
-		if (this.pickTarget == pickTarget)
+		if (this.pickTarget == pickTarget || facePickingOnly && pickTarget != PickTarget.FACE)
 			return;
 		this.pickTarget = pickTarget;
 		hoverPick = null;
@@ -809,12 +820,59 @@ public class ViewportPanel extends JPanel {
 		if (showVertices)
 			drawVertices(g2);
 		drawSelection(g2);
+		drawParticlePreview(g2);
 
 		if (boxSelecting)
 			drawBoxSelect(g2);
 		if (showGizmo)
 			drawOrientationGizmo(g2);
 		drawHud(g2);
+	}
+
+	public void setParticlePreview(@Nullable ParticleEmitter emitter, int globalFace) {
+		particlePreview = emitter;
+		particleFace = globalFace;
+		particlePreviewStart = System.nanoTime();
+		repaint();
+	}
+
+	private void drawParticlePreview(Graphics2D g2) {
+		ParticleEmitter emitter = particlePreview;
+		if (emitter == null || particleFace < 0 || particleFace >= snapshot.getFaceCount())
+			return;
+
+		int a = snapshot.getFaceIndices1()[particleFace];
+		int b = snapshot.getFaceIndices2()[particleFace];
+		int c = snapshot.getFaceIndices3()[particleFace];
+		float x = emitter.getBary0() * vertexX(a) + emitter.getBary1() * vertexX(b) + emitter.getBary2() * vertexX(c);
+		float y = emitter.getBary0() * vertexY(a) + emitter.getBary1() * vertexY(b) + emitter.getBary2() * vertexY(c);
+		float z = emitter.getBary0() * vertexZ(a) + emitter.getBary1() * vertexZ(b) + emitter.getBary2() * vertexZ(c);
+		int[] anchor = projectPoint(x, y, z);
+		g2.setColor(new Color(emitter.getRgb()));
+		g2.setStroke(new BasicStroke(1f));
+		g2.drawOval(anchor[0] - 5, anchor[1] - 5, 10, 10);
+		g2.drawLine(anchor[0] - 8, anchor[1], anchor[0] + 8, anchor[1]);
+
+		double seconds = (System.nanoTime() - particlePreviewStart) / 1e9;
+		double lifetime = emitter.getLifetimeMs() / 1000.0;
+		long newest = (long) (seconds * emitter.getRate());
+		long oldest = Math.max(0, (long) Math.ceil((seconds - lifetime) * emitter.getRate()));
+		int rgb = emitter.getRgb();
+		for (long birth = oldest; birth <= newest; birth++) {
+			double age = seconds - birth / (double) emitter.getRate();
+			double progress = Math.min(1, age / lifetime);
+			double angle = birth * 2.399963229728653;
+			float drift = (float) (progress * emitter.getSpread() * (0.45 + 0.55 * (birth % 17) / 16.0));
+			int[] pos = projectPoint(x + drift * (float) Math.cos(angle),
+				y - (float) (age * emitter.getRise()), z + drift * (float) Math.sin(angle));
+			int radius = Math.max(1, Math.min(18, (int) (emitter.getSize() * scale() * (1 - progress * 0.65))));
+			int alpha = (int) (200 * (1 - progress));
+			g2.setColor(new Color((alpha / 5 << 24) | rgb, true));
+			g2.fillOval(pos[0] - radius, pos[1] - radius, radius * 2, radius * 2);
+			int core = Math.max(1, radius / 2);
+			g2.setColor(new Color((alpha << 24) | rgb, true));
+			g2.fillOval(pos[0] - core, pos[1] - core, core * 2, core * 2);
+		}
 	}
 
 	private void drawHudMessage(Graphics2D g2, String message) {
@@ -1271,14 +1329,17 @@ public class ViewportPanel extends JPanel {
 		String piece = pieceFilter >= 0 ? "piece " + (pieceFilter + 1) : "all pieces";
 		String modeLabel = editMode == EditMode.DELETE ? "delete mode" : "place mode";
 		String pickLabel = pickTarget == PickTarget.FACE ? "face pick" : "point pick";
-		g2.drawString(piece + "  ·  " + (selectedFaces.size() + selectedVertices.size()) + " lights  ·  " + modeLabel + "  ·  " + pickLabel
+		String effect = facePickingOnly ? "particle preview" : (selectedFaces.size() + selectedVertices.size()) + " lights";
+		g2.drawString(piece + "  ·  " + effect + "  ·  " + modeLabel + "  ·  " + pickLabel
 			+ (showFaceColors ? "  ·  colors" : "")
 			+ (!showWireframe ? "  ·  no wire" : "")
 			+ (!showVertices ? "  ·  no dots" : ""), 16, line);
 		line += fm.getHeight();
 		g2.drawString(String.format("yaw %.0f°  pitch %.0f°  zoom %.1fx", Math.toDegrees(yaw), Math.toDegrees(pitch), zoom), 16, line);
 
-		String help = editMode == EditMode.DELETE
+		String help = facePickingOnly
+			? "Particles: click face · MMB orbit · X remove"
+			: editMode == EditMode.DELETE
 			? "Delete: LMB click or drag area · RMB pan · MMB orbit · P place"
 			: (pickTarget == PickTarget.FACE
 				? "Face: LMB click triangle · Shift+drag area · MMB orbit · V point pick · X delete"

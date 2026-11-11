@@ -1,59 +1,59 @@
 {
   "profiles": {
-    "286v604f-c6236a94526a7f70": {
-      "name": "Firemaking Cape",
-      "meshKey": "286v604f-c6236a94526a7f70",
-      "vertices": {
-        "15": "ABERRANT_SPECTRES"
-      }
-    },
-    "76v167f-7ef9ea240cfe13fc": {
-      "name": "Mining helmet",
-      "meshKey": "76v167f-7ef9ea240cfe13fc",
+    "item:1159:model:218": {
+      "name": "Head: Mithril full helm",
+      "meshKey": "item:1159:model:218",
+      "expectedFaceCount": 157,
       "triangles": {
-        "111": {
-          "light": "Mining helmet light",
-          "bary0": 0.053,
-          "bary1": 0.394,
-          "bary2": 0.553
-        }
-      }
-    },
-    "100v215f-26125b460f0605b8": {
-      "name": "Piece 5",
-      "meshKey": "100v215f-26125b460f0605b8",
-      "triangles": {
-        "56": {
-          "light": "Mining helmet light",
-          "bary0": 0.348,
-          "bary1": 0.032,
-          "bary2": 0.62
-        }
-      }
-    },
-    "44v84f-72f95c46dac26776": {
-      "name": "Piece 3",
-      "meshKey": "44v84f-72f95c46dac26776",
-      "triangles": {
-        "65": {
+        "138": {
           "light": "ABERRANT_SPECTRES",
-          "bary0": 0.034,
-          "bary1": 0.184,
-          "bary2": 0.782
+          "bary0": 0.024,
+          "bary1": 0.432,
+          "bary2": 0.545
+        },
+        "119": {
+          "light": "ABYSS_AIR_PORTAL",
+          "bary0": 0.295,
+          "bary1": 0.142,
+          "bary2": 0.564
+        },
+        "120": {
+          "light": "ABYSS_AIR_PORTAL",
+          "bary0": 0.314,
+          "bary1": 0.516,
+          "bary2": 0.17
         }
-      }
+      },
+      "itemIds": [
+        1159
+      ]
     },
-    "44v84f-36b84e2571b9b8ae": {
-      "name": "Piece 3",
-      "meshKey": "44v84f-36b84e2571b9b8ae",
+    "item:1127:model:306": {
+      "name": "Body: Rune platebody",
+      "meshKey": "item:1127:model:306",
+      "expectedFaceCount": 196,
       "triangles": {
-        "52": {
-          "light": "ABERRANT_SPECTRES",
-          "bary0": 0.395,
-          "bary1": 0.384,
-          "bary2": 0.221
+        "71": {
+          "light": "ABYSS_AIR_PORTAL",
+          "bary0": 0.297,
+          "bary2": 0.369
+        },
+        "69": {
+          "light": "ABYSS_AIR_PORTAL",
+          "bary0": 0.217,
+          "bary1": 0.237,
+          "bary2": 0.546
+        },
+        "70": {
+          "light": "ABYSS_AIR_PORTAL",
+          "bary0": 0.423,
+          "bary1": 0.263,
+          "bary2": 0.314
         }
-      }
+      },
+      "itemIds": [
+        1127
+      ]
     }
   }
 }

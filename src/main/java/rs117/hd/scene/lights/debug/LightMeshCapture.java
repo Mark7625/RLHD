@@ -29,6 +29,7 @@ import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.coords.LocalPoint;
 import rs117.hd.scene.GamevalManager;
 import rs117.hd.scene.model.ModelSnapshot;
+import rs117.hd.scene.model.PlayerEquipmentParts;
 
 @Singleton
 public class LightMeshCapture {
@@ -92,6 +93,9 @@ public class LightMeshCapture {
 	private Client client;
 
 	@Inject
+	private PlayerEquipmentParts equipmentParts;
+
+	@Inject
 	private GamevalManager gamevalManager;
 
 	private final Map<Integer, TileObject> nearestObjectById = new HashMap<>();
@@ -106,10 +110,8 @@ public class LightMeshCapture {
 		Player player = client.getLocalPlayer();
 		if (player == null)
 			return null;
-		Model model = player.getModel();
-		if (model == null)
-			return null;
-		return new CaptureResult(ModelSnapshot.capture(model), "Player", true);
+		ModelSnapshot snapshot = equipmentParts.capture(player);
+		return snapshot == null ? null : new CaptureResult(snapshot, "Player equipment", true);
 	}
 
 	@Nullable
