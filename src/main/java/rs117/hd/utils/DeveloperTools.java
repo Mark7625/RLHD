@@ -23,7 +23,6 @@ import rs117.hd.overlays.LightGizmoOverlay;
 import rs117.hd.overlays.ShadowMapOverlay;
 import rs117.hd.overlays.TileInfoOverlay;
 import rs117.hd.overlays.TiledLightingOverlay;
-import rs117.hd.scene.model.debug.ModelLightEditor;
 import rs117.hd.scene.GamevalManager;
 
 import static java.awt.event.InputEvent.CTRL_DOWN_MASK;
@@ -41,7 +40,6 @@ public class DeveloperTools implements KeyListener {
 	private static final Keybind KEY_RECORD_TIMINGS_SNAPSHOT = new Keybind(KeyEvent.VK_F4, CTRL_DOWN_MASK | SHIFT_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_SHADOW_MAP_OVERLAY = new Keybind(KeyEvent.VK_F5, CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_LIGHT_GIZMO_OVERLAY = new Keybind(KeyEvent.VK_F6, CTRL_DOWN_MASK);
-	private static final Keybind KEY_OPEN_MODEL_LIGHT_EDITOR = new Keybind(KeyEvent.VK_F8, CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_TILED_LIGHTING_OVERLAY = new Keybind(KeyEvent.VK_F7, CTRL_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_FREEZE_FRAME = new Keybind(KeyEvent.VK_ESCAPE, SHIFT_DOWN_MASK);
 	private static final Keybind KEY_TOGGLE_ORTHOGRAPHIC = new Keybind(KeyEvent.VK_TAB, SHIFT_DOWN_MASK);
@@ -94,9 +92,6 @@ public class DeveloperTools implements KeyListener {
 
 	@Inject
 	private TiledLightingOverlay tiledLightingOverlay;
-
-	@Inject
-	private ModelLightEditor modelLightEditor;
 
 	private boolean keyBindingsEnabled;
 	private boolean tileInfoOverlayEnabled;
@@ -172,10 +167,6 @@ public class DeveloperTools implements KeyListener {
 				break;
 			case "lights":
 				lightGizmoOverlay.setActive(lightGizmoOverlayEnabled = !lightGizmoOverlayEnabled);
-				break;
-			case "modellights":
-			case "meshlights":
-				modelLightEditor.open();
 				break;
 			case "tiledlights":
 			case "tiledlighting":
@@ -366,8 +357,6 @@ public class DeveloperTools implements KeyListener {
 			shadowMapOverlay.setActive(shadowMapOverlayEnabled = !shadowMapOverlayEnabled);
 		} else if (KEY_TOGGLE_LIGHT_GIZMO_OVERLAY.matches(e)) {
 			lightGizmoOverlay.setActive(lightGizmoOverlayEnabled = !lightGizmoOverlayEnabled);
-		} else if (KEY_OPEN_MODEL_LIGHT_EDITOR.matches(e)) {
-			modelLightEditor.open();
 		} else if (KEY_TOGGLE_TILED_LIGHTING_OVERLAY.matches(e)) {
 			tiledLightingOverlay.setActive(tiledLightingOverlayEnabled = !tiledLightingOverlayEnabled);
 		} else if (KEY_TOGGLE_FREEZE_FRAME.matches(e)) {
