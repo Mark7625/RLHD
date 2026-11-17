@@ -45,6 +45,10 @@ import net.runelite.client.callback.ClientThread;
 import org.lwjgl.opengl.*;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
+import rs117.hd.gpu.GpuTexture;
+import rs117.hd.gpu.PixelFormat;
+import rs117.hd.gpu.TextureDesc;
+import rs117.hd.gpu.WrapMode;
 import rs117.hd.opengl.uniforms.UBOMaterials;
 import rs117.hd.renderer.zone.SceneManager;
 import rs117.hd.scene.materials.Material;
@@ -110,7 +114,7 @@ public class MaterialManager {
 	public static Material[] MATERIALS;
 	public static Material[] VANILLA_TEXTURE_MAPPING;
 
-	private int texMaterialTextureArray;
+	private GpuTexture texMaterialTextureArray;
 	private int[] textureResolution;
 	public final List<TextureLayer> textureLayers = new ArrayList<>();
 
@@ -125,9 +129,9 @@ public class MaterialManager {
 			fileWatcher.unregister();
 		fileWatcher = null;
 
-		if (texMaterialTextureArray != 0)
-			glDeleteTextures(texMaterialTextureArray);
-		texMaterialTextureArray = 0;
+		if (texMaterialTextureArray != null)
+			texMaterialTextureArray.destroy();
+		texMaterialTextureArray = null;
 		textureLayers.clear();
 
 		if (uboMaterials != null)
@@ -343,13 +347,10 @@ public class MaterialManager {
 
 		int textureSize = config.textureResolution().getSize();
 		int[] resolution = ivec(textureSize, textureSize);
-		glActiveTexture(TEXTURE_UNIT_GAME);
-		if (texMaterialTextureArray == 0 || previousLayerCount != textureLayers.size() || !Arrays.equals(textureResolution, resolution)) {
+		if (texMaterialTextureArray == null || previousLayerCount != textureLayers.size() || !Arrays.equals(textureResolution, resolution)) {
 			textureResolution = resolution;
-			if (texMaterialTextureArray != 0)
-				glDeleteTextures(texMaterialTextureArray);
-			texMaterialTextureArray = glGenTextures();
-			glBindTexture(GL_TEXTURE_2D_ARRAY, texMaterialTextureArray);
+			if (texMaterialTextureArray != null)
+				texMaterialTextureArray.destroy();
 
 			// Since we're reallocating the texture array, all layers need to be reuploaded
 			for (var layer : textureLayers)
@@ -357,20 +358,13 @@ public class MaterialManager {
 
 			log.debug("Allocating {}x{} texture array with {} layers", textureSize, textureSize, textureLayers.size());
 			int mipLevels = 1 + floor(log2(textureSize));
-			int format = GL_SRGB8_ALPHA8;
-			if (HdPlugin.GL_CAPS.glTexStorage3D != 0) {
-				ARBTextureStorage.glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevels, format, textureSize, textureSize, textureLayers.size());
-			} else {
-				// Allocate each mip level separately
-				for (int i = 0; i < mipLevels; i++) {
-					int size = textureSize >> i;
-					glTexImage3D(GL_TEXTURE_2D_ARRAY, i, format, size, size, textureLayers.size(), 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-				}
-			}
-
-			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
-			glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			texMaterialTextureArray = plugin.device.createTexture2DArray(TEXTURE_UNIT_GAME, new TextureDesc()
+				.size(textureSize, textureSize, textureLayers.size())
+				.format(PixelFormat.SRGB8_ALPHA8)
+				.wrap(WrapMode.REPEAT, WrapMode.REPEAT)
+				.mipmapped(mipLevels));
 		}
+		texMaterialTextureArray.bind();
 		textureManager.setAnisotropicFilteringLevel();
 
 		uploadTextures();
@@ -428,7 +422,7 @@ public class MaterialManager {
 
 	public void uploadTextures() {
 		assert client.isClientThread();
-		if (texMaterialTextureArray == 0)
+		if (texMaterialTextureArray == null)
 			return;
 
 		// Set brightness to 1 to upload unmodified vanilla textures
@@ -448,8 +442,7 @@ public class MaterialManager {
 
 			try {
 				if (!uploadedAnything) {
-					glActiveTexture(TEXTURE_UNIT_GAME);
-					glBindTexture(GL_TEXTURE_2D_ARRAY, texMaterialTextureArray);
+					texMaterialTextureArray.bind();
 					uploadedAnything = true;
 				}
 				textureManager.uploadTexture(GL_TEXTURE_2D_ARRAY, material.textureLayer, textureResolution, image);

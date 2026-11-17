@@ -26,6 +26,10 @@ import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
 import rs117.hd.config.ColorFilter;
 import rs117.hd.config.DynamicLights;
+import rs117.hd.gpu.FilterMode;
+import rs117.hd.gpu.GpuTexture;
+import rs117.hd.gpu.TextureDesc;
+import rs117.hd.gpu.WrapMode;
 import rs117.hd.model.ModelHasher;
 import rs117.hd.model.ModelOffsets;
 import rs117.hd.opengl.compute.ComputeMode;
@@ -154,7 +158,7 @@ public class LegacyRenderer implements Renderer {
 	private final List<ModelSortingComputeProgram> modelSortingComputePrograms = new ArrayList<>();
 
 	public int vaoScene;
-	public int texTileHeightMap;
+	public GpuTexture texTileHeightMap;
 	public SharedGLBuffer hStagingBufferVertices;
 	public SharedGLBuffer hStagingBufferUvs;
 	public SharedGLBuffer hStagingBufferNormals;
@@ -522,13 +526,10 @@ public class LegacyRenderer implements Renderer {
 		}
 		tileBuffer.flip();
 
-		texTileHeightMap = glGenTextures();
-		glActiveTexture(TEXTURE_UNIT_TILE_HEIGHT_MAP);
-		glBindTexture(GL_TEXTURE_3D, texTileHeightMap);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		texTileHeightMap = plugin.device.createTexture3D(TEXTURE_UNIT_TILE_HEIGHT_MAP, new TextureDesc()
+			.filter(FilterMode.NEAREST, FilterMode.NEAREST)
+			.wrap(WrapMode.CLAMP_TO_EDGE, WrapMode.CLAMP_TO_EDGE));
+		texTileHeightMap.bind();
 		glTexImage3D(
 			GL_TEXTURE_3D, 0, GL_R16I,
 			Constants.EXTENDED_SCENE_SIZE, Constants.EXTENDED_SCENE_SIZE, Constants.MAX_Z,
@@ -537,9 +538,9 @@ public class LegacyRenderer implements Renderer {
 	}
 
 	public void destroyTileHeightMap() {
-		if (texTileHeightMap != 0)
-			glDeleteTextures(texTileHeightMap);
-		texTileHeightMap = 0;
+		if (texTileHeightMap != null)
+			texTileHeightMap.destroy();
+		texTileHeightMap = null;
 	}
 
 	@Override
@@ -783,13 +784,13 @@ public class LegacyRenderer implements Renderer {
 			// Perform tiled lighting culling before the compute memory barrier, so it's performed asynchronously
 			if (plugin.configTiledLighting) {
 				plugin.updateTiledLightingFbo();
-				assert plugin.fboTiledLighting != 0;
+				assert plugin.fboTiledLighting != null;
 
 				frameTimer.begin(Timer.DRAW_TILED_LIGHTING);
 				frameTimer.begin(Timer.RENDER_TILED_LIGHTING);
 
 				glViewport(0, 0, plugin.tiledLightingResolution[0], plugin.tiledLightingResolution[1]);
-				glBindFramebuffer(GL_FRAMEBUFFER, plugin.fboTiledLighting);
+				plugin.fboTiledLighting.bind();
 
 				glBindVertexArray(plugin.vaoTri);
 
@@ -802,7 +803,7 @@ public class LegacyRenderer implements Renderer {
 					int layerCount = plugin.configDynamicLights.getTiledLightingLayers();
 					for (int layer = 0; layer < layerCount; layer++) {
 						plugin.tiledLightingShaderPrograms.get(layer).use();
-						glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, plugin.texTiledLighting, 0, layer);
+						glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, plugin.texTiledLighting.id(), 0, layer);
 						glDrawArrays(GL_TRIANGLES, 0, 3);
 					}
 				}
@@ -1091,12 +1092,12 @@ public class LegacyRenderer implements Renderer {
 				plugin.uboGlobal.colorFilterFade.set(clamp(timeSinceChange / COLOR_FILTER_FADE_DURATION, 0, 1));
 			}
 
-			if (plugin.configShadowsEnabled && plugin.fboShadowMap != 0 && skyRenderer.castsShadows) {
+			if (plugin.configShadowsEnabled && plugin.fboShadowMap != null && skyRenderer.castsShadows) {
 				frameTimer.begin(Timer.RENDER_SHADOWS);
 
 				// Render to the shadow depth map
 				glViewport(0, 0, plugin.shadowMapResolution, plugin.shadowMapResolution);
-				glBindFramebuffer(GL_FRAMEBUFFER, plugin.fboShadowMap);
+				plugin.fboShadowMap.bind();
 				glClearDepth(1);
 				glClear(GL_DEPTH_BUFFER_BIT);
 				glDepthFunc(GL_LEQUAL);
@@ -1149,7 +1150,7 @@ public class LegacyRenderer implements Renderer {
 			plugin.uboGlobal.orthographicProjection.set(plugin.orthographicProjection ? 1 : 0);
 			plugin.uboGlobal.upload();
 
-			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboScene);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboScene.id());
 			if (plugin.msaaSamples > 1) {
 				glEnable(GL_MULTISAMPLE);
 			} else {
@@ -1221,16 +1222,16 @@ public class LegacyRenderer implements Renderer {
 			glDepthMask(true);
 			glUseProgram(0);
 
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboScene);
-			if (plugin.fboSceneResolve != 0) {
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboScene.id());
+			if (plugin.fboSceneResolve != null) {
 				// Blit from the scene FBO to the multisample resolve FBO
-				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboSceneResolve);
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboSceneResolve.id());
 				glBlitFramebuffer(
 					0, 0, plugin.sceneResolution[0], plugin.sceneResolution[1],
 					0, 0, plugin.sceneResolution[0], plugin.sceneResolution[1],
 					GL_COLOR_BUFFER_BIT, GL_NEAREST
 				);
-				glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboSceneResolve);
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboSceneResolve.id());
 			}
 
 			// Blit from the resolved FBO to the default FBO

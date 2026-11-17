@@ -19,6 +19,13 @@ def pluginMainClass = 'rs117.hd.HdPluginTest'
 dependencies {
 	compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
 
+	// Only used by the experimental Vulkan stub (rs117.hd.gpu.vulkan), which validates the
+	// RenderDevice interface design against a real graphics API. HdPlugin only ever touches it
+	// through a try-catch-guarded indirection (see VulkanDevOverlay), so a real install without
+	// these jars on its classpath degrades gracefully instead of crashing.
+	compileOnly group: 'org.lwjgl', name: 'lwjgl-vulkan', version: '3.3.2'
+	compileOnly group: 'org.lwjgl', name: 'lwjgl-shaderc', version: '3.3.2'
+
 	compileOnly 'org.projectlombok:lombok:1.18.30'
 	annotationProcessor 'org.projectlombok:lombok:1.18.30'
 
@@ -26,6 +33,12 @@ dependencies {
 	testImplementation 'org.mockito:mockito-core:3.1.0'
 	testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
 	testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+	testImplementation group: 'org.lwjgl', name: 'lwjgl-vulkan', version: '3.3.2'
+
+	// GLSL->SPIR-V compilation for the Vulkan stub's test-only offscreen triangle render. Needs
+	// natives (unlike lwjgl-vulkan, which binds straight to the system Vulkan loader).
+	testImplementation group: 'org.lwjgl', name: 'lwjgl-shaderc', version: '3.3.2'
+	testRuntimeOnly group: 'org.lwjgl', name: 'lwjgl-shaderc', version: '3.3.2', classifier: 'natives-windows'
 
 	testCompileOnly 'org.projectlombok:lombok:1.18.30'
 	testAnnotationProcessor 'org.projectlombok:lombok:1.18.30'

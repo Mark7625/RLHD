@@ -10,6 +10,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.BufferUtils;
 import rs117.hd.HdPlugin;
 import rs117.hd.HdPluginConfig;
+import rs117.hd.gpu.FilterMode;
+import rs117.hd.gpu.GpuFramebuffer;
+import rs117.hd.gpu.GpuTexture;
+import rs117.hd.gpu.PixelFormat;
+import rs117.hd.gpu.TextureDesc;
+import rs117.hd.gpu.WrapMode;
 import rs117.hd.opengl.shader.NebulaBakeShaderProgram;
 import rs117.hd.opengl.shader.ShaderException;
 import rs117.hd.opengl.shader.ShaderIncludes;
@@ -72,8 +78,8 @@ public final class StarField {
 	private final Random random = new Random(SEED);
 	private final RenderState nebulaBakeRenderState = new RenderState();
 
-	private int texNebulaCubemap;
-	private int fboNebulaBake;
+	private GpuTexture texNebulaCubemap;
+	private GpuFramebuffer fboNebulaBake;
 
 	@Getter
 	private int vaoStars;
@@ -115,31 +121,12 @@ public final class StarField {
 		glBindVertexArray(0);
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-		fboNebulaBake = glGenFramebuffers();
-		texNebulaCubemap = glGenTextures();
-
-		glActiveTexture(TEXTURE_UNIT_NEBULA_MAP);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, texNebulaCubemap);
-
-		for (int face = 0; face < 6; face++) {
-			glTexImage2D(
-				GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
-				0,
-				GL_RGBA16F,
-				NEBULA_CUBE_MAP_RESOLUTION,
-				NEBULA_CUBE_MAP_RESOLUTION,
-				0,
-				GL_RGBA,
-				GL_FLOAT,
-				0
-			);
-		}
-
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		fboNebulaBake = plugin.device.createFramebuffer();
+		texNebulaCubemap = plugin.device.createTextureCubeMap(TEXTURE_UNIT_NEBULA_MAP, new TextureDesc()
+			.size(NEBULA_CUBE_MAP_RESOLUTION, NEBULA_CUBE_MAP_RESOLUTION)
+			.format(PixelFormat.RGBA16F)
+			.filter(FilterMode.LINEAR, FilterMode.LINEAR)
+			.wrap(WrapMode.CLAMP_TO_EDGE, WrapMode.CLAMP_TO_EDGE, WrapMode.CLAMP_TO_EDGE));
 
 		glActiveTexture(TEXTURE_UNIT_UI);
 		glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
@@ -158,13 +145,13 @@ public final class StarField {
 			glDeleteVertexArrays(vaoStarTriangles);
 		vaoStarTriangles = 0;
 
-		if (fboNebulaBake != 0)
-			glDeleteFramebuffers(fboNebulaBake);
-		fboNebulaBake = 0;
+		if (fboNebulaBake != null)
+			fboNebulaBake.destroy();
+		fboNebulaBake = null;
 
-		if (texNebulaCubemap != 0)
-			glDeleteTextures(texNebulaCubemap);
-		texNebulaCubemap = 0;
+		if (texNebulaCubemap != null)
+			texNebulaCubemap.destroy();
+		texNebulaCubemap = null;
 
 		resetStarfield();
 	}
@@ -200,10 +187,10 @@ public final class StarField {
 			rebuilt = true;
 		}
 
-		if (!config.enableNebulae() || nebulaMapCurrent || fboNebulaBake == 0 || texNebulaCubemap == 0 || !nebulaBakeProgram.isValid())
+		if (!config.enableNebulae() || nebulaMapCurrent || fboNebulaBake == null || texNebulaCubemap == null || !nebulaBakeProgram.isValid())
 			return rebuilt;
 
-		nebulaBakeRenderState.framebuffer.set(GL_FRAMEBUFFER, fboNebulaBake);
+		nebulaBakeRenderState.framebuffer.set(GL_FRAMEBUFFER, fboNebulaBake.id());
 		nebulaBakeRenderState.viewport.set(0, 0, NEBULA_CUBE_MAP_RESOLUTION, NEBULA_CUBE_MAP_RESOLUTION);
 		nebulaBakeRenderState.vao.setVao(plugin.vaoTri);
 		nebulaBakeRenderState.disable.set(GL_DEPTH_TEST);
@@ -216,13 +203,7 @@ public final class StarField {
 		nebulaBakeProgram.use();
 		for (int face = 0; face < 6; face++) {
 			nebulaBakeProgram.uniCubeFace.set(face);
-			glFramebufferTexture2D(
-				GL_FRAMEBUFFER,
-				GL_COLOR_ATTACHMENT0,
-				GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
-				texNebulaCubemap,
-				0
-			);
+			fboNebulaBake.attachColorCubeFace(texNebulaCubemap, face);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 		}
 

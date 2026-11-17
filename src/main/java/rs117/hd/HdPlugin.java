@@ -86,6 +86,17 @@ import rs117.hd.config.ShadingMode;
 import rs117.hd.config.ShadowFiltering;
 import rs117.hd.config.ShadowMode;
 import rs117.hd.config.VanillaShadowMode;
+import rs117.hd.gpu.CompareFunc;
+import rs117.hd.gpu.CompareMode;
+import rs117.hd.gpu.DevOverlayRenderer;
+import rs117.hd.gpu.FilterMode;
+import rs117.hd.gpu.GpuFramebuffer;
+import rs117.hd.gpu.GpuTexture;
+import rs117.hd.gpu.PixelFormat;
+import rs117.hd.gpu.RenderDevice;
+import rs117.hd.gpu.TextureDesc;
+import rs117.hd.gpu.WrapMode;
+import rs117.hd.gpu.gl.GLRenderDevice;
 import rs117.hd.opengl.shader.ShaderException;
 import rs117.hd.opengl.shader.ShaderIncludes;
 import rs117.hd.opengl.shader.TiledLightingShaderProgram;
@@ -367,6 +378,8 @@ public class HdPlugin extends Plugin {
 	private static final ResourcePath SHADER_PATH = Props
 		.getFolder("rlhd.shader-path", () -> path(HdPlugin.class));
 
+	public final RenderDevice device = new GLRenderDevice();
+
 	public int vaoQuad;
 	private int vboQuad;
 
@@ -378,10 +391,16 @@ public class HdPlugin extends Plugin {
 	private int[] uiResolution;
 	private final int[] actualUiResolution = { 0, 0 }; // Includes stretched mode and DPI scaling
 	private final GLBuffer[] pboUi = new GLBuffer[3];
-	private int texUi;
+	private GpuTexture texUi;
 	private int uiWidth;
 	private int uiHeight;
 	private GenericJob uiCopyJob;
+
+	// Experimental: composites rs117.hd.gpu.vulkan's validation triangle into the corner of the
+	// screen, to prove a non-GL RenderDevice backend can actually produce visible pixels in-game.
+	// Guarded so a real install without Vulkan/shaderc on its classpath just never enables this.
+	private DevOverlayRenderer vulkanOverlay;
+	private boolean vulkanOverlayInitAttempted;
 
 	@Nullable
 	public int[] sceneViewport;
@@ -390,24 +409,24 @@ public class HdPlugin extends Plugin {
 	public int msaaSamples;
 
 	public int[] sceneResolution;
-	public int fboScene;
+	public GpuFramebuffer fboScene;
 	private int rboSceneColor;
 	private int rboSceneDepth;
-	public int fboSceneResolve;
+	public GpuFramebuffer fboSceneResolve;
 	private int rboSceneResolveColor;
 
 	public int shadowMapResolution;
-	public int fboShadowMap;
-	private int texShadowMap;
+	public GpuFramebuffer fboShadowMap;
+	private GpuTexture texShadowMap;
 
 	public int terrainShadowMapResolution;
-	public int fboTerrainShadowMap;
-	private int texTerrainShadowMap;
+	public GpuFramebuffer fboTerrainShadowMap;
+	private GpuTexture texTerrainShadowMap;
 
 	public int[] tiledLightingResolution;
 	public int tiledLightingLayerCount;
-	public int fboTiledLighting;
-	public int texTiledLighting;
+	public GpuFramebuffer fboTiledLighting;
+	public GpuTexture texTiledLighting;
 
 	public UBOGlobal uboGlobal;
 	public UBOSky uboSky;
@@ -571,12 +590,12 @@ public class HdPlugin extends Plugin {
 				isActive = true;
 				startupCount++;
 
-				fboScene = 0;
+				fboScene = null;
 				rboSceneColor = 0;
 				rboSceneDepth = 0;
-				fboSceneResolve = 0;
+				fboSceneResolve = null;
 				rboSceneResolveColor = 0;
-				fboShadowMap = 0;
+				fboShadowMap = null;
 				frame = 0;
 				elapsedTime = 0;
 				elapsedClientTime = 0;
@@ -1267,13 +1286,10 @@ public class HdPlugin extends Plugin {
 			pboUi[i].initialize();
 		}
 
-		texUi = glGenTextures();
-		glActiveTexture(TEXTURE_UNIT_UI);
-		glBindTexture(GL_TEXTURE_2D, texUi);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		texUi = device.createTexture2D(TEXTURE_UNIT_UI, new TextureDesc()
+			.format(PixelFormat.RGBA8)
+			.filter(FilterMode.LINEAR, FilterMode.LINEAR)
+			.wrap(WrapMode.CLAMP_TO_EDGE, WrapMode.CLAMP_TO_EDGE));
 
 		checkGLErrors();
 	}
@@ -1287,9 +1303,14 @@ public class HdPlugin extends Plugin {
 			pboUi[i] = null;
 		}
 
-		if (texUi != 0)
-			glDeleteTextures(texUi);
-		texUi = 0;
+		if (texUi != null)
+			texUi.destroy();
+		texUi = null;
+
+		if (vulkanOverlay != null)
+			vulkanOverlay.destroy();
+		vulkanOverlay = null;
+		vulkanOverlayInitAttempted = false;
 	}
 
 	public void updateTiledLightingFbo() {
@@ -1305,34 +1326,20 @@ public class HdPlugin extends Plugin {
 		tiledLightingResolution = newResolution;
 		tiledLightingLayerCount = newLayerCount;
 
-		fboTiledLighting = glGenFramebuffers();
-		texTiledLighting = glGenTextures();
-		glActiveTexture(TEXTURE_UNIT_TILED_LIGHTING_MAP);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, texTiledLighting);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexImage3D(
-			GL_TEXTURE_2D_ARRAY,
-			0,
-			GL_RGBA16UI,
-			tiledLightingResolution[0],
-			tiledLightingResolution[1],
-			tiledLightingLayerCount,
-			0,
-			GL_RGBA_INTEGER,
-			GL_UNSIGNED_SHORT,
-			0
-		);
+		fboTiledLighting = device.createFramebuffer();
+		texTiledLighting = device.createTexture2DArray(TEXTURE_UNIT_TILED_LIGHTING_MAP, new TextureDesc()
+			.size(tiledLightingResolution[0], tiledLightingResolution[1], tiledLightingLayerCount)
+			.format(PixelFormat.RGBA16UI)
+			.filter(FilterMode.NEAREST, FilterMode.NEAREST)
+			.wrap(WrapMode.CLAMP_TO_EDGE, WrapMode.CLAMP_TO_EDGE));
 
-		glBindFramebuffer(GL_FRAMEBUFFER, fboTiledLighting);
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texTiledLighting, 0);
+		fboTiledLighting.bind();
+		fboTiledLighting.attachColorLayered(texTiledLighting);
 		checkGLErrors();
 
 		if (tiledLightingImageStoreProgram.isValid())
 			ARBShaderImageLoadStore.glBindImageTexture(
-				IMAGE_UNIT_TILED_LIGHTING, texTiledLighting, 0, true, 0, GL_WRITE_ONLY, GL_RGBA16UI);
+				IMAGE_UNIT_TILED_LIGHTING, texTiledLighting.id(), 0, true, 0, GL_WRITE_ONLY, GL_RGBA16UI);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, awtContext.getFramebuffer(false));
 
@@ -1345,13 +1352,13 @@ public class HdPlugin extends Plugin {
 	private void destroyTiledLightingFbo() {
 		tiledLightingResolution = null;
 
-		if (fboTiledLighting != 0)
-			glDeleteFramebuffers(fboTiledLighting);
-		fboTiledLighting = 0;
+		if (fboTiledLighting != null)
+			fboTiledLighting.destroy();
+		fboTiledLighting = null;
 
-		if (texTiledLighting != 0)
-			glDeleteTextures(texTiledLighting);
-		texTiledLighting = 0;
+		if (texTiledLighting != null)
+			texTiledLighting.destroy();
+		texTiledLighting = null;
 	}
 
 	public void updateSceneFbo() {
@@ -1415,8 +1422,8 @@ public class HdPlugin extends Plugin {
 		uboGlobal.upload(); // Ensure this is up to date with rendering
 
 		// Create and bind the FBO
-		fboScene = glGenFramebuffers();
-		glBindFramebuffer(GL_FRAMEBUFFER, fboScene);
+		fboScene = device.createFramebuffer();
+		fboScene.bind();
 
 		// Create color render buffer
 		rboSceneColor = glGenRenderbuffers();
@@ -1439,24 +1446,24 @@ public class HdPlugin extends Plugin {
 			throw new RuntimeException("No supported " + (sRGB ? "sRGB" : "linear") + " formats");
 
 		// Found a usable format. Bind the RBO to the scene FBO
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rboSceneColor);
+		fboScene.attachColorRenderbuffer(rboSceneColor);
 		checkGLErrors();
 
 		// Create depth render buffer
 		rboSceneDepth = glGenRenderbuffers();
 		glBindRenderbuffer(GL_RENDERBUFFER, rboSceneDepth);
 		glRenderbufferStorageMultisample(GL_RENDERBUFFER, msaaSamples, GL_DEPTH_COMPONENT32F, sceneResolution[0], sceneResolution[1]);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboSceneDepth);
+		fboScene.attachDepthRenderbuffer(rboSceneDepth);
 		checkGLErrors();
 
 		// If necessary, create an FBO for resolving multisampling
 		if (msaaSamples > 1 && resolutionScale != 1) {
-			fboSceneResolve = glGenFramebuffers();
-			glBindFramebuffer(GL_FRAMEBUFFER, fboSceneResolve);
+			fboSceneResolve = device.createFramebuffer();
+			fboSceneResolve.bind();
 			rboSceneResolveColor = glGenRenderbuffers();
 			glBindRenderbuffer(GL_RENDERBUFFER, rboSceneResolveColor);
 			glRenderbufferStorageMultisample(GL_RENDERBUFFER, 0, format, sceneResolution[0], sceneResolution[1]);
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rboSceneResolveColor);
+			fboSceneResolve.attachColorRenderbuffer(rboSceneResolveColor);
 			checkGLErrors();
 		}
 
@@ -1468,9 +1475,9 @@ public class HdPlugin extends Plugin {
 	private void destroySceneFbo() {
 		sceneViewport = null;
 
-		if (fboScene != 0)
-			glDeleteFramebuffers(fboScene);
-		fboScene = 0;
+		if (fboScene != null)
+			fboScene.destroy();
+		fboScene = null;
 
 		if (rboSceneColor != 0)
 			glDeleteRenderbuffers(rboSceneColor);
@@ -1480,9 +1487,9 @@ public class HdPlugin extends Plugin {
 			glDeleteRenderbuffers(rboSceneDepth);
 		rboSceneDepth = 0;
 
-		if (fboSceneResolve != 0)
-			glDeleteFramebuffers(fboSceneResolve);
-		fboSceneResolve = 0;
+		if (fboSceneResolve != null)
+			fboSceneResolve.destroy();
+		fboSceneResolve = null;
 
 		if (rboSceneResolveColor != 0)
 			glDeleteRenderbuffers(rboSceneResolveColor);
@@ -1496,13 +1503,8 @@ public class HdPlugin extends Plugin {
 		}
 
 		// Create and bind the FBO
-		fboShadowMap = glGenFramebuffers();
-		glBindFramebuffer(GL_FRAMEBUFFER, fboShadowMap);
-
-		// Create texture
-		texShadowMap = glGenTextures();
-		glActiveTexture(TEXTURE_UNIT_SHADOW_MAP);
-		glBindTexture(GL_TEXTURE_2D, texShadowMap);
+		fboShadowMap = device.createFramebuffer();
+		fboShadowMap.bind();
 
 		shadowMapResolution = config.shadowResolution().getValue();
 		int maxResolution = glGetInteger(GL_MAX_TEXTURE_SIZE);
@@ -1511,66 +1513,36 @@ public class HdPlugin extends Plugin {
 			shadowMapResolution = maxResolution;
 		}
 
-		glTexImage2D(
-			GL_TEXTURE_2D,
-			0,
-			configShadowTransparency ? GL_DEPTH_COMPONENT24 : GL_DEPTH_COMPONENT16,
-			shadowMapResolution,
-			shadowMapResolution,
-			0,
-			GL_DEPTH_COMPONENT,
-			GL_FLOAT,
-			0
-		);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-
-		float[] color = { 1, 1, 1, 1 };
-		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
+		// Create texture
+		texShadowMap = device.createTexture2D(TEXTURE_UNIT_SHADOW_MAP, new TextureDesc()
+			.size(shadowMapResolution, shadowMapResolution)
+			.format(configShadowTransparency ? PixelFormat.DEPTH24 : PixelFormat.DEPTH16)
+			.filter(FilterMode.NEAREST, FilterMode.NEAREST)
+			.wrap(WrapMode.CLAMP_TO_BORDER, WrapMode.CLAMP_TO_BORDER)
+			.borderColor(1, 1, 1, 1));
 
 		// Bind texture
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, texShadowMap, 0);
-		glDrawBuffer(GL_NONE);
-		glReadBuffer(GL_NONE);
+		fboShadowMap.attachDepthOnly(texShadowMap);
 
 		// Create terrain shadow map FBO and texture
 		if (configTerrainShadows) {
-			fboTerrainShadowMap = glGenFramebuffers();
-			glBindFramebuffer(GL_FRAMEBUFFER, fboTerrainShadowMap);
-
-			texTerrainShadowMap = glGenTextures();
-			glActiveTexture(TEXTURE_UNIT_TERRAIN_SHADOW_MAP);
-			glBindTexture(GL_TEXTURE_2D, texTerrainShadowMap);
+			fboTerrainShadowMap = device.createFramebuffer();
+			fboTerrainShadowMap.bind();
 
 			terrainShadowMapResolution = shadowMapResolution;
-			glTexImage2D(
-				GL_TEXTURE_2D,
-				0,
-				GL_DEPTH_COMPONENT16,
-				terrainShadowMapResolution,
-				terrainShadowMapResolution,
-				0,
-				GL_DEPTH_COMPONENT,
-				GL_FLOAT,
-				0
-			);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(
-				GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE,
-				// PCSS needs raw depths for the blocker search
-				config.shadowFiltering() == ShadowFiltering.PCSS ? GL_NONE : GL_COMPARE_REF_TO_TEXTURE
-			);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_GREATER);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
+			texTerrainShadowMap = device.createTexture2D(TEXTURE_UNIT_TERRAIN_SHADOW_MAP, new TextureDesc()
+				.size(terrainShadowMapResolution, terrainShadowMapResolution)
+				.format(PixelFormat.DEPTH16)
+				.filter(FilterMode.LINEAR, FilterMode.LINEAR)
+				.compare(
+					// PCSS needs raw depths for the blocker search
+					config.shadowFiltering() == ShadowFiltering.PCSS ? CompareMode.NONE : CompareMode.REF_TO_TEXTURE,
+					CompareFunc.GREATER
+				)
+				.wrap(WrapMode.CLAMP_TO_BORDER, WrapMode.CLAMP_TO_BORDER)
+				.borderColor(1, 1, 1, 1));
 
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, texTerrainShadowMap, 0);
-			glDrawBuffer(GL_NONE);
-			glReadBuffer(GL_NONE);
+			fboTerrainShadowMap.attachDepthOnly(texTerrainShadowMap);
 		} else {
 			initializeDummyTerrainShadowMap();
 		}
@@ -1581,45 +1553,39 @@ public class HdPlugin extends Plugin {
 
 	private void initializeDummyShadowMaps() {
 		// Create dummy texture
-		texShadowMap = glGenTextures();
-		glActiveTexture(TEXTURE_UNIT_SHADOW_MAP);
-		glBindTexture(GL_TEXTURE_2D, texShadowMap);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		texShadowMap = device.createTexture2D(TEXTURE_UNIT_SHADOW_MAP, new TextureDesc()
+			.size(1, 1)
+			.format(PixelFormat.DEPTH16)
+			.filter(FilterMode.NEAREST, FilterMode.NEAREST)
+			.wrap(WrapMode.CLAMP_TO_BORDER, WrapMode.CLAMP_TO_BORDER));
 
 		initializeDummyTerrainShadowMap();
 	}
 
 	private void initializeDummyTerrainShadowMap() {
-		texTerrainShadowMap = glGenTextures();
-		glActiveTexture(TEXTURE_UNIT_TERRAIN_SHADOW_MAP);
-		glBindTexture(GL_TEXTURE_2D, texTerrainShadowMap);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, 1, 1, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		texTerrainShadowMap = device.createTexture2D(TEXTURE_UNIT_TERRAIN_SHADOW_MAP, new TextureDesc()
+			.size(1, 1)
+			.format(PixelFormat.DEPTH16)
+			.filter(FilterMode.NEAREST, FilterMode.NEAREST)
+			.wrap(WrapMode.CLAMP_TO_BORDER, WrapMode.CLAMP_TO_BORDER));
 	}
 
 	private void destroyShadowMapFbo() {
-		if (texShadowMap != 0)
-			glDeleteTextures(texShadowMap);
-		texShadowMap = 0;
+		if (texShadowMap != null)
+			texShadowMap.destroy();
+		texShadowMap = null;
 
-		if (fboShadowMap != 0)
-			glDeleteFramebuffers(fboShadowMap);
-		fboShadowMap = 0;
+		if (fboShadowMap != null)
+			fboShadowMap.destroy();
+		fboShadowMap = null;
 
-		if (texTerrainShadowMap != 0)
-			glDeleteTextures(texTerrainShadowMap);
-		texTerrainShadowMap = 0;
+		if (texTerrainShadowMap != null)
+			texTerrainShadowMap.destroy();
+		texTerrainShadowMap = null;
 
-		if (fboTerrainShadowMap != 0)
-			glDeleteFramebuffers(fboTerrainShadowMap);
-		fboTerrainShadowMap = 0;
+		if (fboTerrainShadowMap != null)
+			fboTerrainShadowMap.destroy();
+		fboTerrainShadowMap = null;
 	}
 
 	public void initializeShaderHotswapping() {
@@ -1641,10 +1607,7 @@ public class HdPlugin extends Plugin {
 		boolean resize = !Arrays.equals(uiResolution, resolution);
 		if (resize) {
 			uiResolution = resolution;
-
-			glActiveTexture(TEXTURE_UNIT_UI);
-			glBindTexture(GL_TEXTURE_2D, texUi);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, uiResolution[0], uiResolution[1], 0, GL_BGRA, GL_UNSIGNED_BYTE, 0);
+			texUi.resize(uiResolution[0], uiResolution[1]);
 		}
 
 		if (client.isStretchedEnabled()) {
@@ -1714,8 +1677,7 @@ public class HdPlugin extends Plugin {
 		// See https://www.khronos.org/opengl/wiki/Sampler_Object for details.
 		// GL_NEAREST makes sampling for bicubic/xBR simpler, so it should be used whenever linear/pixel isn't
 		final int function = config.uiScalingMode().glSamplingFunction;
-		glActiveTexture(TEXTURE_UNIT_UI);
-		glBindTexture(GL_TEXTURE_2D, texUi);
+		texUi.bind();
 
 		if (uiCopyJob != null) {
 			frameTimer.begin(Timer.COPY_UI);
@@ -1736,6 +1698,8 @@ public class HdPlugin extends Plugin {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, function);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, function);
 
+		drawVulkanOverlay();
+
 		glEnable(GL_BLEND);
 		glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 		glBindVertexArray(vaoTri);
@@ -1750,6 +1714,45 @@ public class HdPlugin extends Plugin {
 		glColorMask(true, true, true, true);
 
 		frameTimer.end(Timer.RENDER_UI);
+	}
+
+	/**
+	 * Composites the experimental Vulkan validation triangle (see {@code rs117.hd.gpu.vulkan})
+	 * into the top-left corner of the UI texture, which {@link #drawUi} is about to composite onto
+	 * the real screen. Lazily initializes on first call, and permanently disables itself if
+	 * construction or rendering ever fails (missing classpath, no driver, etc.), so a real install
+	 * without Vulkan/shaderc available just silently never shows this.
+	 */
+	private void drawVulkanOverlay() {
+		if (!vulkanOverlayInitAttempted) {
+			vulkanOverlayInitAttempted = true;
+			try {
+				vulkanOverlay = new rs117.hd.gpu.vulkan.VulkanDevOverlay(200, 200);
+				log.info("Vulkan dev overlay initialized; compositing into the top-left corner of the UI");
+			} catch (Throwable t) {
+				log.debug("Vulkan dev overlay unavailable", t);
+				vulkanOverlay = null;
+			}
+		}
+
+		if (vulkanOverlay == null)
+			return;
+
+		if (uiResolution[0] < vulkanOverlay.width() || uiResolution[1] < vulkanOverlay.height())
+			return;
+
+		try {
+			ByteBuffer pixels = vulkanOverlay.renderFrame();
+			glTexSubImage2D(
+				GL_TEXTURE_2D, 0, 0, 0,
+				vulkanOverlay.width(), vulkanOverlay.height(),
+				GL_RGBA, GL_UNSIGNED_BYTE, pixels
+			);
+		} catch (Throwable t) {
+			log.warn("Vulkan dev overlay render failed; disabling it", t);
+			vulkanOverlay.destroy();
+			vulkanOverlay = null;
+		}
 	}
 
 	/**

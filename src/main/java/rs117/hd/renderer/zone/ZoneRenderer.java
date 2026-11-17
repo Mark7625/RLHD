@@ -869,12 +869,12 @@ public class ZoneRenderer implements Renderer {
 			return;
 
 		plugin.updateTiledLightingFbo();
-		assert plugin.fboTiledLighting != 0;
+		assert plugin.fboTiledLighting != null;
 
 		frameTimer.begin(Timer.DRAW_TILED_LIGHTING);
 		frameTimer.begin(Timer.RENDER_TILED_LIGHTING);
 
-		renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboTiledLighting);
+		renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboTiledLighting.id());
 		renderState.viewport.set(0, 0, plugin.tiledLightingResolution[0], plugin.tiledLightingResolution[1]);
 		renderState.vao.setVao(plugin.vaoTri);
 
@@ -888,7 +888,7 @@ public class ZoneRenderer implements Renderer {
 			int layerCount = plugin.configDynamicLights.getTiledLightingLayers();
 			for (int layer = 0; layer < layerCount; layer++) {
 				renderState.program.set(plugin.tiledLightingShaderPrograms.get(layer));
-				renderState.framebufferTextureLayer.set(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, plugin.texTiledLighting, 0, layer);
+				renderState.framebufferTextureLayer.set(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, plugin.texTiledLighting.id(), 0, layer);
 				renderState.apply();
 				glDrawArrays(GL_TRIANGLES, 0, 3);
 			}
@@ -901,12 +901,12 @@ public class ZoneRenderer implements Renderer {
 	private void directionalShadowPass() {
 		final boolean shouldRenderShadows =
 			plugin.configShadowsEnabled &&
-			plugin.fboShadowMap != 0 &&
+			plugin.fboShadowMap != null &&
 			skyRenderer.castsShadows;
 
 		if (shouldRenderShadows || shouldClearShadowFbo) {
-			if (plugin.configTerrainShadows && plugin.fboTerrainShadowMap != 0) {
-				renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboTerrainShadowMap);
+			if (plugin.configTerrainShadows && plugin.fboTerrainShadowMap != null) {
+				renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboTerrainShadowMap.id());
 				renderState.viewport.set(0, 0, plugin.terrainShadowMapResolution, plugin.terrainShadowMapResolution);
 				renderState.apply();
 
@@ -915,7 +915,7 @@ public class ZoneRenderer implements Renderer {
 			}
 
 			// Render to the shadow depth map
-			renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboShadowMap);
+			renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboShadowMap.id());
 			renderState.viewport.set(0, 0, plugin.shadowMapResolution, plugin.shadowMapResolution);
 			renderState.apply();
 
@@ -942,10 +942,10 @@ public class ZoneRenderer implements Renderer {
 		frameTimer.end(Timer.RENDER_SHADOWS);
 
 		// Render terrain-only shadow map
-		if (plugin.configTerrainShadows && plugin.fboTerrainShadowMap != 0) {
+		if (plugin.configTerrainShadows && plugin.fboTerrainShadowMap != null) {
 			frameTimer.begin(Timer.RENDER_TERRAIN_SHADOWS);
 
-			renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboTerrainShadowMap);
+			renderState.framebuffer.set(GL_FRAMEBUFFER, plugin.fboTerrainShadowMap.id());
 			renderState.viewport.set(0, 0, plugin.terrainShadowMapResolution, plugin.terrainShadowMapResolution);
 			renderState.depthFunc.set(GL_LESS);
 			renderState.cullFace.set(GL_FRONT);
@@ -970,7 +970,7 @@ public class ZoneRenderer implements Renderer {
 
 	private void scenePass() {
 		frameTimer.begin(Timer.DRAW_SCENE);
-		renderState.framebuffer.set(GL_DRAW_FRAMEBUFFER, plugin.fboScene);
+		renderState.framebuffer.set(GL_DRAW_FRAMEBUFFER, plugin.fboScene.id());
 		if (plugin.msaaSamples > 1) {
 			renderState.enable.set(GL_MULTISAMPLE);
 		} else {
@@ -1119,7 +1119,7 @@ public class ZoneRenderer implements Renderer {
 					z.renderOpaque(directionalCmd, ctx, shouldDrawRoofShadows);
 				}
 
-				if (renderGroundLevel && plugin.configTerrainShadows && plugin.fboTerrainShadowMap != 0)
+				if (renderGroundLevel && plugin.configTerrainShadows && plugin.fboTerrainShadowMap != null)
 					z.renderOpaqueLevel(terrainShadowCmd, Zone.LEVEL_TERRAIN);
 			}
 			frameTimer.end(Timer.DRAW_ZONE_OPAQUE);
@@ -1367,16 +1367,16 @@ public class ZoneRenderer implements Renderer {
 			}
 
 			if (sceneFboValid && plugin.sceneResolution != null && plugin.sceneViewport != null) {
-				glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboScene);
-				if (plugin.fboSceneResolve != 0) {
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboScene.id());
+				if (plugin.fboSceneResolve != null) {
 					// Blit from the scene FBO to the multisample resolve FBO
-					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboSceneResolve);
+					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, plugin.fboSceneResolve.id());
 					glBlitFramebuffer(
 						0, 0, plugin.sceneResolution[0], plugin.sceneResolution[1],
 						0, 0, plugin.sceneResolution[0], plugin.sceneResolution[1],
 						GL_COLOR_BUFFER_BIT, GL_NEAREST
 					);
-					glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboSceneResolve);
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, plugin.fboSceneResolve.id());
 				}
 
 				// Blit from the resolved FBO to the default FBO
